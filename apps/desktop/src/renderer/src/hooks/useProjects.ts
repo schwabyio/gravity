@@ -16,6 +16,9 @@ export function useProjects() {
   const [notice, setNotice] = useState<string | null>(null)
   const [cloning, setCloning] = useState<GitProgress | null>(null)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // The first listing, so a click on + Project as the window opens, before it
+  // has arrived, is carried out rather than dropped.
+  const listing = useRef<Promise<WorkspacesState> | null>(null)
 
   useEffect(
     () => window.desktop.git.onProgress((progress) => setCloning(progress.done ? null : progress)),
@@ -25,7 +28,8 @@ export function useProjects() {
 
   useEffect(() => {
     let live = true
-    void window.desktop.workspaces.list().then((next) => {
+    listing.current = window.desktop.workspaces.list()
+    void listing.current.then((next) => {
       if (live) setState(next)
     })
     const offState = window.desktop.workspaces.onChanged(setState)
@@ -69,13 +73,14 @@ export function useProjects() {
 
   const addProject = useCallback(async () => {
     setError(null)
-    if (!state.activeWorkspaceId) return
+    const workspaceId = state.activeWorkspaceId ?? (await listing.current)?.activeWorkspaceId
+    if (!workspaceId) return
     const folder = await window.desktop.projects.pick()
     if (!folder) return
-    let result = await window.desktop.projects.add(state.activeWorkspaceId, folder)
+    let result = await window.desktop.projects.add(workspaceId, folder)
     if (!result.ok && result.noCollections) {
       if (!window.confirm(`${result.message} Create one and add it as a project?`)) return
-      result = await window.desktop.projects.add(state.activeWorkspaceId, folder, {
+      result = await window.desktop.projects.add(workspaceId, folder, {
         createCollections: true
       })
     }
@@ -85,10 +90,11 @@ export function useProjects() {
   const cloneUrl = useCallback(
     async (url: string) => {
       setError(null)
-      if (!state.activeWorkspaceId) return
+      const workspaceId = state.activeWorkspaceId ?? (await listing.current)?.activeWorkspaceId
+      if (!workspaceId) return
       const parentDir = await window.desktop.projects.pick()
       if (!parentDir) return
-      const result = await window.desktop.projects.clone(state.activeWorkspaceId, url, parentDir)
+      const result = await window.desktop.projects.clone(workspaceId, url, parentDir)
       if (!result.ok) fail(result.message, result.hint)
     },
     [state.activeWorkspaceId]

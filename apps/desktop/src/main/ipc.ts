@@ -25,6 +25,7 @@ import {
   samePath,
   previewVariables,
   applyDataTable,
+  canonical,
   applyDataText,
   createDataFile,
   DOC_EXTENSION,
@@ -402,7 +403,7 @@ export function registerIpc(projects: ProjectService): void {
 
   /* ---------------------------------------------------------- workspaces -- */
 
-  ipcMain.handle(IpcChannel.workspacesList, (): WorkspacesState => projects.state())
+  ipcMain.handle(IpcChannel.workspacesList, (): Promise<WorkspacesState> => projects.loadedState())
 
   ipcMain.handle(
     IpcChannel.workspaceCreate,
@@ -543,8 +544,11 @@ export function registerIpc(projects: ProjectService): void {
       const result = window
         ? await dialog.showOpenDialog(window, options)
         : await dialog.showOpenDialog(options)
-      const file = result.canceled ? undefined : result.filePaths[0]
-      if (!file) return { path: null }
+      const picked = result.canceled ? undefined : result.filePaths[0]
+      if (!picked) return { path: null }
+      // Spelled as the project root is: through symlinks (/var is /private/var on
+      // macOS), and on Windows with long names, never 8.3 ones like RUNNER~1.
+      const file = await canonical(picked)
       // Written relative so it works on every machine; another drive has no relative path.
       if (path.isAbsolute(path.relative(root, file))) {
         throw new Error(

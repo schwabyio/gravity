@@ -24,7 +24,7 @@ export type { ProjectEntry, WorkspaceEntry } from './registrySchema.js'
  */
 export class WorkspaceRegistry {
   private data: RegistryV2 = emptyRegistry()
-  private loaded = false
+  private loading: Promise<RegistryV2> | null = null
 
   /**
    * Resolved lazily, never in the constructor.
@@ -43,9 +43,15 @@ export class WorkspaceRegistry {
     return this.resolved
   }
 
-  async load(): Promise<RegistryV2> {
-    if (this.loaded) return this.data
-    this.loaded = true
+  /**
+   * Read the file, once. Every caller waits for that one read, so none sees the
+   * placeholder held until then, whose workspace id the file's replaces.
+   */
+  load(): Promise<RegistryV2> {
+    return (this.loading ??= this.read())
+  }
+
+  private async read(): Promise<RegistryV2> {
     let raw: unknown
     try {
       raw = JSON.parse(await fs.readFile(this.file, 'utf8'))

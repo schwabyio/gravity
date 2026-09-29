@@ -98,7 +98,9 @@ test('an untrusted CA fails the send, saying where to trust it', async () => {
 
 test('adding the CA in Project settings writes tls.ca and makes the send pass', async () => {
   const drawer = await openProjectSettings()
-  await pickNext(path.join(shop, 'certs', 'local-ca.pem'))
+  // Spelled as a dialog may spell it, not as the project root is: through the
+  // symlink macOS keeps /var behind, or with a short name like RUNNER~1 on Windows.
+  await pickNext(path.join(os.tmpdir(), path.basename(tmp), 'shop', 'certs', 'local-ca.pem'))
   await drawer.getByRole('button', { name: 'Add certificate…' }).click()
 
   await expect(drawer.getByLabel('CA certificate 1')).toHaveValue('certs/local-ca.pem')

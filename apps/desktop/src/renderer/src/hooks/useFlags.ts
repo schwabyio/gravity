@@ -22,6 +22,7 @@ export function useFlags(
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const request = useRef(0)
+  const refreshing = useRef<Promise<unknown> | null>(null)
 
   const load = useCallback(
     async (refresh: boolean) => {
@@ -29,12 +30,19 @@ export function useFlags(
         setView(null)
         return
       }
+      // A reload asked for during a Refresh — a rescan, as a file changes — waits
+      // for it. Asked at once, it could answer first with the values from before,
+      // and as the later request it would win over what Refresh brought.
+      if (!refresh) await refreshing.current?.catch(() => undefined)
       const mine = ++request.current
       setBusy(true)
-      const result = await window.desktop.flags.get(root, environment, {
+      const pending = window.desktop.flags.get(root, environment, {
         refresh,
         environmentOverrides
       })
+      if (refresh) refreshing.current = pending
+      const result = await pending
+      if (refreshing.current === pending) refreshing.current = null
       if (mine !== request.current) return
       setBusy(false)
       if (result.ok) {

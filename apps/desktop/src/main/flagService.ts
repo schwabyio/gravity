@@ -126,11 +126,12 @@ class FlagService {
     refresh = false
   ): Promise<CommandRun> {
     const key = `${root}\0${environment}`
-    const kept = this.runs.get(key)
-    if (kept && kept.command === setup.command && !refresh) return kept
-    // Two views asking at once share one run of the command.
+    // Two views asking at once share one run of the command. A run under way is
+    // newer than the one kept, so even a view that is not refreshing waits for it.
     const inFlight = this.running.get(key)
     if (inFlight) return inFlight
+    const kept = this.runs.get(key)
+    if (kept && kept.command === setup.command && !refresh) return kept
     const run = (async (): Promise<CommandRun> => {
       try {
         // Opened from the Dock, the app has a bare PATH: `node` would not be found.

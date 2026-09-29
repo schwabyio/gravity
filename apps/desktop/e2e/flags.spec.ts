@@ -30,12 +30,16 @@ let seen: string[] = []
 let app: ElectronApplication
 let page: Page
 
-/** What the flag command prints next, as JSON. */
+/**
+ * What the flag command prints next, as JSON. Writing the script changes the
+ * project, which reloads the flags about 200 ms later; failing takes a second, so
+ * that reload lands while a Refresh is still running, as it can on a slow machine.
+ */
 const serve = (flags: Record<string, unknown> | 'fail') =>
   fs.writeFileSync(
     script,
     flags === 'fail'
-      ? 'console.error("flag service unreachable"); process.exit(2)\n'
+      ? 'setTimeout(() => { console.error("flag service unreachable"); process.exit(2) }, 1000)\n'
       : `console.log(${JSON.stringify(JSON.stringify(flags))})\n`
   )
 

@@ -150,6 +150,17 @@ export class ProjectService {
     return this.state()
   }
 
+  /**
+   * The state once the registry is read, for a window asking as it opens. That
+   * is before `init`, which waits on git first — slow to start on Windows —
+   * and asked earlier, the answer would be a placeholder workspace that the
+   * file replaces, so + Project would fail with "Unknown workspace".
+   */
+  async loadedState(): Promise<WorkspacesState> {
+    await this.registry.load()
+    return this.state()
+  }
+
   state(): WorkspacesState {
     return {
       activeWorkspaceId: this.registry.activeWorkspaceId,
