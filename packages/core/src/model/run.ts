@@ -127,12 +127,26 @@ export const RunResultSchema = z.object({
   /** Wall-clock milliseconds for the whole item, scripts included. */
   durationMs: z.number(),
   /**
-   * For a request run by a use step: which step of the set it was (0-based),
-   * of how many, and the set's file. Absent for a collection's own request.
+   * For a request run by a use step: the set as `use:` names it, the use
+   * step's own `name` when it has one, and which step of the set it was
+   * (0-based) of how many. Absent for a collection's own request.
    */
-  use: z.object({ set: z.string(), child: z.number(), of: z.number() }).optional()
+  use: z
+    .object({ set: z.string(), name: z.string().optional(), child: z.number(), of: z.number() })
+    .optional()
 })
 export type RunResult = z.infer<typeof RunResultSchema>
+
+/**
+ * What a report calls a result (SPEC.md §2.5): its step's name, or for a
+ * request run by a named use step, the use step's name, followed by the set's
+ * step when the set has more than one: `create user › get profile`.
+ */
+export function resultName(result: RunResult): string {
+  const use = result.use
+  if (!use?.name) return result.item.name
+  return use.of === 1 ? use.name : `${use.name} › ${result.item.name}`
+}
 
 /** Totals for a whole-collection run. */
 export const CollectionRunSummarySchema = z.object({

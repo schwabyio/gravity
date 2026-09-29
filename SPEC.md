@@ -269,6 +269,10 @@ comma-separated: `--tags smoke,api`.
 | `gta all`             | Every collection, except those with `exclude: true` (§2.4). |
 | `gta smoke,checkout/` | The collections and directories named, in that order.       |
 
+`gta get` also reports each `use:` and `extends:` that would stop a run, in every
+collection, including those `gta all` leaves out (Appendix A). It exits `1` when it finds
+one, or a broken collection, and `0` otherwise.
+
 A collection is named by its `id`, or by its place (`checkout/sessions`). A directory is
 named by its name, and `checkout/` names only the directory. `--flag name=value` sets a
 feature flag (§2.9), and `--json` prints the results as JSON. The exit code is `0` when
@@ -581,6 +585,10 @@ steps:
 `{{params.name}}`, and in code as `params.name`, a read-only object holding the real
 values. No variable can take the place of a `params.` name.
 
+A default may name variables and other params, as in
+`email: '{{params.accountId}}@example.com'`. Like a `with:` value, it is resolved once,
+when the set starts, so `accountId: '{{$uuid}}'` is one id wherever the set reads it.
+
 **A use step** holds only `use`, `with`, `name`, `tags`, `flags`, `docs` and `tests`. A
 method key, `headers`, `body`, `settings` or `before` on it is an error, and `with`
 without `use` is an error too.
@@ -589,11 +597,14 @@ without `use` is an error too.
   global project. `use: auth/login` is one directory down. `use: global:login` looks
   only in the global project.
 - **`with:`** gives plain values; a param left out takes its default. A string may hold
-  `{{variables}}`, resolved when the set starts. A missing required value, or a name the
-  set does not take, stops the step before anything is sent.
+  `{{variables}}`, resolved when the set starts. A missing required value, a name the
+  set does not take, or a value or default that cannot be resolved stops the set's
+  steps before anything is sent.
 - **Running.** A use step runs each of the set's steps in turn, in the collection's
   variable scope, so what one sets the next can read, and so can the steps after the use
-  step. Each request is reported as its own result.
+  step. Each request is reported as its own result. When the use step has a `name`,
+  reports use it: `sign in` for a set of one step, `sign in › get profile` for a longer
+  one.
 - **Layers.** Headers and settings: the collection's, under the set's, under each
   step's own. Scripts run collection, then set, then step: `before.script` before the
   request and `tests` after. The use step's own `tests` run last, after the set's last
@@ -1222,7 +1233,8 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - The flag `command`, if any, has every quote closed, starts, and exits `0` within 60
   seconds, printing a JSON object.
 - Every file a body names can be read from the project folder.
-- Every `use:` and `extends:` names a usable file.
+- Every `use:` and `extends:` names a usable file, and every `with:` suits its set.
+  `gta get` checks these without running anything (§1.3).
 
 ---
 

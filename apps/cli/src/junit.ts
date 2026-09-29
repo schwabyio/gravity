@@ -1,5 +1,5 @@
 import os from 'node:os'
-import type { AssertionResult, RunResult } from '@schwabyio/gravity-core'
+import { resultName, type AssertionResult, type RunResult } from '@schwabyio/gravity-core'
 import { iterationName, unattempted, type JobOutcome } from './job.js'
 
 /**
@@ -169,7 +169,7 @@ function testcase(classname: string, name: string, durationMs: number, body: str
 /** A step's name, and for a request a use step ran, which one of its set it was. */
 const caseName = (result: RunResult): string =>
   result.use
-    ? `${result.item.name} [${result.use.set} ${result.use.child + 1}/${result.use.of}]`
+    ? `${resultName(result)} [${result.use.set} ${result.use.child + 1}/${result.use.of}]`
     : result.item.name
 
 const summarize = (a: AssertionResult): string => (a.message ? `${a.name}: ${a.message}` : a.name)

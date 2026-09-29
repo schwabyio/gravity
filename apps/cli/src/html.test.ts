@@ -194,6 +194,19 @@ describe('htmlReport', () => {
     expect(page).toContain('onclick="expandAll()">Expand All</button>')
   })
 
+  it('names a request a named use step ran by the use step, and searches by that name', () => {
+    const page = pages(
+      run(
+        collection('users', [
+          result('get profile', { use: { set: 'create-user', name: 'User 1', child: 1, of: 3 } })
+        ])
+      )
+    ).get('users.html')!
+    expect(page).toContain(
+      '<details class="acc passed passed" data-search="user 1 › get profile">\n<summary><span>Test 1: User 1 › get profile <span class="dim">(create-user 2/3)</span></span>'
+    )
+  })
+
   it('shows a test’s error in its own card, errored tests counting as failed for Hide Failed', () => {
     const page = pages(
       run(

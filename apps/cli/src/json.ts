@@ -1,7 +1,7 @@
 import type { RunResult } from '@schwabyio/gravity-core'
 import type { HtmlCollection, HtmlRun } from './html.js'
 import type { LoadedCollection } from '@schwabyio/gravity-core'
-import type { RunTarget } from './select.js'
+import type { ListingProblem, RunTarget } from './select.js'
 import { unattempted, type StepRef } from './job.js'
 
 /**
@@ -136,6 +136,8 @@ export function jsonListing(options: {
   targets: readonly RunTarget[]
   excluded: readonly string[]
   untagged: number
+  /** Use steps and `extends:` a run would stop at, in any collection (SPEC.md Appendix A). */
+  problems: readonly ListingProblem[]
 }): object {
   return {
     formatVersion: JSON_FORMAT_VERSION,
@@ -160,7 +162,8 @@ export function jsonListing(options: {
       tags: target.collection.doc.tags ?? [],
       broken: target.broken
     })),
-    leftOut: { excluded: options.excluded, untagged: options.untagged }
+    leftOut: { excluded: options.excluded, untagged: options.untagged },
+    problems: options.problems
   }
 }
 

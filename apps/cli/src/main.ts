@@ -11,6 +11,7 @@ import {
   loadProjectTls,
   projectEnvironments,
   readProject,
+  referenceProblems,
   relativePosix,
   type LoadedCollection
 } from '@schwabyio/gravity-core'
@@ -37,8 +38,10 @@ import { flagList, htmlReport, SUMMARY_PAGE, type HtmlCollection, type HtmlRun }
 import { junitReport } from './junit.js'
 import { jsonError, jsonListing, jsonReport, type ReportPaths } from './json.js'
 import {
+  idOf,
   selectCollections,
   stepCountOf,
+  type ListingProblem,
   type Request,
   type RunTarget,
   type Selection
@@ -114,6 +117,12 @@ export async function main(argv: readonly string[], cli: CliContext): Promise<nu
     const command = args.command
     if (command === 'g' || command === 'get') {
       const selection = selectFor(project, { kind: 'all' })
+      const problems = await listingProblems(project, selection)
+      // Something a run would stop at fails the listing, so CI can check a project with it.
+      const code =
+        problems.length > 0 || selection.targets.some((target) => target.broken)
+          ? EXIT.failed
+          : EXIT.passed
       if (emit) {
         emit(
           jsonListing({
@@ -125,12 +134,14 @@ export async function main(argv: readonly string[], cli: CliContext): Promise<nu
             notTags: project.settings.notTags,
             targets: selection.targets,
             excluded: selection.excluded,
-            untagged: selection.untagged
+            untagged: selection.untagged,
+            problems
           })
         )
-        return EXIT.passed
+        return code
       }
-      return list(project, selection, ctx, p)
+      list(project, selection, problems, ctx, p)
+      return code
     }
     const request: Request =
       command === 'a' || command === 'all'
@@ -242,8 +253,42 @@ const selectFor = (project: OpenProject, request: Request): Selection =>
     notTags: project.settings.notTags
   })
 
+/**
+ * What `gta get` finds wrong beyond the collections it lists as broken: a
+ * `use:` or `extends:` a run would stop at, and a collection it leaves out that
+ * would not load. Every collection is checked, those `gta all` leaves out too,
+ * which would otherwise go unnoticed until one is run by name.
+ */
+async function listingProblems(
+  project: OpenProject,
+  selection: Selection
+): Promise<ListingProblem[]> {
+  const listed = new Set(selection.targets.map((target) => target.id))
+  const problems: ListingProblem[] = []
+  for (const collection of project.collections) {
+    const id = idOf(collection)
+    const leftOut = listed.has(id) ? null : collection.doc.exclude === true ? 'excluded' : 'tags'
+    if (collection.problems.length > 0) {
+      // A listed one is already shown as broken.
+      const message = collection.problems.map((problem) => problem.message).join('; ')
+      if (leftOut) problems.push({ id, leftOut, step: null, message })
+      continue
+    }
+    for (const problem of await referenceProblems(collection.doc, collection.path)) {
+      problems.push({ id, leftOut, ...problem })
+    }
+  }
+  return problems
+}
+
 /** `gta get`: what `gta all` would run, without running it. */
-function list(project: OpenProject, selection: Selection, ctx: CliContext, p: Paint): number {
+function list(
+  project: OpenProject,
+  selection: Selection,
+  problems: readonly ListingProblem[],
+  ctx: CliContext,
+  p: Paint
+): void {
   const { settings } = project
 
   ctx.out(field('Project', `${project.name} ${p.dim(project.root)}`))
@@ -294,6 +339,12 @@ function list(project: OpenProject, selection: Selection, ctx: CliContext, p: Pa
   for (const target of selection.targets.filter((t) => t.broken)) {
     ctx.out(`${p.red('broken')} ${target.id}: ${target.broken}`)
   }
+  const leftOut = { excluded: ' (excluded)', tags: ' (left out by tags)' }
+  for (const problem of problems) {
+    const step = problem.step === null ? '' : `, step ${problem.step + 1}`
+    const where = `${problem.id}${problem.leftOut ? leftOut[problem.leftOut] : ''}${step}`
+    ctx.out(`${p.red('broken')} ${where}: ${problem.message}`)
+  }
   if (selection.excluded.length > 0) {
     ctx.out(field('Excluded', `${selection.excluded.join(', ')} ${p.dim('(exclude: true)')}`))
   }
@@ -302,7 +353,6 @@ function list(project: OpenProject, selection: Selection, ctx: CliContext, p: Pa
   }
   const steps = selection.targets.reduce((n, t) => n + stepCountOf(t), 0)
   ctx.out(field('Total', `${selection.targets.length} collections, ${steps} steps`))
-  return EXIT.passed
 }
 
 /** Run the selection at `limitConcurrency`, reporting each collection as it finishes. */
@@ -530,6 +580,8 @@ export function usage(p: Paint): string {
     '',
     `  ${p.bold('Commands:')}`,
     '    g, get          List the collections `gta all` would run, without running them.',
+    '                    Exits 1 on a broken collection, or a use: or extends: that',
+    '                    would stop a run, in any collection.',
     '    a, all          Run every collection, less those with exclude: true.',
     '    <list>          Run the collections and directories named, comma separated,',
     '                    in that order: smoke,checkout/sessions,payments',

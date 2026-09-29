@@ -6,12 +6,10 @@ import type { Collection, Step, VarValue } from '../model/documents.js'
 import {
   isUseStep,
   mergeHeaders,
-  readParam,
   readRequestLine,
   stepLabel,
   type Before,
   type Headers,
-  type ParamSpec,
   type Settings
 } from '../model/documents.js'
 import {
@@ -31,6 +29,7 @@ import { buildScope, type ScopeContext } from '../vars/resolve.js'
 import { InterpolationError, ParamsScope, VariableScope } from '../vars/scope.js'
 import { interpolateToString } from '../vars/interpolate.js'
 import { resolveSettings, toSentRequest } from './buildRequest.js'
+import { resolveParams } from './plan.js'
 import { BodyFileError, prepareRequest } from './prepareRequest.js'
 
 export interface RunStepInput {
@@ -83,6 +82,8 @@ interface Layer {
 export interface SetRun {
   /** As the use step named it. */
   name: string
+  /** The use step's own `name`, when it has one. */
+  useName?: string
   /** Its file: the files its steps' bodies name are read from its project's folder. */
   path?: string
   /** The set: its headers, settings, `before` and `tests` apply to each of its steps. */
@@ -158,16 +159,6 @@ function endpointValues(endpoint: EndpointBase, step: Step, scope: VariableScope
   return values
 }
 
-/** Each param's default, where it has one. */
-function defaultsOf(params: Record<string, ParamSpec>): Record<string, VarValue> {
-  const defaults: Record<string, VarValue> = {}
-  for (const [key, spec] of Object.entries(params)) {
-    const value = readParam(spec).default
-    if (value !== undefined) defaults[key] = value
-  }
-  return defaults
-}
-
 /**
  * Run a single step and produce the `RunResult` every consumer renders.
  *
@@ -190,11 +181,6 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       durationMs: 0
     }
   }
-  // A set opened and run on its own takes its params' defaults.
-  const params =
-    set?.params ??
-    input.params ??
-    (input.collection?.params ? defaultsOf(input.collection.params) : undefined)
   const library = context && needsLibrary(input) ? await loadLibrary(context.collectionPath) : null
   const checks = input.checks ?? library?.checks
   const endpoints = input.endpoints ?? library?.endpoints ?? []
@@ -241,7 +227,16 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   const logs: LogEntry[] = []
   const withLogs = () => ({
     ...(logs.length > 0 ? { logs } : {}),
-    ...(set ? { use: { set: set.name, child: set.child, of: set.of } } : {})
+    ...(set
+      ? {
+          use: {
+            set: set.name,
+            ...(set.useName ? { name: set.useName } : {}),
+            child: set.child,
+            of: set.of
+          }
+        }
+      : {})
   })
   const last = set ? set.child === set.of - 1 : false
   const layers: Layer[] = []
@@ -274,8 +269,14 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
 
   let spec: SentRequest
   let scope: VariableScope
+  let params: Record<string, VarValue> | undefined
   try {
     const run = provided ?? (context ? await buildScope(context) : new VariableScope())
+    // A set opened and run on its own takes its params' defaults.
+    params =
+      set?.params ??
+      input.params ??
+      (input.collection?.params ? resolveParams(input.collection.params, {}, run) : undefined)
     scope = params ? new ParamsScope(run, params) : run
   } catch (cause) {
     return failed(interpolateError(cause))

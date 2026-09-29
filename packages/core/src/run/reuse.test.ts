@@ -5,10 +5,12 @@ import path from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { CollectionSchema, type Collection } from '../model/documents.js'
-import type { RunResult } from '../model/run.js'
+import { resultName, type RunResult } from '../model/run.js'
 import { exportsOf } from '../runtime/sandbox.js'
 import { listRequestSets, loadChecks, resolveRequestSet } from '../workspace/library.js'
+import { referenceProblems } from './plan.js'
 import { runCollection } from './runCollection.js'
+import { runRequest } from './runRequest.js'
 
 let tmp: string
 let shop: string
@@ -70,6 +72,40 @@ beforeAll(async () => {
     ].join('\n')
   )
   await write(
+    path.join(shop, 'requests', 'account.yml'),
+    [
+      'id: account',
+      'params:',
+      "  id: '{{$uuid}}'",
+      "  email: '{{params.id}}@example.com'",
+      'steps:',
+      '  - name: create',
+      `    POST: "${origin}/account/{{params.id}}/{{params.id}}/{{params.email}}"`,
+      '    tests: |',
+      '      if (params.email !== `${params.id}@example.com`) throw new Error(params.email)',
+      '  - name: read',
+      `    GET: "${origin}/account/{{params.id}}"`,
+      ''
+    ].join('\n')
+  )
+  await write(
+    path.join(shop, 'requests', 'loop.yml'),
+    [
+      'id: loop',
+      'params:',
+      "  a: '{{params.b}}'",
+      "  b: '{{params.a}}'",
+      'steps:',
+      `  - GET: "${origin}/loop/{{params.a}}"`,
+      `  - GET: "${origin}/loop/{{params.b}}"`,
+      ''
+    ].join('\n')
+  )
+  await write(
+    path.join(shop, 'requests', 'typo.yml'),
+    `id: typo\nparams:\n  who: '{{nobody}}'\nsteps:\n  - GET: "${origin}/typo/{{params.who}}"\n`
+  )
+  await write(
     path.join(shop, 'requests', 'not-a-set.yml'),
     `id: not-a-set\nsteps:\n  - GET: "${origin}/x"\n`
   )
@@ -99,7 +135,11 @@ afterAll(async () => {
   await fs.rm(tmp, { recursive: true, force: true })
 })
 
-const run = async (steps: unknown[], extra: Partial<Collection> = {}) => {
+const run = async (
+  steps: unknown[],
+  extra: Partial<Collection> = {},
+  flags: Record<string, boolean> | null = null
+) => {
   seen = []
   const collectionPath = path.join(shop, 'collections', 'suite.yml')
   const collection = CollectionSchema.parse({ id: 'suite', ...extra, steps })
@@ -107,7 +147,7 @@ const run = async (steps: unknown[], extra: Partial<Collection> = {}) => {
   const summary = await runCollection({
     collection,
     collectionPath,
-    context: { collectionPath, env: {} },
+    context: { collectionPath, env: {}, ...(flags ? { flags } : {}) },
     onResult: (index, result) => reported.push([index, result])
   })
   return { summary, reported }
@@ -117,9 +157,12 @@ describe('finding what a project can reuse', () => {
   it('lists its request sets, one directory deep, then its global project’s', async () => {
     const sets = await listRequestSets(shop, { root: shared })
     expect(sets.map((set) => `${set.source}:${set.name}`)).toEqual([
+      'project:account',
       'project:login',
+      'project:loop',
       'project:not-a-set',
       'project:orders/place',
+      'project:typo',
       'global:ping'
     ])
   })
@@ -256,5 +299,114 @@ describe('running a use step', () => {
     })
     expect(seen.map((request) => request.url)).toEqual(['/cart/widget'])
     expect(summary.results[0]?.use).toBeUndefined()
+  })
+})
+
+describe('a set’s params', () => {
+  it('resolves defaults when the set starts, each once, so scripts see what requests send', async () => {
+    const { summary } = await run([{ use: 'account' }])
+    const [create, read] = seen.map((request) => request.url.split('/').slice(2))
+    const id = create?.[0]
+    expect(id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(create).toEqual([id, id, `${id}@example.com`])
+    expect(read).toEqual([id])
+    expect(summary).toMatchObject({ total: 2, passed: 2 })
+  })
+
+  it('resolves them for a step of a set run on its own', async () => {
+    seen = []
+    const file = path.join(shop, 'requests', 'account.yml')
+    const collection = CollectionSchema.parse({
+      id: 'account',
+      params: { id: '{{$uuid}}', email: '{{params.id}}@example.com' },
+      steps: [
+        {
+          POST: `${origin}/account/{{params.id}}/{{params.email}}`,
+          tests: 'if (params.email !== `${params.id}@example.com`) throw new Error(params.email)'
+        }
+      ]
+    })
+    const result = await runRequest({
+      step: collection.steps[0]!,
+      collection,
+      context: { collectionPath: file, env: {} }
+    })
+    expect(result.status).toBe('pass')
+    const [id, email] = seen[0]!.url.split('/').slice(2)
+    expect(email).toBe(`${id}@example.com`)
+  })
+
+  it('stops every step of a use whose params cannot resolve, before sending', async () => {
+    const { summary, reported } = await run([
+      { use: 'loop', name: 'go round' },
+      { use: 'typo' },
+      { name: 'after', GET: `${origin}/after` }
+    ])
+    expect(seen.map((request) => request.url)).toEqual(['/after'])
+    expect(summary).toMatchObject({ total: 4, errored: 3, passed: 1 })
+    const loop = 'use: loop — params.a refers to itself: params.a -> params.b -> params.a'
+    expect(reported.map(([index, result]) => [index, result.error?.message, result.use])).toEqual([
+      [0, loop, { set: 'loop', name: 'go round', child: 0, of: 2 }],
+      [0, loop, { set: 'loop', name: 'go round', child: 1, of: 2 }],
+      [
+        1,
+        `use: typo — params.who's default: Variable "nobody" is not defined in this environment.`,
+        { set: 'typo', child: 0, of: 1 }
+      ],
+      [2, undefined, undefined]
+    ])
+  })
+
+  it('skips a use its flags rule out, whatever its params', async () => {
+    const { summary } = await run([{ use: 'loop', flags: { beta: true } }], {}, { beta: false })
+    expect(summary.results.map((result) => result.status)).toEqual(['skipped', 'skipped'])
+  })
+})
+
+describe('naming a set’s requests', () => {
+  it('names them by the use step that ran them, then the set’s step when it has several', async () => {
+    const { reported } = await run([
+      { use: 'login', name: 'sign in', with: { username: 'alice' } },
+      { use: 'orders/place', name: 'buy a widget' },
+      { use: 'login', with: { username: 'bob' } }
+    ])
+    expect(reported.map(([, result]) => resultName(result))).toEqual([
+      'sign in',
+      'buy a widget › add to cart',
+      'buy a widget › check out',
+      'log in'
+    ])
+    expect(reported[1]?.[1].use).toEqual({
+      set: 'orders/place',
+      name: 'buy a widget',
+      child: 0,
+      of: 2
+    })
+  })
+})
+
+describe('checking references without a run', () => {
+  it('finds each extends: and use: a run would stop at, sending nothing', async () => {
+    seen = []
+    const collection = CollectionSchema.parse({
+      id: 'suite',
+      extends: 'nope',
+      steps: [
+        { use: 'login', with: { username: 'a' } },
+        { use: 'login', with: { usernme: 'a' } },
+        { use: 'nope' },
+        { GET: `${origin}/x` }
+      ]
+    })
+    const problems = await referenceProblems(
+      collection,
+      path.join(shop, 'collections', 'suite.yml')
+    )
+    expect(problems).toEqual([
+      { step: null, message: 'extends: nope — there is no nope.yml in bases/' },
+      { step: 1, message: 'use: login — it takes no usernme (it takes: username, expectStatus)' },
+      { step: 2, message: 'use: nope — there is no nope.yml in requests/' }
+    ])
+    expect(seen).toEqual([])
   })
 })

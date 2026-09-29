@@ -1,4 +1,4 @@
-import type { RunResult } from '@schwabyio/gravity-core'
+import { resultName, type RunResult } from '@schwabyio/gravity-core'
 import { allSkipped, iterationName, type JobOutcome } from './job.js'
 import type { RunTarget } from './select.js'
 import { stepCountOf } from './select.js'
@@ -84,7 +84,7 @@ export function tally(target: RunTarget, outcome: JobOutcome, durationMs: number
     // Named for the row they ran with, when a data file drove the collection.
     problems: summary.results.flatMap((r, i) =>
       r.status === 'fail' || r.status === 'error'
-        ? [{ ...r, item: { ...r.item, name: iterationName(r.item.name, outcome.steps[i]) } }]
+        ? [{ ...r, item: { ...r.item, name: iterationName(resultName(r), outcome.steps[i]) } }]
         : []
     )
   }

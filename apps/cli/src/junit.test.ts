@@ -117,6 +117,19 @@ describe('junitReport', () => {
     expect(xml).toContain('name="get token [login 2/3]"')
   })
 
+  it('names a request a named use step ran by the use step, then the set’s step', () => {
+    const xml = report(
+      ran('a', [
+        result('wait', {
+          use: { set: 'wait', name: 'wait for the invite email', child: 0, of: 1 }
+        }),
+        result('get profile', { use: { set: 'create-user', name: 'user 1', child: 1, of: 3 } })
+      ])
+    )
+    expect(xml).toContain('name="wait for the invite email [wait 1/1]"')
+    expect(xml).toContain('name="user 1 › get profile [create-user 2/3]"')
+  })
+
   it('counts steps a bail left unrun as skipped', () => {
     const xml = report(ran('a', [result('one', { status: 'fail', assertions: [failed] })], 2))
     expect(xml).toContain('tests="2" failures="1" errors="0" skipped="1"')

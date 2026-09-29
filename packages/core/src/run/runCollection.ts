@@ -75,6 +75,8 @@ export async function runCollection(options: CollectionRunOptions): Promise<Coll
   const results: RunResult[] = []
   /** Params of the use running now, resolved when its first step starts. */
   let params: Record<string, VarValue> = {}
+  /** Why the use running now could not start: each of its steps reports it. */
+  let unstarted: RunError | null = null
 
   for (const planned of plan) {
     if (signal?.aborted) break
@@ -87,24 +89,18 @@ export async function runCollection(options: CollectionRunOptions): Promise<Coll
     } else {
       const set = planned.set ? positionOf(planned.set, planned.child ?? 0) : undefined
       if (set || own) {
+        const using = set?.planned ?? own!
         const starting = set ? set.child === 0 : planned.index === 0
         if (starting) {
           try {
-            params = resolveParams(set?.planned ?? own!, scope)
+            params = resolveParams(using.doc.params, using.with, scope)
+            unstarted = null
           } catch (cause) {
             params = {}
-            result = brokenUse(
-              planned.step,
-              {
-                phase: 'use',
-                message: `use: ${(set?.planned ?? own!).name} — ${(cause as Error).message}`
-              },
-              collectionPath
-            )
-            results.push(result)
-            onResult?.(planned.index, result)
-            if (bail) break
-            continue
+            unstarted = {
+              phase: 'use',
+              message: `use: ${using.name} — ${(cause as Error).message}`
+            }
           }
         }
       }
@@ -116,32 +112,41 @@ export async function runCollection(options: CollectionRunOptions): Promise<Coll
         if (bail && result.status === 'error') break
         continue
       }
-      result = await runRequest({
-        step: planned.step,
-        collection,
-        itemPath: collectionPath,
-        scope,
-        checks,
-        endpoints,
-        base,
-        ...(library ? { tls: library.tls } : {}),
-        ...(set
-          ? {
-              set: {
-                name: set.planned.name,
-                path: set.planned.path,
-                doc: set.planned.doc,
-                params,
-                child: set.child,
-                of: set.of,
-                useTests: set.planned.useTests
+      // After the flags: a use they skip is skipped, whatever its params.
+      if (unstarted && (set || own)) {
+        result = {
+          ...brokenUse(planned.step, unstarted, collectionPath),
+          ...(set ? { use: useOf(set) } : {})
+        }
+      } else {
+        result = await runRequest({
+          step: planned.step,
+          collection,
+          itemPath: collectionPath,
+          scope,
+          checks,
+          endpoints,
+          base,
+          ...(library ? { tls: library.tls } : {}),
+          ...(set
+            ? {
+                set: {
+                  name: set.planned.name,
+                  ...(set.planned.useName ? { useName: set.planned.useName } : {}),
+                  path: set.planned.path,
+                  doc: set.planned.doc,
+                  params,
+                  child: set.child,
+                  of: set.of,
+                  useTests: set.planned.useTests
+                }
               }
-            }
-          : own
-            ? { params }
-            : {}),
-        ...(signal ? { signal } : {})
-      })
+            : own
+              ? { params }
+              : {}),
+          ...(signal ? { signal } : {})
+        })
+      }
     }
     results.push(result)
     onResult?.(planned.index, result)
@@ -169,6 +174,14 @@ function positionOf(planned: PlannedSet, child: number) {
   return { planned, child, of: planned.doc.steps.length }
 }
 
+/** `RunResult.use` for one of a set's steps. */
+const useOf = (set: ReturnType<typeof positionOf>): NonNullable<RunResult['use']> => ({
+  set: set.planned.name,
+  ...(set.planned.useName ? { name: set.planned.useName } : {}),
+  child: set.child,
+  of: set.of
+})
+
 /**
  * Run a request set on its own — opened and run like any collection — as if
  * a use step had run it with no values: its params take their defaults.
@@ -179,6 +192,7 @@ function selfAsSet(collection: Collection, collectionPath: string | null): Plann
     path: collectionPath ?? '',
     // Its own before, tests, headers and settings already apply as the collection's.
     doc: { params: collection.params, steps: collection.steps },
+    useName: undefined,
     with: {},
     useTests: undefined
   }

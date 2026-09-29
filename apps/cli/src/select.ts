@@ -33,6 +33,19 @@ export interface Selection {
 
 export type Request = { kind: 'all' } | { kind: 'list'; selectors: string[] }
 
+/**
+ * A `use:` or `extends:` in a collection that loads, which a run would stop
+ * at: `gta get` reports it without running anything (SPEC.md Appendix A).
+ */
+export interface ListingProblem {
+  id: string
+  /** Why `gta all` leaves the collection out, or null when it runs it. */
+  leftOut: 'excluded' | 'tags' | null
+  /** The use step's index in `steps`; null for `extends:`. */
+  step: number | null
+  message: string
+}
+
 /** A collection's id: `LoadedCollection.name` is its file name, which the id must be. */
 export const idOf = (collection: LoadedCollection): string => collection.name
 

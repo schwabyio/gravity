@@ -1,5 +1,6 @@
 import {
   parseMarkdown,
+  resultName,
   type AssertionResult,
   type HeaderEntry,
   type MdBlock,
@@ -247,13 +248,13 @@ const statusOf = (r: RunResult): Status =>
 
 function testSection(r: RunResult, index: number, ref: StepRef | undefined): string {
   const status = statusOf(r)
-  const named = escape(iterationName(r.item.name, ref))
+  const named = escape(iterationName(resultName(r), ref))
   const name = r.use
     ? `${named} <span class="dim">(${escape(r.use.set)} ${r.use.child + 1}/${r.use.of})</span>`
     : named
   // A step a feature flag skipped sent nothing: the reason is all there is to show.
   if (r.skipped) {
-    return `<details class="acc skipped skipped" data-search="${escape(iterationName(r.item.name, ref).toLowerCase())}">
+    return `<details class="acc skipped skipped" data-search="${escape(iterationName(resultName(r), ref).toLowerCase())}">
 <summary><span>Test ${index + 1}: ${name}</span>${icon('skipped')}</summary>
 <div class="acc-body">
 ${card('Skipped', field('Feature Flag', `<span class="c-skipped">${escape(r.skipped.reason)} — this test was not run</span>`, 'wide'))}
@@ -270,7 +271,7 @@ ${card('Skipped', field('Feature Flag', `<span class="c-skipped">${escape(r.skip
   // Hide Failed takes errored tests too: both are what a failed run is made of.
   const group = status === 'passed' ? 'passed' : status === 'skipped' ? 'skipped' : 'failed'
   // What the step search matches: the name as shown, iteration and all.
-  const search = iterationName(r.item.name, ref).toLowerCase()
+  const search = iterationName(resultName(r), ref).toLowerCase()
   return `<details class="acc ${group} ${status}" data-search="${escape(search)}"${status === 'passed' ? '' : ' open'}>
 <summary><span>Test ${index + 1}: ${name}</span>${icon(status)}</summary>
 <div class="acc-body">

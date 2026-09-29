@@ -2,15 +2,15 @@ import path from 'node:path'
 import {
   isUseStep,
   readParam,
-  stepLabel,
   type Collection,
+  type ParamSpec,
   type Step,
   type VarValue
 } from '../model/documents.js'
 import type { RunError } from '../model/run.js'
 import { interpolate } from '../vars/interpolate.js'
-import type { VariableScope } from '../vars/scope.js'
-import { resolveRequestSet } from '../workspace/library.js'
+import { InterpolationError, ParamsScope, type VariableScope } from '../vars/scope.js'
+import { resolveBase, resolveRequestSet } from '../workspace/library.js'
 import { projectRootOf, readProject } from '../workspace/project.js'
 
 /**
@@ -25,6 +25,8 @@ export type PlannedStep =
 export interface PlannedSet {
   /** As the use step named it. */
   name: string
+  /** The use step's own `name`, when it has one: reports name the set's requests by it. */
+  useName: string | undefined
   path: string
   doc: Collection
   /** The use step's `with:`, as written; strings are resolved when the set starts. */
@@ -54,6 +56,7 @@ export async function planSteps(
       if (set.doc.steps.length === 0) throw new Error(`use: ${step.use} — the set has no steps`)
       const planSet: PlannedSet = {
         name: step.use,
+        useName: step.name?.trim() ? step.name : undefined,
         path: set.path,
         doc: set.doc,
         with: step.with ?? {},
@@ -101,23 +104,92 @@ function checkWith(name: string, set: Collection, given: Record<string, VarValue
 }
 
 /**
- * A set's params for one use: what `with:` gives — its `{{variables}}`
- * resolved now, when the set starts — else each param's default. A param with
- * neither (running a set on its own) is left out, so `{{params.x}}` reports it.
+ * A set's params for one use, resolved when the set starts, so its scripts
+ * see the values its requests send (SPEC.md §2.5): what `with:` gives, its
+ * `{{variables}}` read now, else each param's default, read the same way. A
+ * default may name another param, as in `'{{params.id}}@example.com'`; each is
+ * resolved once, so a `{{$uuid}}` is one value wherever it is read. A param
+ * with neither (running a set on its own) is left out, so `{{params.x}}`
+ * reports it.
  */
-export function resolveParams(set: PlannedSet, scope: VariableScope): Record<string, VarValue> {
+export function resolveParams(
+  specs: Record<string, ParamSpec> | undefined,
+  given: Record<string, VarValue>,
+  scope: VariableScope
+): Record<string, VarValue> {
   const params: Record<string, VarValue> = {}
-  for (const [key, spec] of Object.entries(set.doc.params ?? {})) {
-    const given = set.with[key]
-    if (given !== undefined)
-      params[key] = typeof given === 'string' ? interpolate(given, scope) : given
+  const defaults = new Map<string, VarValue>()
+  for (const [key, spec] of Object.entries(specs ?? {})) {
+    const value = given[key]
+    if (value !== undefined)
+      params[key] = typeof value === 'string' ? interpolate(value, scope) : value
     else {
       const fallback = readParam(spec).default
-      if (fallback !== undefined) params[key] = fallback
+      if (fallback !== undefined) defaults.set(key, fallback)
     }
   }
+
+  const resolving: string[] = []
+  const resolve = (key: string) => {
+    const fallback = defaults.get(key)
+    if (fallback === undefined || Object.hasOwn(params, key)) return
+    if (resolving.includes(key)) {
+      const chain = [...resolving, key].map((name) => `params.${name}`)
+      throw new InterpolationError(
+        `params.${key} refers to itself: ${chain.join(' -> ')}`,
+        `params.${key}`
+      )
+    }
+    if (typeof fallback !== 'string') {
+      params[key] = fallback
+      return
+    }
+    // The params it names first, so it reads what they resolved to.
+    resolving.push(key)
+    for (const [, name] of fallback.matchAll(PARAM_REFERENCE)) resolve(name!)
+    resolving.pop()
+    try {
+      params[key] = interpolate(fallback, new ParamsScope(scope, params))
+    } catch (cause) {
+      if (!(cause instanceof InterpolationError)) throw cause
+      throw new InterpolationError(`params.${key}'s default: ${cause.message}`, cause.variable)
+    }
+  }
+  for (const key of defaults.keys()) resolve(key)
   return params
 }
 
-/** A display name for a set's step: its own, under the use step that ran it. */
-export const plannedLabel = (planned: PlannedStep): string => stepLabel(planned.step)
+/** `{{params.name}}`, in a param's default. */
+const PARAM_REFERENCE = /\{\{\s*params\.([^{}\s]+)\s*\}\}/g
+
+/** Something that stops a collection's `extends:` or one of its use steps (SPEC.md Appendix A). */
+export interface ReferenceProblem {
+  /** The use step's index in `steps`; null for `extends:`. */
+  step: number | null
+  message: string
+}
+
+/**
+ * What a run of the collection would find wrong before sending anything: an
+ * `extends:` or `use:` that names no usable file, a `with:` the set does not
+ * take, a required param left out. For `gta get`, which runs nothing.
+ */
+export async function referenceProblems(
+  collection: Collection,
+  collectionPath: string
+): Promise<ReferenceProblem[]> {
+  const problems: ReferenceProblem[] = []
+  if (collection.extends) {
+    try {
+      const { root, global } = await projectOf(collectionPath)
+      await resolveBase(root, global, collection.extends)
+    } catch (cause) {
+      problems.push({ step: null, message: (cause as Error).message })
+    }
+  }
+  for (const planned of await planSteps(collection, collectionPath)) {
+    if (planned.kind === 'broken')
+      problems.push({ step: planned.index, message: planned.error.message })
+  }
+  return problems
+}

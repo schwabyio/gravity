@@ -106,6 +106,10 @@ describe('gta', () => {
     expect(code).toBe(EXIT.failed)
     expect(out).toMatch(/bad .* failed/)
     expect(out).toContain('Collections:  2 total, 1 passed, 1 failed')
+
+    const listed = await gta(root, 'get')
+    expect(listed.code).toBe(EXIT.failed)
+    expect(listed.out).toContain('broken bad:')
   })
 
   it('reports a wrong or shared id as broken, and runs neither', async () => {
@@ -208,6 +212,102 @@ describe('gta', () => {
     const named = await gta(root, 'wip')
     expect(named.code).toBe(EXIT.failed)
     expect(named.out).toContain('Collections:  1 total, 0 passed, 1 failed')
+  })
+
+  it('checks every collection with get, those all leaves out too, and fails on a problem', async () => {
+    const root = await project({
+      'requests/login.yml': [
+        'id: login',
+        'params:',
+        '  user: { required: true }',
+        'steps:',
+        "  - GET: '{{baseUrl}}/ok'",
+        ''
+      ].join('\n'),
+      'collections/good.yml': 'id: good\nsteps:\n  - use: login\n    with: { user: a }\n',
+      'collections/typo.yml': [
+        'id: typo',
+        'steps:',
+        "  - GET: '{{baseUrl}}/ok'",
+        '  - use: login',
+        '    with: { usr: a }',
+        ''
+      ].join('\n'),
+      'collections/slow.yml': 'id: slow\ntags: [slow]\nsteps:\n  - use: login\n',
+      'collections/wip.yml': 'id: wip\nexclude: true\nextends: nope\nsteps:\n  - use: logon\n',
+      'collections/old.yml': 'id: olde\nexclude: true\nsteps: []\n'
+    })
+    const listed = await gta(root, 'get', '--notTags', 'slow')
+    expect(listed.code).toBe(EXIT.failed)
+    expect(listed.out).toContain(
+      'broken old (excluded): id: olde does not match the file name, old.yml — they must be the same (SPEC.md §2)'
+    )
+    expect(listed.out).toContain(
+      'broken slow (left out by tags), step 1: use: login — needs user in with:'
+    )
+    expect(listed.out).toContain(
+      'broken typo, step 2: use: login — it takes no usr (it takes: user)'
+    )
+    expect(listed.out).toContain(
+      'broken wip (excluded): extends: nope — there is no nope.yml in bases/'
+    )
+    expect(listed.out).toContain(
+      'broken wip (excluded), step 1: use: logon — there is no logon.yml in requests/'
+    )
+    expect(listed.out).not.toContain('broken good')
+
+    const listedJson = await gta(root, 'get', '--json', '--notTags', 'slow')
+    expect(listedJson.code).toBe(EXIT.failed)
+    const json = JSON.parse(listedJson.out)
+    expect(json.problems).toEqual([
+      {
+        id: 'old',
+        leftOut: 'excluded',
+        step: null,
+        message:
+          'id: olde does not match the file name, old.yml — they must be the same (SPEC.md §2)'
+      },
+      { id: 'slow', leftOut: 'tags', step: 0, message: 'use: login — needs user in with:' },
+      {
+        id: 'typo',
+        leftOut: null,
+        step: 1,
+        message: 'use: login — it takes no usr (it takes: user)'
+      },
+      {
+        id: 'wip',
+        leftOut: 'excluded',
+        step: null,
+        message: 'extends: nope — there is no nope.yml in bases/'
+      },
+      {
+        id: 'wip',
+        leftOut: 'excluded',
+        step: 0,
+        message: 'use: logon — there is no logon.yml in requests/'
+      }
+    ])
+  })
+
+  it('names a failing request by the named use step that ran it', async () => {
+    const root = await project({
+      'requests/check.yml': [
+        'id: check',
+        'params: {}',
+        'steps:',
+        '  - name: first',
+        "    GET: '{{baseUrl}}/ok'",
+        '  - name: second',
+        "    GET: '{{baseUrl}}/fail'",
+        '    tests: |',
+        '      gta.expectResponseStatusCodeToBe(200)',
+        ''
+      ].join('\n'),
+      'collections/health.yml': 'id: health\nsteps:\n  - use: check\n    name: health check\n'
+    })
+    const { code, out } = await gta(root, 'health')
+    expect(code).toBe(EXIT.failed)
+    expect(out).toContain('✗ health check › second (check 2/2) 500')
   })
 
   it('writes a JUnit report when asked, beside the project by default', async () => {
