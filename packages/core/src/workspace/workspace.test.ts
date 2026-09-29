@@ -152,8 +152,9 @@ describe('discoverCollections', () => {
 
 describe('collectionsDirOf', () => {
   it('finds the nearest ancestor named collections', () => {
-    expect(collectionsDirOf('/w/collections/a/b.yml')).toBe('/w/collections')
-    expect(collectionsDirOf('/w/svc/collections/b.yml')).toBe('/w/svc/collections')
+    // Resolved, so on Windows these are on the current drive: D:\w\collections.
+    expect(collectionsDirOf('/w/collections/a/b.yml')).toBe(path.resolve('/w/collections'))
+    expect(collectionsDirOf('/w/svc/collections/b.yml')).toBe(path.resolve('/w/svc/collections'))
   })
 
   it('returns null when there is none', () => {

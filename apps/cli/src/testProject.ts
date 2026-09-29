@@ -4,13 +4,11 @@ import type { AddressInfo } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 
-/** A local API for runs to hit: /ok answers 200, /fail 500, /slow after three seconds. */
+/** A local API for runs to hit: /ok answers 200, /fail 500, and /slow never answers. */
 export async function startServer(): Promise<{ origin: string; close: () => Promise<void> }> {
   const server = http.createServer((req, res) => {
-    if (req.url?.startsWith('/slow')) {
-      setTimeout(() => res.end('late'), 3_000).unref()
-      return
-    }
+    // Held open until close() drops every connection.
+    if (req.url?.startsWith('/slow')) return
     const status = req.url?.startsWith('/fail') ? 500 : 200
     res.writeHead(status, { 'content-type': 'application/json' })
     res.end(JSON.stringify({ url: req.url, ok: status === 200 }))

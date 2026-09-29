@@ -145,6 +145,9 @@ describe('setupGit', () => {
         ...(network ? { network } : {})
       }).then((result) => result.stdout)
     expect(await helpers()).not.toMatch(/^command\t/m)
-    expect(await helpers({ interactive: true })).toMatch(/^command\tmanager$/m)
+    // The bundled Git for Windows names GCM in its own system config, so nothing is
+    // added there; elsewhere it comes from us.
+    const scope = process.platform === 'win32' ? 'system' : 'command'
+    expect(await helpers({ interactive: true })).toMatch(new RegExp(`^${scope}\tmanager$`, 'm'))
   })
 })

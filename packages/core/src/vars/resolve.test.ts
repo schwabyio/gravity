@@ -238,7 +238,8 @@ describe('previewVariables', () => {
     )
     expect(previews['baseUrl']).toEqual({
       value: 'https://demo.test',
-      origin: path.join('environments', 'demo.yml'),
+      // Written with `/` on every platform (SPEC.md §1.2).
+      origin: 'environments/demo.yml',
       kind: 'static'
     })
     expect(previews['apiVersion']?.origin).toBe('checkout.yml')
