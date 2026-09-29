@@ -1,0 +1,51 @@
+{
+  "name": "@schwabyio/gta",
+  "version": "0.9.0",
+  "type": "module",
+  "description": "gta, the Gravity Test Automation command-line runner: HTTP API tests written as YAML files, run from a terminal or CI.",
+  "keywords": [
+    "api",
+    "api-testing",
+    "http",
+    "rest",
+    "testing",
+    "test-automation",
+    "cli",
+    "yaml",
+    "junit",
+    "ci"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/schwabyio/gravity#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/schwabyio/gravity.git",
+    "directory": "apps/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/schwabyio/gravity/issues"
+  },
+  "bin": {
+    "gta": "dist/gta.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@schwabyio/gravity-core": "*",
+    "esbuild": "0.28.2",
+    "yaml": "2.9.1",
+    "zod": "4.6.5"
+  }
+}

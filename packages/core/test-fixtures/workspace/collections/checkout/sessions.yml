@@ -1,0 +1,76 @@
+id: sessions
+docs: |
+  Create a session, then read it back.
+
+# Left out of `gta all`; `gta checkout/sessions` still runs it.
+exclude: true
+
+headers:
+  Accept: application/json
+
+before:
+  script: |
+    // Runs before every step in this collection.
+    gta.set('traceId', gta.uuidv7())
+    gta.set('now', gta.date('%Y-%m-%dT%H:%M:%S', 0, 'utc'))
+    gta.set('signature', gta.get('traceId').toUpperCase())
+
+tests: |
+  // Runs after every step in this collection.
+  gta.expectResponseToHaveHeader('Content-Type')
+
+steps:
+  - name: Reject an expired token
+    POST: "{{baseUrl}}/sessions"
+    headers:
+      Content-Type: application/json
+      X-Trace: {value: "{{traceId}}", enabled: false}
+      Set-Cookie: [a=1, b=2]
+    body:
+      json: |
+        { "token": "{{expiredToken}}" }
+    tests: |
+      gta.expectResponseStatusCodeToBe(401)
+      gta.expectResponseToHaveHeader('Content-Type', /^application\/json/)
+      gta.expectResponseToHaveHeader('X-Request-Id')
+      gta.expectResponseToHaveHeader('X-Debug', null, 'notThisExpectedKey')
+      gta.expectResponseToHaveHeader('X-Session', 'sessionHeader', 'setAsCollectionVariable')
+      gta.expectResponseBodyToHaveProperty('error.code', 'token_expired')
+      gta.expectResponseBodyToHaveProperty('error.retryable', false)
+      gta.expectResponseBodyToHaveProperty('error.attempts', 3)
+      gta.expectResponseBodyToHaveProperty('error.previous', null)
+      gta.expectResponseBodyToHaveProperty('error.message', /expired/)
+      gta.expectResponseBodyToHaveProperty('error.legacyCode', 'E_OLD', 'notThisExpectedValue')
+      gta.expectResponseBodyToHaveProperty('error.stack', null, 'notThisExpectedKey')
+      gta.expectResponseBodyToHaveProperty('error.issuedAt', 1700000000, 'dateAsEpoch')
+      gta.expectResponseBodyToHaveProperty('error.expiredAt', gta.get('now'), 'dateWithin3Sec')
+      gta.expectResponseBodyToHaveProperty('error.score', 100, 'integerWithin2')
+      gta.expectResponseBodyToHaveProperty('error.traceId', 'sessionToken', 'setAsCollectionVariable')
+      gta.expectResponseBodyToHaveProperty('error.tenant', 'lastTenant', 'setAsEnvironmentVariable')
+      gta.ignoreResponseBodyProperty('error.timestamp')
+
+  - name: Roles come back in any order
+    GET: "{{baseUrl}}/users/{{userId}}/roles"
+    tests: |
+      gta.sortResponseBodyArrays('name')
+      gta.sortResponseBodyArrays('id')
+      gta.expectResponseBodyToHaveUnorderedArray('roles', ['admin', 'editor', 'viewer'])
+      gta.expectResponseBodyToHaveProperty('permissions', 3, 'isArrayAndHasLength')
+      gta.expectResponseBodyToHaveUnorderedArrayNotThisItem('banned', ['owner'])
+      gta.expectResponseBodyToHaveProperty('sessions', null, 'isArrayAndEmpty')
+      gta.expectResponseBodyToHaveProperty('devices', null, 'isArrayAndNotEmpty')
+      gta.ignoreResponseBodyArrayObjectProperty('sessions', 'id')
+
+  - name: Form body with tests in code
+    PUT: "{{baseUrl}}/profile?tenant={{tenant}}"
+    body:
+      form:
+        displayName: Dave
+        locale: en-US
+    tests: |
+      gta.expectResponseStatusCodeToBe(/^2[0-9]{2}$/)
+
+      gta.expectResponseBodyToHaveProperty('roles', ['admin'], 'notThisExpectedValue')
+      gta.test('roles are sorted', () => {
+        assert.ok(res.body.roles.every((r, i, a) => !i || a[i - 1] <= r))
+      })

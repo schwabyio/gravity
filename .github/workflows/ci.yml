@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    # Gravity runs on macOS and Windows as well as Linux: paths, line endings and
+    # file names are checked on all three.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      # .gitattributes keeps every file LF on checkout, so round-trip tests mean
+      # the same thing on every platform.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # dugite downloads the git the desktop app bundles during npm ci; keep it.
+      - id: dugite
+        shell: bash
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/dugite'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/dugite
+          key: dugite-${{ runner.os }}-${{ runner.arch }}-${{ steps.dugite.outputs.version }}
+      - run: npm ci
+        env:
+          DUGITE_CACHE_DIR: ${{ runner.temp }}/dugite
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - id: dugite
+        shell: bash
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/dugite'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/dugite
+          key: dugite-${{ runner.os }}-${{ runner.arch }}-${{ steps.dugite.outputs.version }}
+      - run: npm ci
+        env:
+          DUGITE_CACHE_DIR: ${{ runner.temp }}/dugite
+      # Ubuntu 24.04 stops unprivileged user namespaces, which Electron's sandbox
+      # needs; without them it aborts at launch. Allowed here, the sandbox stays on.
+      - if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # Electron needs a display on Linux; the E2E suite itself talks only to a local server.
+      - if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm run test:e2e --workspace @schwabyio/gravity-desktop
+      - if: runner.os != 'Linux'
+        run: npm run test:e2e --workspace @schwabyio/gravity-desktop

@@ -1,0 +1,12 @@
+# A YAML file outside collections/. Discovery never looks at it, whatever it
+# contains — which is the point of giving collections a named home.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: payments:latest

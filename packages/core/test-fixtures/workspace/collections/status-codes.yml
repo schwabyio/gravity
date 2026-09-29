@@ -1,0 +1,32 @@
+id: status-codes
+docs: |
+  Objective: validate response status code as a number.
+
+# Its steps have tags of their own, so they can be picked on their own.
+stepTags: true
+
+# Applied to every step unless the step overrides it.
+headers:
+  Accept: "*/*"
+settings:
+  timeout: 30000
+vars:
+  apiVersion: "2"
+
+steps:
+  - name: expectedValue = 200
+    GET: "{{baseUrl}}/responseStatusCode200"
+    tests: |
+      gta.useStrictValidation()
+      gta.expectResponseStatusCodeToBe(200)
+
+  - name: expectedValue = 204
+    GET: "{{baseUrl}}/responseStatusCode204"
+    tags: [smoke]
+    settings:
+      timeout: 0
+      followRedirects: true
+      maxRedirects: 5
+      encodeUrl: true
+    tests: |
+      gta.expectResponseStatusCodeToBe(204)

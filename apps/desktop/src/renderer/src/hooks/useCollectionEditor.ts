@@ -1,0 +1,696 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type {
+  Collection,
+  Headers,
+  Settings,
+  Vars,
+  CollectionSummary,
+  EnvironmentRef,
+  Step
+} from '@schwabyio/gravity-core/model'
+import type { CollectionEdit, CollectionField, ProjectView } from '@shared/ipc.js'
+import { fromStep, mergeIntoStep, type EditorState } from '../requestState.js'
+
+/**
+ * Editing collections and getting the edits onto disk.
+ *
+ * Every collection the app has open for editing is a session: the document as
+ * last read or written, the exact text it came from (the base every write is
+ * checked against), a stable id per step, and the edits not yet on disk keyed by
+ * those ids — so reordering or inserting steps never attaches an edit to the
+ * wrong one.
+ *
+ * Writing is `flush`: every edited step of a file in one `applyEdits` call that
+ * only succeeds if the file still reads what the edits were made against.
+ * Auto save is just `flush` on a quiet timer; Cmd+S and the Save button are the
+ * same call now.
+ */
+
+export interface Session {
+  summary: CollectionSummary
+  /** The project it belongs to. */
+  projectId: string
+  /** The document as last read or written. */
+  doc: Collection
+  /** The file's text at that moment: the base every write is checked against. */
+  source: string
+  environments: EnvironmentRef[]
+  environmentsPath: string | null
+  /** A stable id per step, parallel to `doc.steps`. */
+  ids: string[]
+  /** Editor state per step id, for steps touched since they were last saved. */
+  drafts: Record<string, EditorState>
+  /** Collection-level fields edited since they were last saved. */
+  collectionDraft: CollectionDraft | null
+  /** The file changed on disk while this session had edits. */
+  conflict: { doc: Collection; source: string } | null
+  save: { state: 'idle' | 'saving' | 'failed'; message?: string }
+}
+
+/** Collection-level fields the editor changes; `undefined` means "remove it". */
+export type { CollectionField }
+export type CollectionDraft = Partial<Pick<Collection, CollectionField>>
+
+export type SaveStatus =
+  | { kind: 'saved' }
+  | { kind: 'unsaved'; count: number }
+  | { kind: 'saving' }
+  | { kind: 'failed'; message: string }
+  | { kind: 'conflict' }
+
+/** Collection-level fields whose edited value differs from what is on disk. */
+const collectionChanges = (session: Session): Array<[CollectionField, unknown]> =>
+  Object.entries(session.collectionDraft ?? {})
+    .filter(([key, value]) => !same(value, session.doc[key as CollectionField]))
+    .map(([key, value]) => [key as CollectionField, value])
+
+const collectionDirty = (session: Session): boolean => collectionChanges(session).length > 0
+
+/** Apply collection-level values to a document; `undefined` removes the key. */
+function withCollectionFields(doc: Collection, fields: CollectionDraft): Collection {
+  const next: Record<string, unknown> = { ...doc }
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined) delete next[key]
+    else next[key] = value
+  }
+  return next as Collection
+}
+
+/** An empty list or object is written as no key at all. */
+const emptyToUndefined = <T>(value: T): T | undefined =>
+  (Array.isArray(value) && value.length === 0) ||
+  (value !== null && typeof value === 'object' && Object.keys(value).length === 0)
+    ? undefined
+    : value
+
+let idCounter = 0
+const newId = () => `step-${++idCounter}`
+const freshIds = (count: number) => Array.from({ length: count }, newId)
+/**
+ * Structural equality that ignores key order: re-merging an edit moves the
+ * method key, and that alone must not count as a change.
+ */
+const same = (a: unknown, b: unknown) => JSON.stringify(sorted(a)) === JSON.stringify(sorted(b))
+const sorted = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map(sorted)
+    : value !== null && typeof value === 'object'
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((key) => [key, sorted((value as Record<string, unknown>)[key])])
+        )
+      : value
+
+export function useCollectionEditor({
+  autoSave
+}: {
+  autoSave: { enabled: boolean; delayMs: number }
+}) {
+  const [sessions, setSessions] = useState<Record<string, Session>>({})
+  const [openPath, setOpenPath] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  /** Bumped by every edit, so auto save can wait for a quiet moment. */
+  const [editVersion, setEditVersion] = useState(0)
+
+  /**
+   * The sessions as of now. Async work (saves, disk events) reads and writes
+   * through this rather than a render's snapshot, and `commit` keeps React's
+   * copy in step — so code awaiting a save sees its result immediately.
+   */
+  const latest = useRef(sessions)
+  const commit = useCallback((next: Record<string, Session>) => {
+    latest.current = next
+    setSessions(next)
+  }, [])
+  /** Editor state derived from a step, cached so it keeps its row ids. */
+  const baselines = useRef(new Map<string, { step: Step; state: EditorState }>())
+
+  const update = useCallback(
+    (path: string, change: (session: Session) => Session) => {
+      const session = latest.current[path]
+      if (session) commit({ ...latest.current, [path]: change(session) })
+    },
+    [commit]
+  )
+
+  const baselineFor = useCallback((id: string, step: Step): EditorState => {
+    const cached = baselines.current.get(id)
+    if (cached && cached.step === step) return cached.state
+    const state = fromStep(step)
+    baselines.current.set(id, { step, state })
+    return state
+  }, [])
+
+  /** Whether this step's editor state differs from what is on disk. */
+  const isDirty = useCallback((session: Session, id: string): boolean => {
+    const draft = session.drafts[id]
+    const step = session.doc.steps[session.ids.indexOf(id)]
+    return !!draft && !!step && !same(mergeIntoStep(step, draft), step)
+  }, [])
+
+  const dirtyIds = useCallback(
+    (session: Session) => Object.keys(session.drafts).filter((id) => isDirty(session, id)),
+    [isDirty]
+  )
+
+  /** Edits not on disk: dirty steps, plus the collection's own fields as one. */
+  const pendingCount = useCallback(
+    (session: Session) => dirtyIds(session).length + (collectionDirty(session) ? 1 : 0),
+    [dirtyIds]
+  )
+
+  /* ------------------------------------------------------------ opening -- */
+
+  const load = useCallback(async (path: string) => {
+    const read = await window.desktop.collection.read(path)
+    if (!read.ok) throw new Error(read.message)
+    return read
+  }, [])
+
+  const session = openPath ? (sessions[openPath] ?? null) : null
+
+  // Select the first step once a session is on screen with nothing selected.
+  useEffect(() => {
+    if (!session) return
+    if (selectedId && session.ids.includes(selectedId)) return
+    setSelectedId(session.ids[0] ?? null)
+  }, [session, selectedId])
+
+  /* ------------------------------------------------------------ editing -- */
+
+  const selectedIndex = session && selectedId ? session.ids.indexOf(selectedId) : -1
+  const selectedStep = session && selectedIndex >= 0 ? session.doc.steps[selectedIndex] : undefined
+
+  const request: EditorState | null = useMemo(() => {
+    if (!session || !selectedId || !selectedStep) return null
+    return session.drafts[selectedId] ?? baselineFor(selectedId, selectedStep)
+  }, [session, selectedId, selectedStep, baselineFor])
+
+  /** Change the selected step's editor state. */
+  const patch = useCallback(
+    (changes: Partial<EditorState>) => {
+      if (!openPath || !selectedId) return
+      update(openPath, (current) => {
+        const index = current.ids.indexOf(selectedId)
+        const step = current.doc.steps[index]
+        if (!step) return current
+        const base = current.drafts[selectedId] ?? baselineFor(selectedId, step)
+        return { ...current, drafts: { ...current.drafts, [selectedId]: { ...base, ...changes } } }
+      })
+      setEditVersion((v) => v + 1)
+    },
+    [openPath, selectedId, update, baselineFor]
+  )
+
+  /** Rename any step, selected or not. */
+  const rename = useCallback(
+    (id: string, name: string) => {
+      if (!openPath) return
+      update(openPath, (current) => {
+        const step = current.doc.steps[current.ids.indexOf(id)]
+        if (!step) return current
+        const base = current.drafts[id] ?? baselineFor(id, step)
+        return { ...current, drafts: { ...current.drafts, [id]: { ...base, name } } }
+      })
+      setEditVersion((v) => v + 1)
+    },
+    [openPath, update, baselineFor]
+  )
+
+  /** The document as it will be once saved: what the list and a run should show. */
+  const displayDoc: Collection | null = useMemo(() => {
+    if (!session) return null
+    const steps = session.doc.steps.map((step, index) => {
+      const draft = session.drafts[session.ids[index]!]
+      return draft ? mergeIntoStep(step, draft) : step
+    })
+    return withCollectionFields({ ...session.doc, steps }, session.collectionDraft ?? {})
+  }, [session])
+
+  /** Change a collection-level field. An empty list or object removes it. */
+  const setCollectionField = useCallback(
+    <K extends CollectionField>(key: K, value: Collection[K], keepEmpty = false) => {
+      if (!openPath) return
+      update(openPath, (current) => ({
+        ...current,
+        collectionDraft: {
+          ...current.collectionDraft,
+          [key]: keepEmpty ? value : emptyToUndefined(value)
+        }
+      }))
+      setEditVersion((v) => v + 1)
+    },
+    [openPath, update]
+  )
+
+  /**
+   * Allow or stop allowing step tags. Stopping removes every step's tags in the
+   * same save, so the file never holds tags nothing will use.
+   */
+  const setStepTagsEnabled = useCallback(
+    (enabled: boolean) => {
+      if (!openPath) return
+      update(openPath, (current) => {
+        const drafts = { ...current.drafts }
+        if (!enabled) {
+          current.doc.steps.forEach((step, index) => {
+            const id = current.ids[index]!
+            const base = drafts[id] ?? baselineFor(id, step)
+            if (base.tags.length > 0) drafts[id] = { ...base, tags: [] }
+          })
+        }
+        return {
+          ...current,
+          drafts,
+          collectionDraft: { ...current.collectionDraft, stepTags: enabled ? true : undefined }
+        }
+      })
+      setEditVersion((v) => v + 1)
+    },
+    [openPath, update, baselineFor]
+  )
+
+  /* ------------------------------------------------------------- saving -- */
+
+  const inFlight = useRef(new Map<string, Promise<boolean>>())
+
+  /**
+   * Write every edited step of one file. Resolves true when the file ends up
+   * with nothing unsaved.
+   */
+  const flush = useCallback(
+    async (path: string, extra: CollectionEdit[] = []): Promise<boolean> => {
+      // One flush per file at a time; a second waits and then saves what is left.
+      const running = inFlight.current.get(path)
+      if (running) await running
+
+      const attempt = (async () => {
+        const start = latest.current[path]
+        if (!start || start.conflict) return !start
+        const ids = dirtyIds(start)
+        const collectionSnapshot = start.collectionDraft
+        const fieldChanges = collectionChanges(start)
+        if (ids.length === 0 && extra.length === 0 && fieldChanges.length === 0) return true
+
+        const snapshot = Object.fromEntries(ids.map((id) => [id, start.drafts[id]!]))
+        const merged = ids.map((id) => {
+          const index = start.ids.indexOf(id)
+          return { id, index, step: mergeIntoStep(start.doc.steps[index]!, snapshot[id]!) }
+        })
+        const edits: CollectionEdit[] = [
+          // Every edit is checked as it is applied, so order matters: allowing step
+          // tags must come before a step gains one, and removing them from the
+          // steps must come before the collection stops allowing them.
+          ...fieldChanges
+            .filter(([key, value]) => key === 'stepTags' && value === true)
+            .map(([key, value]) => ({ type: 'editCollection' as const, key, value })),
+          ...merged.map(({ index, step }) => ({ type: 'editStep' as const, index, step })),
+          ...fieldChanges
+            .filter(([key, value]) => !(key === 'stepTags' && value === true))
+            .map(([key, value]) => ({ type: 'editCollection' as const, key, value })),
+          ...extra
+        ]
+
+        update(path, (current) => ({ ...current, save: { state: 'saving' } }))
+        const result = await window.desktop.collection.applyEdits(path, start.source, edits)
+
+        if (!result.ok) {
+          update(path, (current) => ({
+            ...current,
+            save: { state: 'failed', message: result.message }
+          }))
+          return false
+        }
+        if (result.conflict) {
+          const read = await load(path).catch(() => null)
+          update(path, (current) => ({
+            ...current,
+            conflict: read ? { doc: read.doc, source: read.source } : current.conflict,
+            save: { state: 'idle' }
+          }))
+          return false
+        }
+
+        update(path, (current) => {
+          const steps = [...current.doc.steps]
+          const drafts = { ...current.drafts }
+          for (const { id, index, step } of merged) {
+            steps[index] = step
+            // The saved state becomes the baseline, keeping the editor's row ids
+            // stable while someone is still typing in it.
+            baselines.current.set(id, { step, state: snapshot[id]! })
+            if (drafts[id] === snapshot[id]) delete drafts[id]
+          }
+          const doc = withCollectionFields(
+            { ...current.doc, steps },
+            Object.fromEntries(fieldChanges) as CollectionDraft
+          )
+          return {
+            ...current,
+            doc,
+            source: result.source,
+            drafts,
+            collectionDraft:
+              current.collectionDraft === collectionSnapshot ? null : current.collectionDraft,
+            save: { state: 'idle' }
+          }
+        })
+        return pendingCount(latest.current[path]!) === 0
+      })()
+
+      inFlight.current.set(path, attempt)
+      try {
+        return await attempt
+      } finally {
+        if (inFlight.current.get(path) === attempt) inFlight.current.delete(path)
+      }
+    },
+    [dirtyIds, pendingCount, update, load]
+  )
+
+  /** Save every file with edits. */
+  const saveAll = useCallback(async (): Promise<boolean> => {
+    const paths = Object.keys(latest.current)
+    const results = await Promise.all(paths.map((path) => flush(path)))
+    return results.every(Boolean)
+  }, [flush])
+
+  // Auto save: a quiet timer, restarted by every edit.
+  useEffect(() => {
+    if (!autoSave.enabled || editVersion === 0) return
+    const timer = setTimeout(() => void saveAll(), autoSave.delayMs)
+    return () => clearTimeout(timer)
+  }, [editVersion, autoSave.enabled, autoSave.delayMs, saveAll])
+
+  // And straight away when the window loses focus: the person is going elsewhere.
+  useEffect(() => {
+    if (!autoSave.enabled) return
+    const onBlur = () => void saveAll()
+    window.addEventListener('blur', onBlur)
+    return () => window.removeEventListener('blur', onBlur)
+  }, [autoSave.enabled, saveAll])
+
+  /** Collection names with edits that are not on disk. */
+  const unsavedNames = useCallback(
+    () =>
+      Object.values(latest.current)
+        .filter((s) => pendingCount(s) > 0 || s.conflict !== null)
+        .map((s) => s.summary.name),
+    [pendingCount]
+  )
+
+  const openCollection = useCallback(
+    async (project: ProjectView, summary: CollectionSummary) => {
+      // Leaving a collection is a natural moment to save it.
+      if (openPath && openPath !== summary.path && autoSave.enabled) void flush(openPath)
+
+      const path = summary.path
+      const existing = latest.current[path]
+      const read = await load(path)
+      const fresh = (): Session => ({
+        summary,
+        projectId: project.id,
+        doc: read.doc,
+        source: read.source,
+        environments: read.environments,
+        environmentsPath: read.environmentsPath,
+        ids: freshIds(read.doc.steps.length),
+        drafts: {},
+        collectionDraft: null,
+        conflict: null,
+        save: { state: 'idle' }
+      })
+
+      if (!existing) {
+        commit({ ...latest.current, [path]: fresh() })
+      } else if (read.source === existing.source) {
+        // Coming back to a collection: keep its edits and its ids.
+        update(path, (s) => ({
+          ...s,
+          summary,
+          environments: read.environments,
+          environmentsPath: read.environmentsPath
+        }))
+      } else if (pendingCount(existing) > 0) {
+        // Changed on disk while it held edits: put that to the person.
+        update(path, (s) => ({ ...s, summary, conflict: { doc: read.doc, source: read.source } }))
+      } else {
+        commit({ ...latest.current, [path]: fresh() })
+      }
+      setOpenPath(path)
+    },
+    [openPath, autoSave.enabled, flush, load, update, pendingCount, commit]
+  )
+
+  /* --------------------------------------------------- step structure -- */
+
+  /**
+   * Add, duplicate, delete or move a step: written at once, with the file's
+   * other pending edits, and re-read so the document matches disk exactly.
+   */
+  const structural = useCallback(
+    async (edit: CollectionEdit, nextIds: (ids: string[]) => string[], select?: string) => {
+      if (!openPath) return false
+      const before = latest.current[openPath]?.source
+      const ok = await flush(openPath, [edit])
+      // The batch is written whole or not at all; an unchanged base means not.
+      if (latest.current[openPath]?.source === before) return false
+      const read = await load(openPath).catch(() => null)
+      if (!read) return false
+      update(openPath, (current) => ({
+        ...current,
+        doc: read.doc,
+        source: read.source,
+        ids: nextIds(current.ids)
+      }))
+      if (select) setSelectedId(select)
+      return ok
+    },
+    [openPath, flush, load, update]
+  )
+
+  /** Add a step after `afterId` (or at the end): a new request, or `template`. */
+  const addStep = useCallback(
+    (afterId: string | null, template: Step = { name: 'New step', GET: '' }) => {
+      if (!session) return
+      const at = afterId ? session.ids.indexOf(afterId) + 1 : session.ids.length
+      const id = newId()
+      void structural(
+        { type: 'insertStep', index: at, step: template },
+        (ids) => [...ids.slice(0, at), id, ...ids.slice(at)],
+        id
+      )
+      return id
+    },
+    [session, structural]
+  )
+
+  const duplicateStep = useCallback(
+    (id: string) => {
+      if (!session || !displayDoc) return
+      const index = session.ids.indexOf(id)
+      const step = displayDoc.steps[index]
+      if (!step) return
+      const copy = newId()
+      void structural(
+        {
+          type: 'insertStep',
+          index: index + 1,
+          step: { ...step, name: `${step.name ?? 'Step'} copy` }
+        },
+        (ids) => [...ids.slice(0, index + 1), copy, ...ids.slice(index + 1)],
+        copy
+      )
+    },
+    [session, displayDoc, structural]
+  )
+
+  const removeStep = useCallback(
+    (id: string) => {
+      if (!session) return
+      const index = session.ids.indexOf(id)
+      if (index < 0) return
+      // Its unsaved edit goes with it, rather than being written first.
+      update(session.summary.path, (current) => {
+        const drafts = { ...current.drafts }
+        delete drafts[id]
+        return { ...current, drafts }
+      })
+      const neighbour = session.ids[index + 1] ?? session.ids[index - 1] ?? undefined
+      void structural(
+        { type: 'removeStep', index },
+        (ids) => ids.filter((candidate) => candidate !== id),
+        neighbour
+      )
+    },
+    [session, structural, update]
+  )
+
+  const moveStep = useCallback(
+    (id: string, to: number) => {
+      if (!session) return
+      const from = session.ids.indexOf(id)
+      if (from < 0 || from === to) return
+      void structural({ type: 'moveStep', from, to }, (ids) => {
+        const next = ids.filter((candidate) => candidate !== id)
+        next.splice(to, 0, id)
+        return next
+      })
+    },
+    [session, structural]
+  )
+
+  /* ------------------------------------------------- changes on disk -- */
+
+  useEffect(() => {
+    if (!session) return
+    const path = session.summary.path
+    return window.desktop.projects.onUpdated(async (project) => {
+      if (project.id !== session.projectId) return
+      // A save in progress changes the base; judge the disk against its result.
+      await inFlight.current.get(path)?.catch(() => undefined)
+      const read = await load(path).catch(() => null)
+      const current = latest.current[path]
+      if (!read || !current) return
+      // Our own write coming back through the watcher: the base already says so.
+      // The environments beside it may still have changed.
+      if (read.source === current.source) {
+        if (JSON.stringify(read.environments) !== JSON.stringify(current.environments)) {
+          update(path, (s) => ({
+            ...s,
+            environments: read.environments,
+            environmentsPath: read.environmentsPath
+          }))
+        }
+        return
+      }
+
+      if (pendingCount(current) > 0) {
+        update(path, (s) => ({ ...s, conflict: { doc: read.doc, source: read.source } }))
+      } else {
+        update(path, (s) => ({
+          ...s,
+          doc: read.doc,
+          source: read.source,
+          ids: s.ids.length === read.doc.steps.length ? s.ids : freshIds(read.doc.steps.length),
+          drafts: {},
+          environments: read.environments,
+          environmentsPath: read.environmentsPath
+        }))
+      }
+    })
+  }, [session?.summary.path, session?.projectId, load, pendingCount, update])
+
+  /** Drop the edits and take the file as it is on disk. */
+  const reloadFromDisk = useCallback(() => {
+    if (!openPath) return
+    update(openPath, (s) =>
+      s.conflict
+        ? {
+            ...s,
+            doc: s.conflict.doc,
+            source: s.conflict.source,
+            ids:
+              s.ids.length === s.conflict.doc.steps.length
+                ? s.ids
+                : freshIds(s.conflict.doc.steps.length),
+            drafts: {},
+            collectionDraft: null,
+            conflict: null
+          }
+        : s
+    )
+  }, [openPath, update])
+
+  /**
+   * Keep the edits, applied on top of the disk version. Edits are per key, so a
+   * field changed only on disk survives; then it is saved against the new base.
+   */
+  const keepMine = useCallback(() => {
+    if (!openPath) return
+    update(openPath, (s) => {
+      if (!s.conflict) return s
+      const sameShape = s.ids.length === s.conflict.doc.steps.length
+      return {
+        ...s,
+        doc: s.conflict.doc,
+        source: s.conflict.source,
+        ids: sameShape ? s.ids : freshIds(s.conflict.doc.steps.length),
+        drafts: sameShape ? s.drafts : {},
+        conflict: null
+      }
+    })
+    setEditVersion((v) => v + 1)
+    if (!autoSave.enabled) return
+    setTimeout(() => void saveAll(), 0)
+  }, [openPath, update, autoSave.enabled, saveAll])
+
+  /* ------------------------------------------------------------- status -- */
+
+  const status: SaveStatus | null = useMemo(() => {
+    if (!session) return null
+    if (session.conflict) return { kind: 'conflict' }
+    if (session.save.state === 'saving') return { kind: 'saving' }
+    if (session.save.state === 'failed')
+      return { kind: 'failed', message: session.save.message ?? 'Save failed' }
+    const count = pendingCount(session)
+    return count > 0 ? { kind: 'unsaved', count } : { kind: 'saved' }
+  }, [session, pendingCount])
+
+  const dirtyIndexes = useMemo(() => {
+    const indexes = new Set<number>()
+    if (!session) return indexes
+    for (const id of dirtyIds(session)) indexes.add(session.ids.indexOf(id))
+    return indexes
+  }, [session, dirtyIds])
+
+  return {
+    session,
+    displayDoc,
+    selectedId,
+    selectedIndex,
+    select: (id: string) => setSelectedId(id),
+    request,
+    patch,
+    rename,
+    setCollectionTags: (tags: string[]) => setCollectionField('tags', tags),
+    setCollectionHeaders: (headers: Headers | undefined) =>
+      setCollectionField('headers', headers ?? {}),
+    setCollectionSettings: (settings: Settings) => setCollectionField('settings', settings),
+    setCollectionVars: (vars: Vars | undefined) => setCollectionField('vars', vars ?? {}),
+    /** The collection's pre-request script; empty removes `before` altogether. */
+    setCollectionPreRequest: (script: string) =>
+      setCollectionField('before', script.trim() === '' ? undefined : { script }),
+    setCollectionTests: (tests: string) =>
+      setCollectionField('tests', tests.trim() === '' ? undefined : tests),
+    /**
+     * A request set's params. `{}` is kept — a set that takes nothing is still
+     * a set — and only `undefined` makes it a plain collection again.
+     */
+    setCollectionParams: (params: Collection['params']) =>
+      setCollectionField('params', params, true),
+    setCollectionExtends: (base: string | undefined) => setCollectionField('extends', base),
+    /** Write the id the file must have: its name (SPEC.md §2). Main refuses any other. */
+    setCollectionId: (id: string) => setCollectionField('id', id),
+    /** Leave the collection out of group runs; off removes the key rather than writing false. */
+    /** Feature flags the whole collection needs (SPEC.md §2.9); none removes `flags`. */
+    setCollectionFlags: (flags: Collection['flags']) => setCollectionField('flags', flags ?? {}),
+    setCollectionExcluded: (excluded: boolean) =>
+      setCollectionField('exclude', excluded ? true : undefined),
+    setStepTagsEnabled,
+    addStep,
+    duplicateStep,
+    removeStep,
+    moveStep,
+    openCollection,
+    saveAll,
+    flush,
+    unsavedNames,
+    reloadFromDisk,
+    keepMine,
+    status,
+    dirtyIndexes,
+    pendingStep: session && selectedStep && request ? mergeIntoStep(selectedStep, request) : null
+  }
+}

@@ -1,0 +1,10 @@
+name: demo
+vars:
+  baseUrl: https://xtest-demo.httpsim.schwaby.io
+  strictValidation: true
+  retries: 3
+  nothing: null
+  apiKey: { secret: true }
+  tenant:
+    value: acme
+    description: Tenant slug used by the checkout collection.

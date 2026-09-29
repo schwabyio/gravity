@@ -1,0 +1,9 @@
+node_modules
+dist
+out
+coverage
+package-lock.json
+
+# Conformance fixtures are byte-exact copies of real collection documents.
+# Reformatting them would invalidate the round-trip test.
+packages/core/test-fixtures
