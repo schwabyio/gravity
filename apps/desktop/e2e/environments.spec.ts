@@ -12,6 +12,7 @@ import {
   type Page
 } from '@playwright/test'
 import { DEFAULT_WINDOW, sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * Environments end to end: a request authored with `{{baseUrl}}` must reach a
@@ -79,10 +80,7 @@ test.beforeAll(async () => {
   await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')
 
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, repo)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  await addProject(app, page, repo)
   await page.waitForSelector('.collection-row')
   await page.locator('.collection-row').first().click()
   // The first step's editor is on screen as soon as the collection opens.

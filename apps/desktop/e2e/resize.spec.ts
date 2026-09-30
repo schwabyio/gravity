@@ -10,6 +10,7 @@ import {
   type Page
 } from '@playwright/test'
 import { DEFAULT_WINDOW, sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /** Both dividers: drag, clamp, keyboard, reset, and remembered between launches. */
 
@@ -60,10 +61,7 @@ test.beforeAll(async () => {
   )
 
   await launch()
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, repo)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  await addProject(app, page, repo)
   await page.waitForSelector('.collection-row')
   await page.locator('.collection-row').click()
   await page.waitForSelector('.steps-column')

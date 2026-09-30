@@ -10,6 +10,7 @@ import {
   type Page
 } from '@playwright/test'
 import { DEFAULT_WINDOW, sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * Docs rendering, against the constructs the reference suite actually uses:
@@ -86,10 +87,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, repo)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  await addProject(app, page, repo)
   await page.waitForSelector('.collection-row')
   await openCollection('date')
   await page.waitForSelector('.docs-panel')

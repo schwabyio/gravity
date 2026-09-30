@@ -10,6 +10,7 @@ import {
   type Page
 } from '@playwright/test'
 import { DEFAULT_WINDOW, sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * Workspaces and projects, end to end, against real git repositories.
@@ -139,7 +140,8 @@ const openCollection = async (projectName: string, collectionName: string) => {
   await project(projectName).locator('.collection-row', { hasText: collectionName }).click()
 }
 
-const addProject = async (folder: string) => {
+/** + Project on a folder that is not a project: nothing to wait for in the sidebar. */
+const offerFolder = async (folder: string) => {
   await pickFolder(folder)
   await page.getByRole('button', { name: '+ Project' }).click()
 }
@@ -150,7 +152,7 @@ const openStep = async (name: string) => {
 }
 
 test('adds a repository as a project, and each service of a monorepo as its own', async () => {
-  await addProject(singleRepo)
+  await addProject(app, page, singleRepo)
   await expect(project('payments-api')).toBeVisible()
 
   // The monorepo's root is not a project: the app offers the projects in it,
@@ -160,7 +162,7 @@ test('adds a repository as a project, and each service of a monorepo as its own'
     asked = dialog.message()
     void dialog.dismiss()
   })
-  await addProject(monorepo)
+  await offerFolder(monorepo)
   await expect
     .poll(() => asked)
     .toBe(
@@ -169,9 +171,9 @@ test('adds a repository as a project, and each service of a monorepo as its own'
   await expect(project('platform')).toHaveCount(0)
   await expect(project('auth')).toHaveCount(0)
 
-  await addProject(path.join(monorepo, 'services', 'auth'))
+  await addProject(app, page, path.join(monorepo, 'services', 'auth'))
   // Picking a collections/ folder itself adds the project holding it.
-  await addProject(path.join(monorepo, 'services', 'users', 'collections'))
+  await addProject(app, page, path.join(monorepo, 'services', 'users', 'collections'), 'users')
   await expect(project('auth')).toBeVisible()
   await expect(project('users')).toBeVisible()
 

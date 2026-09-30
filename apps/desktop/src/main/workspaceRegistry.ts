@@ -25,6 +25,8 @@ export type { ProjectEntry, WorkspaceEntry } from './registrySchema.js'
 export class WorkspaceRegistry {
   private data: RegistryV2 = emptyRegistry()
   private loading: Promise<RegistryV2> | null = null
+  /** The last save asked for: each waits for the one before (see `save`). */
+  private saving: Promise<void> = Promise.resolve()
 
   /**
    * Resolved lazily, never in the constructor.
@@ -175,7 +177,20 @@ export class WorkspaceRegistry {
     await this.save()
   }
 
-  private async save(): Promise<void> {
+  /**
+   * Write the registry as it is when this save's turn comes, after every save
+   * asked for before it. Two at once would share the temporary file: one
+   * rename would move the other's away, and that save would fail — on
+   * Windows, where the disk is slower, more often. A save that fails still
+   * lets the next one run.
+   */
+  private save(): Promise<void> {
+    const turn = this.saving.then(() => this.write())
+    this.saving = turn.catch(() => undefined)
+    return turn
+  }
+
+  private async write(): Promise<void> {
     const body = JSON.stringify(this.data, null, 2)
     await fs.mkdir(path.dirname(this.file), { recursive: true })
     // Write then rename, so a crash mid-write cannot leave a truncated registry.

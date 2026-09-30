@@ -12,6 +12,7 @@ import {
   type Page
 } from '@playwright/test'
 import { sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * A project's own things: new directories and collections, `project.yml` and
@@ -57,11 +58,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1500, height: 850 })
   await page.waitForSelector('.sidebar')
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, shop)
-  await page.getByRole('button', { name: '+ Project' }).click()
-  await expect(page.getByRole('region', { name: 'Project shop' })).toBeVisible()
+  await addProject(app, page, shop)
 })
 
 test.afterAll(async () => {

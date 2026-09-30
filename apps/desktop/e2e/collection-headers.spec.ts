@@ -12,6 +12,7 @@ import {
   type Page
 } from '@playwright/test'
 import { sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * Collection headers: edited in the collection's settings, saved in place with
@@ -63,10 +64,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1500, height: 850 })
   await page.waitForSelector('.sidebar')
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, repo)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  await addProject(app, page, repo)
   await page.locator('.collection-row').click()
 })
 

@@ -10,6 +10,7 @@ import {
   type Page
 } from '@playwright/test'
 import { DEFAULT_WINDOW, sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * Committing, pushing, pulling and branching from the app, against real
@@ -131,10 +132,7 @@ test.beforeAll(async () => {
   git(tmp, 'clone', '--quiet', remote, other)
 
   await launch()
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, project)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  await addProject(app, page, project)
   await expect(page.getByRole('region', { name: 'Project api', exact: true })).toBeVisible()
 })
 

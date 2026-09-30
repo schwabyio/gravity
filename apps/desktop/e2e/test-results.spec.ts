@@ -12,6 +12,7 @@ import {
   type Page
 } from '@playwright/test'
 import { sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * Test results end to end: a step's `expect` block runs against a real
@@ -69,10 +70,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1400, height: 800 })
   await page.waitForSelector('.sidebar')
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, repo)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  await addProject(app, page, repo)
   await page.locator('.collection-row').click()
   await page.getByRole('button', { name: 'Send' }).click()
   await expect(page.locator('.status-pill')).toContainText('200')

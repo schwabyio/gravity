@@ -12,6 +12,7 @@ import {
   type Page
 } from '@playwright/test'
 import { sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * Code in a step: the Tests and Pre-request tabs, xtest on `gta`, and what a
@@ -65,10 +66,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1400, height: 800 })
   await page.waitForSelector('.sidebar')
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, repo)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  await addProject(app, page, repo)
   await page.locator('.collection-row').click()
 })
 

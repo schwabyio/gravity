@@ -11,6 +11,7 @@ import {
   type Page
 } from '@playwright/test'
 import { sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * A server whose certificate a local CA signed: refused until the project
@@ -53,9 +54,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1500, height: 850 })
   await page.waitForSelector('.sidebar')
-  await pickNext(shop)
-  await page.getByRole('button', { name: '+ Project' }).click()
-  await page.getByRole('region', { name: 'Project shop' }).locator('.collection-row').click()
+  await (await addProject(app, page, shop)).locator('.collection-row').click()
   await page.waitForSelector('.steps-column')
 })
 
@@ -156,8 +155,7 @@ test('a global project’s tls.ca is trusted by every project that uses it, and 
   }
 
   for (const name of services) {
-    await pickNext(path.join(tmp, name))
-    await page.getByRole('button', { name: '+ Project' }).click()
+    await addProject(app, page, path.join(tmp, name))
     await expect(projectRegion(name).locator('.uses-badge')).toHaveText('uses Shared')
     await projectRegion(name).locator('.collection-row').click()
     // No response left over from the last project's send.

@@ -11,6 +11,7 @@ import {
   type Page
 } from '@playwright/test'
 import { sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * Multipart and file bodies, edited in the Body tab and sent: the parts are
@@ -74,9 +75,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1500, height: 900 })
   await page.waitForSelector('.sidebar')
-  await pickNext(shop)
-  await page.getByRole('button', { name: '+ Project' }).click()
-  await page.getByRole('region', { name: 'Project shop' }).locator('.collection-row').click()
+  await (await addProject(app, page, shop)).locator('.collection-row').click()
   await page.waitForSelector('.steps-column')
   await page.locator('.pane').first().getByRole('button', { name: /^Body/ }).click()
 })

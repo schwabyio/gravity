@@ -13,6 +13,7 @@ import {
   type Page
 } from '@playwright/test'
 import { sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * Setup and teardown (SPEC.md §2.10): steps run once around the others — and
@@ -137,10 +138,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1500, height: 900 })
   await page.waitForSelector('.sidebar')
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, shop)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  await addProject(app, page, shop)
   await page.locator('.collection-row', { hasText: 'Seed' }).click()
 })
 

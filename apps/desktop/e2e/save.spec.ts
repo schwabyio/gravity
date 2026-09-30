@@ -10,6 +10,7 @@ import {
   type Page
 } from '@playwright/test'
 import { DEFAULT_WINDOW, sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * Edit and save: auto save and its setting, explicit saves, step structure, and
@@ -62,10 +63,7 @@ test.beforeAll(async () => {
   reset()
 
   await launch()
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, repo)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  await addProject(app, page, repo)
   await page.locator('.collection-row').click()
   await expect(page.getByLabel('Request URL')).toHaveValue('http://127.0.0.1:1/orders')
 })

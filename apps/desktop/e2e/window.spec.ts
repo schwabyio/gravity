@@ -10,6 +10,7 @@ import {
   type Page
 } from '@playwright/test'
 import { sizeWindow } from './window'
+import { addProject } from './addProject'
 
 /**
  * The window and its page: the whole window on its screen, and the page no
@@ -34,10 +35,7 @@ test.beforeAll(async () => {
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
   await page.waitForSelector('.sidebar')
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, shop)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  await addProject(app, page, shop)
   await page.locator('.collection-row', { hasText: 'Wide' }).click()
 })
 
