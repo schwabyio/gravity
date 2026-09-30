@@ -8,7 +8,8 @@ import { CollectionSchema, type Collection } from '../model/documents.js'
 import { resultName, type RunResult } from '../model/run.js'
 import { exportsOf } from '../runtime/sandbox.js'
 import { listRequestSets, loadChecks, resolveRequestSet } from '../workspace/library.js'
-import { referenceProblems } from './plan.js'
+import { VariableScope } from '../vars/scope.js'
+import { referenceProblems, resolveParams } from './plan.js'
 import { runCollection } from './runCollection.js'
 import { runRequest } from './runRequest.js'
 
@@ -355,6 +356,63 @@ describe('a set’s params', () => {
       ],
       [2, undefined, undefined]
     ])
+  })
+
+  it('resolves a default after the params it names, wherever they are declared', () => {
+    const params = resolveParams(
+      { email: '{{params.id}}@example.com', id: '{{$uuid}}' },
+      {},
+      new VariableScope()
+    )
+    expect(params.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(params.email).toBe(`${params.id}@example.com`)
+  })
+
+  it('keeps the type of a default that is only another param', () => {
+    const params = resolveParams(
+      { copy: '{{params.count}}', count: 2, on: true, flag: '{{params.on}}' },
+      {},
+      new VariableScope()
+    )
+    expect(params).toEqual({ copy: 2, count: 2, on: true, flag: true })
+  })
+
+  it('stops every step of a set run on its own whose defaults cannot resolve', async () => {
+    seen = []
+    const file = path.join(shop, 'requests', 'typo.yml')
+    const collection = CollectionSchema.parse({
+      id: 'typo',
+      params: { who: '{{nobody}}' },
+      steps: [{ GET: `${origin}/typo/1` }, { GET: `${origin}/typo/2` }]
+    })
+    const summary = await runCollection({
+      collection,
+      collectionPath: file,
+      context: { collectionPath: file, env: {} }
+    })
+    expect(seen).toEqual([])
+    const message = `use: typo — params.who's default: Variable "nobody" is not defined in this environment.`
+    expect(summary.results.map((result) => [result.status, result.error?.message])).toEqual([
+      ['error', message],
+      ['error', message]
+    ])
+  })
+
+  it('stops the run at a use whose params cannot resolve, when told to bail', async () => {
+    seen = []
+    const collectionPath = path.join(shop, 'collections', 'suite.yml')
+    const collection = CollectionSchema.parse({
+      id: 'suite',
+      steps: [{ use: 'loop' }, { name: 'after', GET: `${origin}/after` }]
+    })
+    const summary = await runCollection({
+      collection,
+      collectionPath,
+      context: { collectionPath, env: {} },
+      bail: true
+    })
+    expect(seen).toEqual([])
+    expect(summary).toMatchObject({ total: 3, errored: 1, skipped: 2 })
   })
 
   it('skips a use its flags rule out, whatever its params', async () => {

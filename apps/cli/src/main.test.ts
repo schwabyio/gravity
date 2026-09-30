@@ -308,6 +308,12 @@ describe('gta', () => {
     const { code, out } = await gta(root, 'health')
     expect(code).toBe(EXIT.failed)
     expect(out).toContain('✗ health check › second (check 2/2) 500')
+
+    const json = JSON.parse((await gta(root, 'health', '--json')).out)
+    expect(json.collections[0].steps.map((step: { use: unknown }) => step.use)).toEqual([
+      { set: 'check', name: 'health check', child: 0, of: 2 },
+      { set: 'check', name: 'health check', child: 1, of: 2 }
+    ])
   })
 
   it('writes a JUnit report when asked, beside the project by default', async () => {
