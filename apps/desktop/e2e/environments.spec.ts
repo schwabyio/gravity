@@ -11,6 +11,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { DEFAULT_WINDOW, sizeWindow } from './window'
 
 /**
  * Environments end to end: a request authored with `{{baseUrl}}` must reach a
@@ -75,6 +76,7 @@ test.beforeAll(async () => {
 
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
+  await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')
 
   await app.evaluate(({ dialog }, target) => {
@@ -141,6 +143,7 @@ test('the chosen environment survives a restart', async () => {
   await app.close()
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
+  await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.collection-row', { timeout: 15_000 })
   await page.locator('.collection-row').first().click()
 

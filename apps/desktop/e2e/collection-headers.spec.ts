@@ -11,6 +11,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { sizeWindow } from './window'
 
 /**
  * Collection headers: edited in the collection's settings, saved in place with
@@ -60,7 +61,7 @@ test.beforeAll(async () => {
 
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
-  await page.setViewportSize({ width: 1500, height: 850 })
+  await sizeWindow(app, page, { width: 1500, height: 850 })
   await page.waitForSelector('.sidebar')
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })

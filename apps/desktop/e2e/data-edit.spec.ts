@@ -9,6 +9,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { sizeWindow } from './window'
 
 /**
  * A data file (SPEC.md §2.8) edited in the app: a grid saved like any other
@@ -54,7 +55,7 @@ test.beforeAll(async () => {
 
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${userData}`] })
   page = await app.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 800 })
+  await sizeWindow(app, page, { width: 1400, height: 800 })
   await page.waitForSelector('.sidebar')
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })

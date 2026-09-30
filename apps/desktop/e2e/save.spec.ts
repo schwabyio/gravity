@@ -9,6 +9,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { DEFAULT_WINDOW, sizeWindow } from './window'
 
 /**
  * Edit and save: auto save and its setting, explicit saves, step structure, and
@@ -47,6 +48,7 @@ const reset = () => fs.writeFileSync(file, ORIGINAL)
 async function launch() {
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${userData}`] })
   page = await app.firstWindow()
+  await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')
 }
 

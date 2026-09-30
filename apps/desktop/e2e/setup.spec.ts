@@ -12,6 +12,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { sizeWindow } from './window'
 
 /**
  * Setup and teardown (SPEC.md §2.10): steps run once around the others — and
@@ -70,12 +71,71 @@ test.beforeAll(async () => {
     ].join('\n')
   )
   write('collections/seed.csv', 'who\na\nb\n')
+  write(
+    'collections/tagged.yml',
+    [
+      'id: tagged',
+      'stepTags: true',
+      'setup:',
+      '  - name: grant',
+      `    POST: "${origin}/tagged/grant"`,
+      'steps:',
+      '  - name: auth step',
+      `    GET: "${origin}/tagged/auth"`,
+      '    tags: [auth]',
+      '  - name: other step',
+      `    GET: "${origin}/tagged/other"`,
+      '    tags: [other]',
+      'teardown:',
+      '  - name: revoke',
+      `    DELETE: "${origin}/tagged/grant"`,
+      ''
+    ].join('\n')
+  )
+  write(
+    'collections/bare.yml',
+    [
+      'id: bare',
+      'setup:',
+      '  - name: grant',
+      `    POST: "${origin}/bare/grant"`,
+      'steps: []',
+      'teardown:',
+      '  - name: revoke',
+      `    DELETE: "${origin}/bare/grant"`,
+      ''
+    ].join('\n')
+  )
+  write(
+    'requests/ping.yml',
+    ['id: ping', 'params: {}', 'steps:', '  - name: ping', `    GET: "${origin}/ping"`, ''].join(
+      '\n'
+    )
+  )
+  write(
+    'collections/mixed.yml',
+    [
+      'id: mixed',
+      'setup:',
+      '  - name: prepare',
+      `    POST: "${origin}/prepare"`,
+      'steps:',
+      '  - use: ping',
+      '    name: ping it',
+      '  - name: maybe',
+      `    GET: "${origin}/maybe"`,
+      '    before:',
+      '      script: |',
+      "        gta.skip('not today')",
+      ''
+    ].join('\n')
+  )
   write('collections/plain.yml', PLAIN(`${origin}/each/{{item}}`))
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: shop, stdio: 'pipe' })
 
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
-  await page.setViewportSize({ width: 1500, height: 900 })
+  await sizeWindow(app, page, { width: 1500, height: 900 })
   await page.waitForSelector('.sidebar')
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
@@ -212,4 +272,88 @@ test('a step repeated for each item writes forEach and runs once per item', asyn
       name: 'one',
       GET: `${origin}/each/{{item}}`
     })
+})
+
+test('a use step, or a setup step, run on its own runs only that', async () => {
+  await page.locator('.collection-row', { hasText: 'Mixed' }).click()
+  received = []
+  await rowIn('Steps', 'ping it').getByRole('button', { name: 'Run ping it' }).click()
+  await expect(rowIn('Steps', 'ping it').locator('.step-foot .step-status')).toHaveText(
+    '1 of 1 passed',
+    {
+      timeout: 10_000
+    }
+  )
+  expect(received).toEqual(['GET /ping'])
+
+  received = []
+  await rowIn('Setup', 'prepare').getByRole('button', { name: 'Run prepare' }).click()
+  await expect(rowIn('Setup', 'prepare').locator('.step-status')).toContainText('200', {
+    timeout: 10_000
+  })
+  expect(received).toEqual(['POST /prepare'])
+})
+
+test('a step its script skips says why, having sent nothing', async () => {
+  received = []
+  await rowIn('Steps', 'maybe').getByRole('button', { name: 'Run maybe' }).click()
+  await expect(rowIn('Steps', 'maybe').locator('.step-status')).toHaveText('skipped', {
+    timeout: 10_000
+  })
+  await expect(page.locator('.placeholder.skipped')).toContainText('not today — nothing was sent')
+  expect(received).toEqual([])
+})
+
+test('a use step has no forEach to edit; a request step has', async () => {
+  await rowIn('Steps', 'ping it').locator('.step-open').click()
+  await expect(page.locator('.step-foreach')).toHaveCount(0)
+  await rowIn('Steps', 'maybe').locator('.step-open').click()
+  await expect(page.locator('.step-foreach')).toHaveCount(1)
+})
+
+test('an edit to a setup step is saved in setup', async () => {
+  await rowIn('Setup', 'prepare').locator('.step-open').click()
+  await page.getByLabel('Request URL').fill(`${origin}/prepared`)
+  await expect
+    .poll(() => YAML.parse(read('mixed')).setup[0].POST, { timeout: 5_000 })
+    .toBe(`${origin}/prepared`)
+  expect(YAML.parse(read('mixed')).steps.map((s: { name: string }) => s.name)).toEqual([
+    'ping it',
+    'maybe'
+  ])
+})
+
+test('a teardown written outside the app shows in its list at once', async () => {
+  fs.writeFileSync(
+    file('mixed'),
+    `${read('mixed')}teardown:\n  - name: cleanup\n    DELETE: "${origin}/cleanup"\n`
+  )
+  await expect(section('Teardown').locator('.step-name')).toHaveText(['cleanup'], {
+    timeout: 10_000
+  })
+  // It opens as itself: the app gave it an id of its own.
+  await rowIn('Teardown', 'cleanup').locator('.step-open').click()
+  await expect(page.getByLabel('Request URL')).toHaveValue(`${origin}/cleanup`)
+})
+
+test('a tag filter narrows the steps, never setup or teardown', async () => {
+  await page.locator('.collection-row', { hasText: 'Tagged' }).click()
+  const filter = page.getByRole('group', { name: 'Filter steps by tag' })
+  await filter.getByRole('button', { name: 'auth' }).click()
+  await expect(section('Setup').locator('.step-name')).toHaveText(['grant'])
+  await expect(section('Teardown').locator('.step-name')).toHaveText(['revoke'])
+  received = []
+  await page.getByRole('button', { name: 'Run 1 step' }).click()
+  await expect(page.locator('.run-summary')).toContainText('3 passed', { timeout: 10_000 })
+  expect(received).toEqual(['POST /tagged/grant', 'GET /tagged/auth', 'DELETE /tagged/grant'])
+  await filter.getByRole('button', { name: 'Clear' }).click()
+})
+
+test('a collection with only setup and teardown still runs them', async () => {
+  await page.locator('.collection-row', { hasText: 'Bare' }).click()
+  await expect(section('Setup').locator('.step-name')).toHaveText(['grant'])
+  received = []
+  await page.getByRole('button', { name: 'Run all' }).click()
+  await expect(page.locator('.run-summary')).toContainText('2 passed', { timeout: 10_000 })
+  expect(received).toEqual(['POST /bare/grant', 'DELETE /bare/grant'])
 })

@@ -9,6 +9,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { DEFAULT_WINDOW, sizeWindow } from './window'
 
 /**
  * Committing, pushing, pulling and branching from the app, against real
@@ -77,6 +78,7 @@ const head = (dir: string) => git(dir, 'rev-parse', 'HEAD').trim()
 async function launch() {
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${userData}`], env: gitEnv() })
   page = await app.firstWindow()
+  await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')
   // A discard goes to the Trash; here, the "Trash" deletes and remembers.
   await app.evaluate(({ shell }) => {

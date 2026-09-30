@@ -9,6 +9,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { DEFAULT_WINDOW, sizeWindow } from './window'
 
 /** Both dividers: drag, clamp, keyboard, reset, and remembered between launches. */
 
@@ -40,6 +41,7 @@ async function drag(handle: ReturnType<typeof sidebarHandle>, by: number) {
 async function launch() {
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${userData}`] })
   page = await app.firstWindow()
+  await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')
 }
 

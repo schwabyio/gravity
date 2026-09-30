@@ -10,6 +10,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { sizeWindow } from './window'
 
 /**
  * A server whose certificate a local CA signed: refused until the project
@@ -50,7 +51,7 @@ test.beforeAll(async () => {
 
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
-  await page.setViewportSize({ width: 1500, height: 850 })
+  await sizeWindow(app, page, { width: 1500, height: 850 })
   await page.waitForSelector('.sidebar')
   await pickNext(shop)
   await page.getByRole('button', { name: '+ Project' }).click()

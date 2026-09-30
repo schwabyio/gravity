@@ -11,6 +11,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { DEFAULT_WINDOW, sizeWindow } from './window'
 
 /**
  * End-to-end proof that the whole chain works: renderer -> preload -> main ->
@@ -66,6 +67,7 @@ test.beforeAll(async () => {
 
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
+  await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })

@@ -132,6 +132,30 @@ describe('editSource: setup and teardown', () => {
   })
 })
 
+describe('editSource: new step keys', () => {
+  it('writes forEach after the method and useTests after flags, where a person would', () => {
+    const set =
+      'id: s\nparams: {}\nsteps:\n  - name: a\n    GET: http://x\n    flags: { beta: true }\n    tests: |\n      ok()\n'
+    const next = editSource(set, [
+      {
+        type: 'editStep',
+        index: 0,
+        step: {
+          name: 'a',
+          GET: 'http://x',
+          flags: { beta: true },
+          tests: 'ok()\n',
+          forEach: '{{roots}}',
+          useTests: true
+        }
+      }
+    ])
+    expect(next).toBe(
+      'id: s\nparams: {}\nsteps:\n  - name: a\n    GET: http://x\n    forEach: "{{roots}}"\n    flags: { beta: true }\n    useTests: true\n    tests: |\n      ok()\n'
+    )
+  })
+})
+
 describe('applyCollectionEdits', () => {
   let dir: string
   let file: string

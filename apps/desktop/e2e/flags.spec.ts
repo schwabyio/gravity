@@ -11,6 +11,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { sizeWindow } from './window'
 
 /**
  * Feature flags (SPEC.md §2.9) in the app: an environment's fixed values and
@@ -95,7 +96,7 @@ test.beforeAll(async () => {
 
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
+  await sizeWindow(app, page, { width: 1400, height: 900 })
   await page.waitForSelector('.sidebar')
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })

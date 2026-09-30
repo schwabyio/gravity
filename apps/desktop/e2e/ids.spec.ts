@@ -9,6 +9,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { sizeWindow } from './window'
 
 /**
  * A collection's `id` is its file name, unique in `collections/` ignoring case
@@ -45,7 +46,7 @@ test.beforeAll(async () => {
 
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 800 })
+  await sizeWindow(app, page, { width: 1400, height: 800 })
   await page.waitForSelector('.sidebar')
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })

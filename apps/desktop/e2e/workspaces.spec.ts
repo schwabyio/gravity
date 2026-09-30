@@ -9,6 +9,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { DEFAULT_WINDOW, sizeWindow } from './window'
 
 /**
  * Workspaces and projects, end to end, against real git repositories.
@@ -122,6 +123,7 @@ test.beforeAll(async () => {
 
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${userData}`] })
   page = await app.firstWindow()
+  await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')
 })
 
@@ -387,6 +389,7 @@ test('a workspace survives a restart', async () => {
   await app.close()
   app = await electron.launch({ args: [MAIN, `--user-data-dir=${userData}`] })
   page = await app.firstWindow()
+  await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')
 
   await expect(project('payments-api')).toBeVisible({ timeout: 15_000 })

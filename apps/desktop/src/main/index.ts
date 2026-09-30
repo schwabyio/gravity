@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { IpcChannel } from '../shared/ipc.js'
 import { setupGit } from './bundledGit.js'
 import {
@@ -22,9 +22,12 @@ migrateUserData()
 const projects = new ProjectService({ moveAside: (file) => shell.trashItem(file) })
 
 function createWindow(): void {
+  // Never larger than the screen it opens on, whose edges would hide its own.
+  const { workAreaSize } = screen.getPrimaryDisplay()
   const window = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: Math.min(1440, workAreaSize.width),
+    height: Math.min(900, workAreaSize.height),
+    center: true,
     minWidth: 1000,
     minHeight: 640,
     title: 'Gravity',

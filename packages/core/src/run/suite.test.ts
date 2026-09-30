@@ -27,7 +27,36 @@ beforeAll(async () => {
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gta-suite-')))
   await fs.mkdir(path.join(tmp, 'collections'))
+  await fs.mkdir(path.join(tmp, 'requests'))
   collectionPath = path.join(tmp, 'collections', 'seed.yml')
+  // A set that stops its row early from its first step, and one that repeats a step.
+  await fs.writeFile(
+    path.join(tmp, 'requests', 'early.yml'),
+    [
+      'id: early',
+      'params: {}',
+      'steps:',
+      '  - name: first',
+      `    GET: "${origin}/early/first"`,
+      "    tests: gta.skipRest('done early')",
+      '  - name: second',
+      `    GET: "${origin}/early/second"`,
+      ''
+    ].join('\n')
+  )
+  await fs.writeFile(
+    path.join(tmp, 'requests', 'each.yml'),
+    [
+      'id: each',
+      'params:',
+      '  prefix: p',
+      'steps:',
+      '  - name: grant',
+      `    POST: "${origin}/{{params.prefix}}/{{item}}"`,
+      `    forEach: '["1", "2"]'`,
+      ''
+    ].join('\n')
+  )
 })
 
 afterAll(async () => {
@@ -40,7 +69,12 @@ const rows = (...values: Array<Record<string, string>>): SuiteRow[] =>
 
 async function suite(
   doc: Record<string, unknown>,
-  options: { rows?: SuiteRow[]; bail?: boolean; signal?: AbortSignal } = {}
+  options: {
+    rows?: SuiteRow[]
+    bail?: boolean
+    signal?: AbortSignal
+    flags?: Record<string, boolean>
+  } = {}
 ) {
   seen = []
   const collection = CollectionSchema.parse({ id: 'seed', ...doc })
@@ -49,7 +83,13 @@ async function suite(
     collection,
     collectionPath,
     // As the app runs one: the collection's variables as given, not from a file.
-    context: { collectionPath, env: {}, dataRow: null, collectionVars: collection.vars ?? null },
+    context: {
+      collectionPath,
+      env: {},
+      dataRow: null,
+      collectionVars: collection.vars ?? null,
+      ...(options.flags ? { flags: options.flags } : {})
+    },
     rows: options.rows ?? null,
     bail: options.bail ?? false,
     ...(options.signal ? { signal: options.signal } : {}),
@@ -141,6 +181,32 @@ describe('setup and teardown', () => {
     expect(seen).toEqual(['GET /fail', 'GET /fail', 'DELETE /grant'])
     // The second step of row 1, and both of row 2, never begun.
     expect(summary).toMatchObject({ total: 6, failed: 2, passed: 1, skipped: 3 })
+  })
+
+  it('stop setup at its first failure when told to bail, and the rows with it', async () => {
+    const failing = { POST: `${origin}/fail`, tests: 'gta.expectResponseStatusCodeToBe(200)' }
+    const { summary } = await suite(
+      {
+        setup: [failing, { POST: `${origin}/grant` }],
+        steps: [{ GET: `${origin}/one` }],
+        teardown: [{ DELETE: `${origin}/grant` }]
+      },
+      { bail: true }
+    )
+    expect(seen).toEqual(['POST /fail', 'DELETE /grant'])
+    // The second setup step and the one step, never begun.
+    expect(summary).toMatchObject({ total: 4, failed: 1, passed: 1, skipped: 2 })
+  })
+
+  it('keep what setup set for a collection with no file, as an unsaved one in the app', async () => {
+    seen = []
+    const collection = CollectionSchema.parse({
+      setup: [{ GET: `${origin}/one`, before: { script: "gta.set('who', 'z')" } }],
+      steps: [{ GET: `${origin}/two/{{who}}` }]
+    })
+    const summary = await runSuite({ collection, collectionPath: null })
+    expect(seen).toEqual(['GET /one', 'GET /two/z'])
+    expect(summary.passed).toBe(2)
   })
 
   it('stop where they are on a cancel, teardown included', async () => {
@@ -261,6 +327,44 @@ describe('gta.skip and gta.skipRest', () => {
       { rows: rows({ blocked: 'yes' }) }
     )
     expect(blocked.summary.results[0]?.skipped?.reason).toBe('blocked here')
+  })
+
+  it('keep the first reason given, and say where a skip came from when none was', async () => {
+    const { summary } = await suite({
+      steps: [
+        { GET: `${origin}/a`, before: { script: "gta.skip('first')\ngta.skip('second')" } },
+        { GET: `${origin}/b`, tests: 'gta.skipRest()' },
+        { GET: `${origin}/c` }
+      ]
+    })
+    expect(summary.results.map((r) => r.skipped?.reason ?? null)).toEqual([
+      'first',
+      null,
+      'gta.skipRest() in an earlier step'
+    ])
+    const early = await suite({
+      steps: [{ GET: `${origin}/a`, before: { script: 'gta.skipRest()' } }, { GET: `${origin}/b` }]
+    })
+    expect(early.summary.results.map((r) => r.skipped?.reason)).toEqual([
+      'gta.skipRest() in before.script',
+      'gta.skipRest() in before.script'
+    ])
+  })
+
+  it('skip the rest of a set, and the steps after its use step, from inside the set', async () => {
+    const { summary, names } = await suite({
+      steps: [
+        { use: 'early', name: 'go' },
+        { name: 'after', GET: `${origin}/after` }
+      ]
+    })
+    expect(seen).toEqual(['GET /early/first'])
+    expect(names).toEqual(['go › first', 'go › second', 'after'])
+    expect(summary.results.map((r) => [r.status, r.skipped?.reason, r.use?.child])).toEqual([
+      ['pass', undefined, 0],
+      ['skipped', 'done early', 1],
+      ['skipped', 'done early', undefined]
+    ])
   })
 
   it('refuse gta.skip in tests, where the request has been sent', async () => {
@@ -397,6 +501,21 @@ describe('forEach', () => {
     })
     expect(seen).toEqual(['GET /item/a', 'GET /item/stop'])
     expect(summary.results.map((r) => r.status)).toEqual(['pass', 'pass', 'skipped', 'skipped'])
+  })
+
+  it('repeats a set’s step, its params in scope', async () => {
+    const { names } = await suite({ steps: [{ use: 'each', with: { prefix: 'q' } }] })
+    expect(seen).toEqual(['POST /q/1', 'POST /q/2'])
+    expect(names).toEqual(['grant (item 1 of 2)', 'grant (item 2 of 2)'])
+  })
+
+  it('skips a repeated step its flags rule out, once, without reading its list', async () => {
+    const { summary } = await suite(
+      { steps: [{ GET: `${origin}/x/{{item}}`, forEach: '{{missing}}', flags: { beta: true } }] },
+      { flags: { beta: false } }
+    )
+    expect(seen).toEqual([])
+    expect(summary.results.map((r) => r.status)).toEqual(['skipped'])
   })
 
   it('is refused on a use step, which runs a set', () => {

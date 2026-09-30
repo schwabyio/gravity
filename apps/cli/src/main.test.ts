@@ -52,6 +52,7 @@ describe('gta', () => {
     expect(code).toBe(EXIT.passed)
     expect(out).toContain('Usage: gta <command>')
     expect(out).toContain('--limitConcurrency')
+    expect(out).toContain('Exits 1 on a broken collection, or a use: or extends: that')
   })
 
   it('refuses a folder with no collections/', async () => {
@@ -340,6 +341,39 @@ describe('gta', () => {
     expect(listed.out).toContain(
       'broken broken, setup step 1: use: nope — there is no nope.yml in requests/'
     )
+  })
+
+  it('runs setup and teardown around the steps tags pick, each at its own place in the file', async () => {
+    const root = await project({
+      'collections/tagged.yml': [
+        'id: tagged',
+        'stepTags: true',
+        'setup:',
+        '  - name: grant',
+        "    POST: '{{baseUrl}}/ok/grant'",
+        'steps:',
+        '  - name: slow one',
+        "    GET: '{{baseUrl}}/ok/slow'",
+        '    tags: [slow]',
+        '  - name: quick one',
+        "    GET: '{{baseUrl}}/ok/quick'",
+        '    tags: [quick]',
+        'teardown:',
+        '  - name: revoke',
+        "    DELETE: '{{baseUrl}}/ok/grant'",
+        ''
+      ].join('\n')
+    })
+    const json = JSON.parse((await gta(root, 'all', '--json', '--tags', 'quick')).out)
+    const steps = json.collections[0].steps as Array<{
+      stage?: string
+      step: { index: number; line: number }
+    }>
+    expect(steps.map((s) => [s.stage ?? 'steps', s.step.index, s.step.line])).toEqual([
+      ['setup', 0, 4],
+      ['steps', 1, 10],
+      ['teardown', 0, 14]
+    ])
   })
 
   it('names a failing request by the named use step that ran it', async () => {
