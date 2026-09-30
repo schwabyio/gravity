@@ -202,8 +202,11 @@ test('a request set is made in the app, and given params', async () => {
   await page.getByLabel('New request set id').fill('refund')
   await page.keyboard.press('Enter')
   const file = path.join(shop, 'requests', 'refund.yml')
-  await expect.poll(() => fs.existsSync(file)).toBe(true)
-  expect(fs.readFileSync(file, 'utf8')).toBe('id: refund\nparams: {}\nsteps: []\n')
+  // Polled for its text, not only the file: it is made empty, then written, and
+  // on a slow disk a read in between finds nothing in it.
+  await expect
+    .poll(() => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''))
+    .toBe('id: refund\nparams: {}\nsteps: []\n')
 
   await page.getByRole('group', { name: 'Request sets of shop' }).getByText('refund').click()
   await expect(page.locator('.collection-header h1')).toHaveText('refund')
