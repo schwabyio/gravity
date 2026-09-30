@@ -6,6 +6,7 @@
  */
 export * from './model/documents.js'
 export * from './model/endpoints.js'
+export * from './model/layers.js'
 export * from './paths.js'
 export * from './model/tree.js'
 export * from './model/variables.js'

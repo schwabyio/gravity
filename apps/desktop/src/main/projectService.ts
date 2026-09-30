@@ -12,6 +12,7 @@ import {
   loadEndpoints,
   mergeHeaders,
   type Collection,
+  type LayerParts,
   ENVIRONMENTS_DIR,
   PROJECT_FILE,
   GitRepo,
@@ -93,6 +94,14 @@ export interface ProjectServiceOptions {
  * (and its global project's); git state belongs to the repository, which
  * several projects of a monorepo can share.
  */
+/** A document's headers, settings and scripts, as one layer of a request (SPEC.md §2.6). */
+const layerOf = (doc: LayerParts): LayerParts => ({
+  ...(doc.headers ? { headers: doc.headers } : {}),
+  ...(doc.settings ? { settings: doc.settings } : {}),
+  ...(doc.before ? { before: doc.before } : {}),
+  ...(doc.tests ? { tests: doc.tests } : {})
+})
+
 export class ProjectService {
   private readonly registry = new WorkspaceRegistry()
   private readonly views = new Map<string, ProjectView>()
@@ -506,9 +515,15 @@ export class ProjectService {
         fileName: endpoint.fileName,
         source: endpoint.source,
         headers: Object.keys(mergeHeaders(endpoint.file.headers, endpoint.step.headers)),
-        hasTests: Boolean(endpoint.file.tests || endpoint.step.tests)
+        hasTests: Boolean(endpoint.file.tests || endpoint.step.tests),
+        hasBefore: Boolean(endpoint.file.before?.script || endpoint.step.before?.script),
+        file: layerOf(endpoint.file),
+        step: layerOf(endpoint.step)
       })),
-      bases: bases.map((file) => libraryFile(file, baseProblem)),
+      bases: bases.map((file) => ({
+        ...libraryFile(file, baseProblem),
+        ...(file.doc ? { layer: layerOf(file.doc) } : {})
+      })),
       caFiles: tls.files.map(({ path, source, certificates, problem }) => ({
         path,
         source,

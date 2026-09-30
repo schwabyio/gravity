@@ -137,9 +137,9 @@ test('a send uses them, and the step says the collection’s scripts run first',
   // With results to show, the request editor has stepped aside.
   await page.getByRole('button', { name: 'Show the request editor' }).click()
   await requestTab('Pre-request').click()
-  const note = page.locator('.collection-script-note')
-  await expect(note).toContainText('The collection’s pre-request script runs first')
-  await note.getByRole('button', { name: 'Open it' }).click()
+  const note = page.getByRole('note', { name: 'Scripts before this step’s' })
+  await expect(note).toContainText('Before this step’s script, these run in order:the collection’s')
+  await note.getByRole('button', { name: 'Open the collection’s pre-request script' }).click()
   await expect(drawerTab('Pre-request')).toHaveClass(/active/)
   await expect(
     drawer().getByRole('textbox', { name: 'Collection pre-request script' })

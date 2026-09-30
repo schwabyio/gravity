@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { redact } from './job.js'
+import { redact } from './secrets.js'
 
 describe('redact', () => {
   it('replaces every secret value in every string, longest first', () => {

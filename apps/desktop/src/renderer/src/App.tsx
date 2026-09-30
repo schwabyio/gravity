@@ -10,11 +10,10 @@ import {
   type CollectionRunSummary,
   type CollectionSummary,
   type RunResult,
-  type Settings,
   type StepList,
   type VariablePreviews
 } from '@schwabyio/gravity-core/model'
-import type { EndpointView, ProjectView, RequestSetView } from '@shared/ipc.js'
+import type { EndpointView, LibraryFileView, ProjectView, RequestSetView } from '@shared/ipc.js'
 import type { SettingsSection } from './components/CollectionSettings.js'
 import CollectionView from './components/CollectionView.js'
 import EnvironmentPicker from './components/EnvironmentPicker.js'
@@ -59,9 +58,9 @@ import { filterSteps } from './tagFilter.js'
 
 const NO_TAGS: string[] = []
 const NO_FLAGS = {}
-const NO_SETTINGS: Settings = {}
 const NO_SETS: RequestSetView[] = []
 const NO_ENDPOINTS: EndpointView[] = []
+const NO_BASES: LibraryFileView[] = []
 
 /** A failed call's message, or null — what the sidebar's name forms show. */
 const messageOf = (result: { ok: boolean }) =>
@@ -1129,14 +1128,11 @@ export default function App() {
               {stepIndex >= 0 && request && (
                 <RequestView
                   request={request}
-                  collectionSettings={doc.settings ?? NO_SETTINGS}
-                  collectionHeaders={doc.headers}
+                  collection={doc}
                   onEditCollectionHeaders={() => setCollectionSettingsOpen('headers')}
-                  collectionScripts={{
-                    preRequest: (doc.before?.script ?? '').trim() !== '',
-                    tests: (doc.tests ?? '').trim() !== ''
-                  }}
                   onEditCollectionScript={setCollectionSettingsOpen}
+                  bases={activeProject?.bases ?? NO_BASES}
+                  onOpenBase={openLibraryFile}
                   onChange={editor.patch}
                   docs={selectedDocStep?.docs}
                   previews={shownPreviews}

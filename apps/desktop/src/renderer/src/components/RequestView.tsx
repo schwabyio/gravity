@@ -1,21 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { EndpointView, RequestSetView } from '@shared/ipc.js'
+import type { EndpointView, LibraryFileView, RequestSetView } from '@shared/ipc.js'
 import {
   findEndpoint,
-  isHeaderEnabled,
-  mergeHeaders,
-  type Headers,
+  type Collection,
   type HttpMethod,
   type RunResult,
-  type Settings,
   type VariablePreviews
 } from '@schwabyio/gravity-core/model'
+import {
+  headerCount as countHeaders,
+  inheritedLayers,
+  inheritedSettings,
+  sentHeaders,
+  type InheritedLayer
+} from '../inheritance.js'
 import { usePaneWidth } from '../hooks/usePaneWidth.js'
 import { useStoredFlag } from '../hooks/useStoredFlag.js'
 import { buildChecks, tabFor } from '../testLinks.js'
 import CodeEditor from './CodeEditor.js'
 import SettingsTab from './SettingsTab.js'
 import InheritedHeaders from './InheritedHeaders.js'
+import InheritedScripts from './InheritedScripts.js'
 import KeyValueEditor from './KeyValueEditor.js'
 import MultipartEditor, { FileBodyEditor } from './MultipartEditor.js'
 import QueryParamsEditor from './QueryParamsEditor.js'
@@ -41,16 +46,19 @@ interface Props {
   resultCaption?: string | null
   onChange: (changes: Partial<EditorState>) => void
 
-  /** The collection's settings, which the step's own override. */
-  collectionSettings: Settings
-  /** The collection's headers, sent under the step's own. */
-  collectionHeaders: Headers | undefined
+  /**
+   * The collection the step is in: its headers, settings and scripts, and the
+   * base it `extends:`, which the step inherits with an endpoint base's.
+   */
+  collection: Pick<Collection, 'headers' | 'settings' | 'before' | 'tests' | 'extends'>
   /** Open the collection's settings at its headers. */
   onEditCollectionHeaders: () => void
-  /** Which of the collection's scripts exist, to say they run first. */
-  collectionScripts: { preRequest: boolean; tests: boolean }
   /** Open the collection's settings at one of its scripts. */
   onEditCollectionScript: (kind: 'pre-request' | 'tests') => void
+  /** The project's base collections, to find the one the collection `extends:`. */
+  bases: LibraryFileView[]
+  /** Open a base collection's file. */
+  onOpenBase: (path: string) => void
 
   /** The step's own docs, rendered in a tab when it has any. */
   docs?: string | undefined
@@ -155,13 +163,31 @@ export default function RequestView(props: Props) {
   }
 
   const paramCount = readQueryParams(request.url).length
-  // What will be sent: the step's headers over the collection's.
-  const headerCount = Object.values(
-    mergeHeaders(props.collectionHeaders, toHeaders(request.headers))
-  ).reduce((count, value) => {
-    if (Array.isArray(value)) return count + value.length
-    return count + (isHeaderEnabled(value) ? 1 : 0)
-  }, 0)
+  // Everything the step inherits, as a run builds it: endpoint base, base collection, collection.
+  const layers = useMemo(
+    () =>
+      inheritedLayers({
+        method: request.method,
+        url: request.url,
+        useBase: request.base,
+        endpoints: props.endpoints,
+        bases: props.bases,
+        collection: props.collection
+      }),
+    [request.method, request.url, request.base, props.endpoints, props.bases, props.collection]
+  )
+  const ownHeaders = useMemo(() => toHeaders(request.headers), [request.headers])
+  // What will be sent: every layer's headers the step uses, and its own over them.
+  const headerCount = countHeaders(sentHeaders(layers, ownHeaders))
+  /** Open where a layer is written: its endpoints file, its base, the collection's settings. */
+  const openLayer =
+    (part: 'headers' | 'pre-request' | 'tests') =>
+    (layer: InheritedLayer): void => {
+      if (layer.endpoint) props.onOpenEndpoints(layer.endpoint)
+      else if (layer.path) props.onOpenBase(layer.path)
+      else if (part === 'headers') props.onEditCollectionHeaders()
+      else props.onEditCollectionScript(part)
+    }
 
   return (
     <div className="request-view">
@@ -343,13 +369,11 @@ export default function RequestView(props: Props) {
                     previews={props.previews}
                     onCopyVariable={props.onCopyVariable}
                   />
-                  {props.collectionHeaders && Object.keys(props.collectionHeaders).length > 0 && (
-                    <InheritedHeaders
-                      headers={props.collectionHeaders}
-                      rows={request.headers}
-                      onEdit={props.onEditCollectionHeaders}
-                    />
-                  )}
+                  <InheritedHeaders
+                    layers={layers}
+                    own={ownHeaders}
+                    onOpen={openLayer('headers')}
+                  />
                 </>
               )}
               {tab === 'docs' && props.docs && <Markdown source={props.docs} />}
@@ -357,7 +381,7 @@ export default function RequestView(props: Props) {
                 <SettingsTab
                   level="step"
                   own={request.settings}
-                  collection={props.collectionSettings}
+                  inherited={inheritedSettings(layers)}
                   onChange={(settings) => props.onChange({ settings })}
                 />
               )}
@@ -368,12 +392,7 @@ export default function RequestView(props: Props) {
                     <code>gta.</code> for its functions — alongside any JavaScript, <code>res</code>{' '}
                     and <code>assert</code>.
                   </p>
-                  {props.collectionScripts.tests && (
-                    <CollectionScriptNote
-                      text="The collection’s tests run first, after every response."
-                      onOpen={() => props.onEditCollectionScript('tests')}
-                    />
-                  )}
+                  <InheritedScripts kind="tests" layers={layers} onOpen={openLayer('tests')} />
                   <CodeEditor
                     kind="tests"
                     value={request.tests}
@@ -393,12 +412,11 @@ export default function RequestView(props: Props) {
                     <code>gta.set(name, value)</code> — for example <code>gta.uuidv7()</code> or{' '}
                     <code>gta.date(…)</code>.
                   </p>
-                  {props.collectionScripts.preRequest && (
-                    <CollectionScriptNote
-                      text="The collection’s pre-request script runs first, before every step."
-                      onOpen={() => props.onEditCollectionScript('pre-request')}
-                    />
-                  )}
+                  <InheritedScripts
+                    kind="pre-request"
+                    layers={layers}
+                    onOpen={openLayer('pre-request')}
+                  />
                   <CodeEditor
                     kind="pre-request"
                     value={request.preRequest}
@@ -538,8 +556,14 @@ function EndpointNote(props: {
   if (!endpoint) return null
   const brings = [
     endpoint.headers.length > 0 ? `headers ${endpoint.headers.join(', ')}` : null,
+    endpoint.hasBefore ? 'a pre-request script' : null,
     endpoint.hasTests ? 'checks' : null
-  ].filter(Boolean)
+  ].filter((item): item is string => item !== null)
+  // "a, b and c"
+  const listed =
+    brings.length > 1
+      ? `${brings.slice(0, -1).join(', ')} and ${brings[brings.length - 1]}`
+      : brings[0]
   const name = `${endpoint.method} ${endpoint.path}`
   return (
     <p className={`endpoint-note${props.using ? '' : ' off'}`} role="note">
@@ -547,8 +571,8 @@ function EndpointNote(props: {
         <>
           Endpoint base <strong>{name}</strong>
           {endpoint.source === 'global' && <span className="shared-tag">shared</span>}
-          {brings.length > 0 && <> — adds {brings.join(' and ')}</>}. This step&rsquo;s own checks
-          of the same thing replace its checks.
+          {listed && <> — adds {listed}</>}. This step&rsquo;s own checks of the same thing replace
+          its checks.
         </>
       ) : (
         <>
@@ -560,18 +584,6 @@ function EndpointNote(props: {
       </button>
       <button type="button" className="link" onClick={() => props.onUse(!props.using)}>
         {props.using ? 'Don’t use it here' : 'Use it'}
-      </button>
-    </p>
-  )
-}
-
-/** A line saying a collection script runs around this step, with a way to it. */
-function CollectionScriptNote(props: { text: string; onOpen: () => void }) {
-  return (
-    <p className="collection-script-note">
-      {props.text}{' '}
-      <button type="button" className="link" onClick={props.onOpen}>
-        Open it
       </button>
     </p>
   )

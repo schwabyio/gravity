@@ -8,6 +8,7 @@
  */
 export * from './documents.js'
 export * from './endpoints.js'
+export * from './layers.js'
 export * from './bodyObject.js'
 export * from './jsonLines.js'
 export * from './path.js'

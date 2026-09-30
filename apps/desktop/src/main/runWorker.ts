@@ -12,8 +12,10 @@ import {
   readRequestLine,
   stepLabel,
   UnknownFlagError,
+  redact,
   runRequest,
   runSuite,
+  secretValues,
   type Collection,
   type RunResult,
   type Step,
@@ -137,14 +139,16 @@ async function handleStep(message: RunStepMessage): Promise<void> {
       process.parentPort.postMessage({ type: 'result', runId: message.runId, result: gate })
       return
     }
+    const run = contextFor(message)
     const result = await runRequest({
       step,
       ...(collection ? { collection } : {}),
       itemPath: message.collectionPath,
       signal: controller.signal,
-      ...contextFor(message)
+      ...run
     })
-    process.parentPort.postMessage({ type: 'result', runId: message.runId, result })
+    const shown = hidingSecrets(run.context ? await secretValues(run.context) : [])
+    process.parentPort.postMessage({ type: 'result', runId: message.runId, result: shown(result) })
   } catch (cause) {
     postFailure(message.runId, cause)
   } finally {
@@ -157,6 +161,8 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
   inFlight.set(message.runId, controller)
   try {
     const collection = CollectionSchema.parse(message.collection)
+    const run = contextFor(message)
+    const shown = hidingSecrets(run.context ? await secretValues(run.context) : [])
     // As gta runs it (SPEC.md §2.8, §2.10): setup once, then with a data file
     // once per row — each row a fresh scope, rows in order — then teardown.
     // Cancel stops where it is.
@@ -178,18 +184,32 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
           type: 'progress',
           runId: message.runId,
           index,
-          result,
+          result: shown(result),
           ...(iteration ? { iteration } : {})
         }),
-      ...contextFor(message)
+      ...run
     })
-    process.parentPort.postMessage({ type: 'summary', runId: message.runId, summary })
+    process.parentPort.postMessage({
+      type: 'summary',
+      runId: message.runId,
+      summary: { ...summary, results: summary.results.map(shown) }
+    })
   } catch (cause) {
     postFailure(message.runId, cause)
   } finally {
     inFlight.delete(message.runId)
   }
 }
+
+/**
+ * A result with the secrets in its request hidden, as `[secret: NAME]`: the
+ * app shows what a request sent, and a secret's value is never shown (SPEC.md
+ * §6). The response is left as it came.
+ */
+const hidingSecrets =
+  (secrets: ReadonlyArray<[string, string]>) =>
+  (result: RunResult): RunResult =>
+    secrets.length === 0 ? result : { ...result, request: redact(result.request, secrets) }
 
 const postFailure = (runId: string, cause: unknown) =>
   process.parentPort.postMessage({

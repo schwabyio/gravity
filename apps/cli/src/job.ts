@@ -3,10 +3,11 @@ import { LineCounter, parseDocument } from 'yaml'
 import path from 'node:path'
 import {
   COLLECTIONS_DIR,
-  environmentLayer,
   loadCollection,
   readDataFile,
+  redact,
   runSuite,
+  secretValues,
   type CollectionRunSummary,
   type Stage
 } from '@schwabyio/gravity-core'
@@ -123,7 +124,7 @@ export async function runJob(job: CollectionJob): Promise<JobOutcome> {
     })
     return {
       ok: true,
-      summary: redact(summary, await secretsOf(context)),
+      summary: redact(summary, await secretValues(context)),
       steps: refs,
       data: loaded.dataFile
         ? { file: `${COLLECTIONS_DIR}/${loaded.dataFile.relativePath}`, rows: loaded.dataFile.rows }
@@ -132,54 +133,6 @@ export async function runJob(job: CollectionJob): Promise<JobOutcome> {
   } catch (cause) {
     return { ok: false, message: cause instanceof Error ? cause.message : String(cause) }
   }
-}
-
-/**
- * The values of the environment's secrets, by name, longest first.
- *
- * SPEC.md §6: a secret is never written to a report. Its resolved value is in
- * what was sent — an `Authorization` header — and can come back in what was
- * received, a log line or an assertion's actual value, so every report `gta`
- * writes, the console included, is made from a redacted result.
- */
-async function secretsOf(context: {
-  collectionPath: string
-  environmentName: string | null
-}): Promise<Array<[string, string]>> {
-  if (!context.environmentName) return []
-  try {
-    const layer = await environmentLayer(context, context.environmentName)
-    return (layer.secrets ?? [])
-      .flatMap((name): Array<[string, string]> => {
-        const value = layer.vars[name]
-        return value === undefined || value === null || String(value) === ''
-          ? []
-          : [[name, String(value)]]
-      })
-      .sort((a, b) => b[1].length - a[1].length)
-  } catch {
-    // A secret with no value fails the run itself, which says so.
-    return []
-  }
-}
-
-/** Every string in the result with each secret's value replaced by `[secret: NAME]`. */
-export function redact<T>(value: T, secrets: ReadonlyArray<[string, string]>): T {
-  if (secrets.length === 0) return value
-  const walk = (node: unknown): unknown => {
-    if (typeof node === 'string') {
-      return secrets.reduce(
-        (text, [name, secret]) => text.split(secret).join(`[secret: ${name}]`),
-        node
-      )
-    }
-    if (Array.isArray(node)) return node.map(walk)
-    if (node !== null && typeof node === 'object') {
-      return Object.fromEntries(Object.entries(node).map(([key, inner]) => [key, walk(inner)]))
-    }
-    return node
-  }
-  return walk(value) as T
 }
 
 /** The line each step of a collection file starts on, from 1, in each of its lists. */

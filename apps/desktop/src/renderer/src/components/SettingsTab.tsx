@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
 import { SETTINGS_DEFAULTS, type Settings } from '@schwabyio/gravity-core/model'
+import type { InheritedSettings } from '../inheritance.js'
 
 interface Props {
   /** Where these settings live: a step's own, or the whole collection's. */
   level: 'step' | 'collection'
   /** The settings set at this level; what is absent is inherited. */
   own: Settings
-  /** For a step, the collection's settings; what neither sets is the default. */
-  collection?: Settings
+  /**
+   * For a step, what it inherits: each setting from the nearest layer that
+   * sets it — the collection, its base, the endpoint base. What none sets is
+   * the default.
+   */
+  inherited?: InheritedSettings
   onChange: (settings: Settings) => void
 }
 
@@ -63,30 +68,26 @@ function tidy(settings: Settings): Settings {
 /**
  * The request settings at one level, and what they come to.
  *
- * A step's settings override the collection's, which override the defaults.
+ * A step's settings override those it inherits, which override the defaults.
  * Beside each name is what a run will actually use and where that value came
  * from. Nothing here is a copy: clearing a field means "inherit".
  */
-export default function SettingsTab({ level, own, collection = {}, onChange }: Props) {
+export default function SettingsTab({ level, own, inherited = {}, onChange }: Props) {
   const forStep = level === 'step'
   return (
     <div className="settings-tab">
       <p className="hint">
         {forStep
-          ? 'A setting left empty comes from the collection’s settings (⚙ beside its name), or else the default.'
+          ? 'A setting left empty comes from the nearest that sets it — the collection’s settings (⚙ beside its name), its base collection’s, its endpoint base’s — or else the default.'
           : 'A setting left empty is the default. A step can still set its own.'}
       </p>
       <div className="settings-list">
         {ROWS.map((row) => {
-          const inherited =
-            (forStep ? collection[row.key] : undefined) ?? SETTINGS_DEFAULTS[row.key]
-          const used = own[row.key] ?? inherited
-          const source =
-            own[row.key] !== undefined
-              ? level
-              : forStep && collection[row.key] !== undefined
-                ? 'collection'
-                : 'default'
+          const from = forStep ? inherited[row.key] : undefined
+          const fallback = from?.value ?? SETTINGS_DEFAULTS[row.key]
+          const used = own[row.key] ?? fallback
+          const set = own[row.key] !== undefined
+          const source = set ? level : (from?.from ?? 'default')
           return (
             <section key={row.key} className="setting-card" aria-label={row.label}>
               <div className="setting-head">
@@ -96,7 +97,11 @@ export default function SettingsTab({ level, own, collection = {}, onChange }: P
                     {show(used)}
                     {row.unit && typeof used === 'number' ? ` ${row.unit}` : ''}
                   </strong>
-                  <span className={`setting-source ${source}`}>{source}</span>
+                  <span
+                    className={`setting-source ${set ? level : from ? 'inherited' : 'default'}`}
+                  >
+                    {source}
+                  </span>
                 </span>
               </div>
               <p className="setting-help">{row.help}</p>
@@ -104,7 +109,7 @@ export default function SettingsTab({ level, own, collection = {}, onChange }: P
                 <SettingField
                   row={row}
                   value={own[row.key]}
-                  inherited={inherited}
+                  inherited={fallback}
                   label={`${row.label} for ${forStep ? 'this step' : 'the whole collection'}`}
                   onChange={(value) => onChange(tidy({ ...own, [row.key]: value }))}
                 />

@@ -297,7 +297,39 @@ button:disabled {
   word-break: break-all;
 }
 
-/* "The collection's script runs first", above a step's own. */
+/* The request as sent, in the response pane. */
+.sent-request {
+  padding: 8px 12px;
+}
+
+.sent-request h4 {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.sent-line {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.sent-body {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* The scripts that run before a step's own, above it. */
 .collection-script-note {
   margin: 0;
   padding: 6px 10px;
@@ -316,7 +348,27 @@ button:disabled {
   font-size: 12px;
 }
 
-/* The collection's headers, under a step's own. */
+.collection-script-note ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.collection-script-note li.unused {
+  text-decoration: line-through;
+}
+
+/* Which layer a heading or a line is about: users.yml, GET /users/{id}, auth. */
+.layer-name {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.layer-off {
+  margin-left: 6px;
+  font-style: italic;
+}
+
+/* The headers of each layer a step inherits, under its own. */
 .inherited-headers {
   margin-top: 16px;
 }
@@ -2814,7 +2866,8 @@ button.tag.filter.on {
 }
 
 .setting-source.step,
-.setting-source.collection {
+.setting-source.collection,
+.setting-source.inherited {
   color: var(--accent);
 }
 

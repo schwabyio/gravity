@@ -4,7 +4,6 @@ import { sendHttpRequest } from '../http/client.js'
 import type { Body, Collection, Step, VarValue } from '../model/documents.js'
 import {
   isUseStep,
-  mergeHeaders,
   readRequestLine,
   stepLabel,
   type Before,
@@ -30,6 +29,7 @@ import { runScript, type Adopt } from '../runtime/sandbox.js'
 import { loadLibrary, type CheckFile, type EndpointBase } from '../workspace/library.js'
 import type { ProjectTrust } from '../workspace/projectTls.js'
 import { findEndpoint, placeholdersOf } from '../model/endpoints.js'
+import { foldLayers, requestLayers, type LayerKind } from '../model/layers.js'
 import { buildScope, type ScopeContext } from '../vars/resolve.js'
 import { InterpolationError, OverlayScope, ParamsScope, VariableScope } from '../vars/scope.js'
 import { interpolateToString } from '../vars/interpolate.js'
@@ -131,13 +131,7 @@ export interface SetRun {
  * request is built.
  */
 function folded(layers: Layer[], collection: Collection | undefined): Collection {
-  let headers: Headers | undefined
-  let settings: Settings = {}
-  for (const layer of layers) {
-    if (layer.script === 'step' || layer.script === 'use') continue
-    if (layer.headers) headers = mergeHeaders(headers, layer.headers)
-    settings = { ...settings, ...layer.settings }
-  }
+  const { headers, settings } = foldLayers(layers)
   return {
     ...collection,
     steps: [],
@@ -146,15 +140,16 @@ function folded(layers: Layer[], collection: Collection | undefined): Collection
   }
 }
 
-/** The parts of a document a layer takes. */
-const partsOf = (
-  doc: Pick<Collection, 'headers' | 'settings' | 'before' | 'tests'> | undefined
-) => ({
-  headers: doc?.headers,
-  settings: doc?.settings,
-  before: doc?.before,
-  tests: doc?.tests
-})
+/** How a run names each layer: in stack traces, results and messages. */
+const ROLES: Record<LayerKind, Pick<Layer, 'script' | 'label' | 'defaults'>> = {
+  // An endpoint base's checks are defaults: the step's own of the same thing replace them.
+  'endpoint-file': { script: 'endpoint', label: 'endpoint file', defaults: true },
+  endpoint: { script: 'endpoint', label: 'endpoint', defaults: true },
+  base: { script: 'base', label: 'base' },
+  collection: { script: 'collection', label: 'collection' },
+  set: { script: 'set', label: 'set' },
+  step: { script: 'step', label: '' }
+}
 
 /** Whether the run has to read the project for checks, endpoints, a base or `tls`. */
 const needsLibrary = (input: RunStepInput) =>
@@ -273,25 +268,13 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   // The use step's own checks look at the step marked `useTests`, else the set's last.
   const marked = set ? set.doc.steps.findIndex((s) => s.useTests === true) : -1
   const useChecksThis = set ? set.child === (marked >= 0 ? marked : set.of - 1) : false
-  const layers: Layer[] = []
-  if (endpoint) {
-    layers.push({
-      script: 'endpoint',
-      label: 'endpoint file',
-      defaults: true,
-      ...partsOf(endpoint.file)
-    })
-    layers.push({
-      script: 'endpoint',
-      label: 'endpoint',
-      defaults: true,
-      ...partsOf(endpoint.step)
-    })
-  }
-  if (base) layers.push({ script: 'base', label: 'base', ...partsOf(base) })
-  layers.push({ script: 'collection', label: 'collection', ...partsOf(input.collection) })
-  if (set) layers.push({ script: 'set', label: 'set', ...partsOf(set.doc) })
-  layers.push({ script: 'step', label: '', before: step.before, tests: step.tests })
+  const layers: Layer[] = requestLayers({
+    endpoint,
+    base,
+    collection: input.collection,
+    set: set?.doc,
+    step
+  }).map(({ kind, ...parts }) => ({ ...ROLES[kind], ...parts }))
   if (useChecksThis && set?.useTests)
     layers.push({ script: 'use', label: 'use', tests: set.useTests })
   // What the request is built from: every layer's headers and settings.

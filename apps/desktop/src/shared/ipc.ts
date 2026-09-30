@@ -7,6 +7,7 @@ import type {
   EnvironmentRef,
   FlagValue,
   HttpMethod,
+  LayerParts,
   LoadProblem,
   ParamSpec,
   ProjectDoc,
@@ -356,6 +357,8 @@ export interface LibraryFileView {
   title: string
   stepCount: number
   problem?: string | undefined
+  /** A base collection's headers, settings and scripts: a layer under a collection that extends it. */
+  layer?: LayerParts | undefined
 }
 
 /** An endpoint base, as a step is matched with it (SPEC.md §2.6). */
@@ -369,6 +372,11 @@ export interface EndpointView {
   /** What it brings: for the note under a step that uses it. */
   headers: string[]
   hasTests: boolean
+  /** Whether its file or the endpoint has a `before.script`. */
+  hasBefore: boolean
+  /** Its file's own headers, settings and scripts, then the endpoint's: two layers of a request under it. */
+  file: LayerParts
+  step: LayerParts
 }
 
 /** Why a folder could not be added as it is, when the person can do something about it. */
