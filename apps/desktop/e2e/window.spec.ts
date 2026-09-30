@@ -103,6 +103,9 @@ test('a size bigger than the screen gets all the room it has, still on it', asyn
   const shown = await layout()
   test.skip(!given, `the screen's work area is ${shown.workArea.width}×${shown.workArea.height}`)
   expect(onScreen(shown)).toBe(true)
-  expect(shown.bounds).toMatchObject({ width: shown.workArea.width, height: shown.workArea.height })
+  // All of it — but for a pixel each way where the work area is the whole
+  // screen, on X11, which keeps the window from being taken for full screen.
+  expect(shown.workArea.width - shown.bounds.width).toBeLessThanOrEqual(1)
+  expect(shown.workArea.height - shown.bounds.height).toBeLessThanOrEqual(1)
   expect(shown.viewport).toEqual(given)
 })
