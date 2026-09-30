@@ -1092,6 +1092,8 @@ export default function App() {
               onStepTags={(tags) => editor.patch({ tags })}
               stepForEach={request?.forEach ?? ''}
               onStepForEach={(forEach) => editor.patch({ forEach })}
+              stepUseTests={request?.useTests ?? false}
+              onStepUseTests={(useTests) => editor.patch({ useTests })}
               onCollectionTags={editor.setCollectionTags}
               onStepTagsEnabled={editor.setStepTagsEnabled}
               onCollectionExcluded={editor.setCollectionExcluded}

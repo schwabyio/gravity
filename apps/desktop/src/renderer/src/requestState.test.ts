@@ -92,3 +92,15 @@ describe('forEach in the editor', () => {
     expect(mergeIntoStep(use, state)).not.toHaveProperty('forEach')
   })
 })
+
+describe('useTests in the editor', () => {
+  it('reads a request set step’s mark, keeps it, and removes it when unticked', () => {
+    const original = StepSchema.parse({ GET: 'http://x/profile', useTests: true })
+    const state = fromStep(original)
+    expect(state.useTests).toBe(true)
+    expect(mergeIntoStep(original, state)).toEqual(original)
+    expect(mergeIntoStep(original, { ...state, useTests: false })).not.toHaveProperty('useTests')
+    const plain = StepSchema.parse({ GET: 'http://x/wait' })
+    expect(mergeIntoStep(plain, { ...fromStep(plain), useTests: true }).useTests).toBe(true)
+  })
+})

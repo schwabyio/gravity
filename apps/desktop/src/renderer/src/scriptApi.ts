@@ -143,8 +143,18 @@ export const REQ_API: ApiEntry[] = [
     info: 'URL: as sent in tests, as written in before.script.',
     type: 'property'
   },
-  { name: 'headers', signature: '', info: 'Headers by name.', type: 'property' },
-  { name: 'body', signature: '', info: 'Body text, or null.', type: 'property' }
+  {
+    name: 'headers',
+    signature: '',
+    info: 'Headers by name. In before.script, change them to change what is sent.',
+    type: 'property'
+  },
+  {
+    name: 'body',
+    signature: '',
+    info: 'Body text, or null. In before.script, set a json, xml, text or graphql body’s text to change what is sent.',
+    type: 'property'
+  }
 ]
 
 export const ASSERT_API: ApiEntry[] = [

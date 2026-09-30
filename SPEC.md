@@ -383,6 +383,7 @@ Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
 | `tags`     | list of tags | no       | The step's own tags. Only with `stepTags: true` on the collection (§2.4). |
 | `flags`    | map          | no       | Feature flags the step needs (§2.9).                                      |
 | `forEach`  | string       | no       | Send the request once for each item of a list (below).                    |
+| `useTests` | `true`       | no       | In a request set: the use step's `tests` check this response (§2.5).      |
 | `base`     | `false`      | no       | `false` leaves the step's endpoint base out (§2.6).                       |
 | `docs`     | string       | no       | Markdown.                                                                 |
 
@@ -630,10 +631,43 @@ without `use` is an error too.
   one.
 - **Layers.** Headers and settings: the collection's, under the set's, under each
   step's own. Scripts run collection, then set, then step: `before.script` before the
-  request and `tests` after. The use step's own `tests` run last, after the set's last
-  step.
+  request and `tests` after. The use step's own `tests` run last, on the response of
+  the set's step marked `useTests: true`, or else its last step.
 - **One level.** A request set must not `use:` another, and has `params`, not `vars`. A
   file in `requests/` without `params` is not a request set.
+
+**Saving under the caller's name.** A set can take the name to save a value under as a
+param, save it with `gta.set(params.saveAs, …)`, and read it back in its later steps
+with `{{@params.saveAs}}` (§4). The caller then reads it by the name it chose:
+
+```yaml
+# requests/create-user.yml
+params:
+  saveTokenAs: { required: true }
+steps:
+  - name: create token
+    POST: '{{authUrl}}/token'
+    tests: gta.set(params.saveTokenAs, res.body.accessToken)
+  - name: get profile
+    GET: '{{baseUrl}}/profile'
+    headers:
+      Authorization: Bearer {{@params.saveTokenAs}}
+    useTests: true # the use step's tests check this response
+  - name: wait for events
+    GET: '{{baseUrl}}/wait'
+```
+
+```yaml
+# a collection
+- use: create-user
+  name: user 1
+  with: { saveTokenAs: token1 }
+  tests: gta.expectResponseBodyToHaveProperty('email') # on get profile's response
+- GET: '{{baseUrl}}/orders'
+  headers: { Authorization: 'Bearer {{token1}}' }
+```
+
+Only one step of a set may have `useTests`, and only a set's steps.
 
 ### 2.6 Endpoint bases
 
@@ -1020,6 +1054,10 @@ to. Whitespace inside the braces is ignored. In code, read a variable with
 - **An unknown variable is an error**, never literal text. The step fails in its own
   `interpolate` phase, naming the variable, and nothing is sent. A reference loop, or a
   chain more than 16 deep, fails the same way.
+- **`{{@name}}` reads the variable `name` names.** With `saveAs: token1`,
+  `{{@saveAs}}` is the value of `token1`. The name may itself be built from variables.
+  A name that is not text, or names no variable, fails like an unknown variable. A
+  request set uses it to read what it saved under its caller's name (§2.5).
 - **In YAML, quote a value that starts with `{{`.** Unquoted, YAML reads `{` as a map.
 
 ### Built-in variables
@@ -1125,7 +1163,7 @@ xtest's military zone letters (`U` is -08:00, not UTC).
 | Global     | What it is                                                                                                                                                              |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `res`      | `tests` only: `status`, `statusText`, `headers` (lower-cased names), `header(name)`, `body` (parsed JSON, converted XML, or text), `text`, `time` (ms), `size` (bytes). |
-| `req`      | `method`, `url`, `headers`, `body`: as sent in `tests`, as written in `before.script`.                                                                                  |
+| `req`      | `method`, `url`, `headers`, `body`: as sent in `tests`, as written in `before.script`, where a script may change `headers` and `body` (below).                          |
 | `assert`   | Node's strict `assert`, for use inside `gta.test`.                                                                                                                      |
 | `console`  | Captured into the step's result.                                                                                                                                        |
 | `params`   | A request set's params (§2.5), in its own scripts and in the tests of the use step running it.                                                                          |
@@ -1142,6 +1180,24 @@ run the same on any machine, and a request belongs in a step, where it is record
 - A script that throws stops that script. It is reported with its line, and the step is
   marked as errored. Checks made before it are kept.
 - A script that runs for more than 10 seconds is stopped.
+
+**Changing the request in `before.script`.** `req` there is the request as written,
+`{{variables}}` still in it. A script may change it before it is sent, and a later
+`before.script` sees the change:
+
+```js
+const claims = JSON.parse(req.body)
+if (!params.crmContactId) delete claims.crm_contact_id // leave the member out
+req.body = JSON.stringify(claims)
+req.headers['X-Trace'] = '{{traceId}}'
+delete req.headers['X-Debug']
+```
+
+- `req.body` is text, and can be changed for a `json`, `xml`, `text` or `graphql` body.
+  A form, multipart or file body is built from its parts, so it cannot.
+- `req.headers` is a map of names to values: add, change or delete them.
+- Variables in what the script writes resolve afterwards, as in the file.
+- Anything else is a pre-request error, and nothing is sent.
 
 ### Check files
 
@@ -1270,6 +1326,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - There is no `expect:` key; checks go in `tests`.
 - `base` is only ever `false`.
 - `forEach` is a string, and a use step has none.
+- `useTests` is only ever `true`, only on a request set's step, and on one step at most.
 
 **Values**
 
@@ -1329,6 +1386,9 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - Every `use:` and `extends:` names a usable file, and every `with:` suits its set.
   `gta get` checks these without running anything (§1.3).
 - A step's `forEach` resolves to a JSON array.
+- In `{{@name}}`, `name` holds text naming a variable that exists.
+- A `before.script` sets `req.body` to text, and only for a `json`, `xml`, `text` or
+  `graphql` body; `req.headers` stays a map.
 - `gta.set`'s `scope`, when given, is `'run'`.
 
 ---

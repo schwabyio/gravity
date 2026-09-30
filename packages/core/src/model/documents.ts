@@ -237,6 +237,11 @@ export const StepSchema = z
      * `item` in code: `'{{roots}}'`, a variable holding a JSON array (SPEC.md §2.1).
      */
     forEach: z.string().min(1).optional(),
+    /**
+     * In a request set: the use step's own `tests` check this step's response,
+     * rather than the set's last (SPEC.md §2.5). At most one step has it.
+     */
+    useTests: z.literal(true).optional(),
     docs: z.string().optional(),
     headers: HeadersSchema.optional(),
     body: BodySchema.optional(),
@@ -325,6 +330,7 @@ const STEP_KEYS: ReadonlySet<string> = new Set([
   'tags',
   'flags',
   'forEach',
+  'useTests',
   'base',
   'docs'
 ])
@@ -491,6 +497,22 @@ export const CollectionSchema = z
             message: `a ${stage} step runs whenever its collection does, so it has no tags (SPEC.md §2.10)`
           })
         }
+      })
+    }
+    const marked = collection.steps.flatMap((step, index) => (step.useTests ? [index] : []))
+    if (marked.length > 0 && !collection.params) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['steps', marked[0]!, 'useTests'],
+        message:
+          "useTests marks the request set step whose response a use step's tests check; this collection has no params, so it is not a request set (SPEC.md §2.5)"
+      })
+    }
+    if (marked.length > 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['steps', marked[1]!, 'useTests'],
+        message: `only one step can have useTests; step ${marked[0]! + 1} has it already (SPEC.md §2.5)`
       })
     }
     if (collection.params) {

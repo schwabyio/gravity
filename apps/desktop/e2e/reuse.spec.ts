@@ -218,3 +218,30 @@ test('a request set is made in the app, and given params', async () => {
     .poll(() => YAML.parse(fs.readFileSync(file, 'utf8')).params, { timeout: 5_000 })
     .toEqual({ amount: 10 })
 })
+
+test('a request set’s step is marked as the one a use step’s tests check', async () => {
+  const file = path.join(shop, 'requests', 'orders.yml')
+  // The test before leaves the collection settings open.
+  const settings = page.getByRole('dialog', { name: 'Collection settings' })
+  if (await settings.isVisible()) await settings.getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('group', { name: 'Request sets of shop' }).getByText('orders').click()
+  await expect(page.locator('.collection-header h1')).toHaveText('orders')
+  const marker = page.getByRole('checkbox', { name: /A use step’s tests check this response/ })
+
+  await stepRow('add to cart').locator('.step-open').click()
+  await marker.check()
+  await expect
+    .poll(() => YAML.parse(fs.readFileSync(file, 'utf8')).steps[0].useTests, { timeout: 5_000 })
+    .toBe(true)
+
+  // One step at a time: another cannot take it while this one has it.
+  await stepRow('check out').locator('.step-open').click()
+  await expect(marker).toBeDisabled()
+  await expect(page.locator('.step-use-tests')).toContainText('step 1 has this')
+
+  await stepRow('add to cart').locator('.step-open').click()
+  await marker.uncheck()
+  await expect
+    .poll(() => YAML.parse(fs.readFileSync(file, 'utf8')).steps[0].useTests, { timeout: 5_000 })
+    .toBeUndefined()
+})

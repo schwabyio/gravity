@@ -215,6 +215,7 @@ export const STEP_KEY_ORDER = [
   'forEach',
   'tags',
   'flags',
+  'useTests',
   'base',
   'docs',
   'headers',

@@ -277,6 +277,24 @@ describe('previewVariables', () => {
     expect(previews['$uuid']).toEqual({ value: null, origin: 'built-in', kind: 'dynamic' })
   })
 
+  it('previews {{@name}} as the variable it names, hiding a secret, dynamic when unknown yet', async () => {
+    const previews = await previewVariables(step('{{@which}}/{{@secretName}}/{{@later}}'), {
+      ...context(collectionPath, 'demo', { apiKey: 'super-secret' }),
+      collectionVars: { which: 'baseUrl', secretName: 'apiKey', later: 'setInTests' }
+    })
+    expect(previews['@which']).toEqual({
+      value: 'https://demo.test',
+      origin: 'the variable which names',
+      kind: 'static'
+    })
+    expect(previews['@secretName']).toEqual({
+      value: null,
+      origin: 'the variable secretName names',
+      kind: 'secret'
+    })
+    expect(previews['@later']?.kind).toBe('dynamic')
+  })
+
   it('omits an unknown variable so the editor can grey it out', async () => {
     const previews = await previewVariables(
       step('{{nope}}'),

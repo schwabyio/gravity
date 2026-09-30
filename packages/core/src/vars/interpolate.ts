@@ -83,6 +83,7 @@ function resolveString(
 }
 
 function resolveName(name: string, scope: VariableScope, seen: string[]): VarValue {
+  if (name.length > 1 && name.startsWith('@')) return resolveNamed(name, scope, seen)
   const builtIn = BUILT_INS[name]
   if (builtIn) return builtIn()
 
@@ -100,6 +101,38 @@ function resolveName(name: string, scope: VariableScope, seen: string[]): VarVal
     REFERENCE.lastIndex = 0
   }
   return value
+}
+
+/**
+ * `{{@holder}}`: the variable whose name `holder` holds (SPEC.md §4), so a
+ * request set can read back what it saved under a name its caller chose:
+ * `{{@params.saveTokenAs}}`. The name itself may be built from variables.
+ */
+function resolveNamed(name: string, scope: VariableScope, seen: string[]): VarValue {
+  const holder = name.slice(1)
+  const through = [...seen, name]
+  const held = resolveName(holder, scope, through)
+  const target =
+    typeof held === 'string' ? resolveString(held, scope, [...through, holder], {}) : held
+  if (typeof target !== 'string' || target.trim() === '') {
+    throw new InterpolationError(
+      `{{${name}}} reads the variable ${holder} names, but ${holder} is ${JSON.stringify(target)}, not a variable name`,
+      holder
+    )
+  }
+  if (through.includes(target)) {
+    throw new InterpolationError(
+      `Variable "${target}" refers to itself: ${[...through, target].join(' -> ')}`,
+      target
+    )
+  }
+  if (!BUILT_INS[target] && !target.startsWith('@') && !scope.has(target)) {
+    throw new InterpolationError(
+      `Variable "${target}", which {{${name}}} names, is not defined in this environment.`,
+      target
+    )
+  }
+  return resolveName(target, scope, through)
 }
 
 /** Walk a structure, interpolating every string in it. */

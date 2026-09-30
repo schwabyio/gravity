@@ -86,6 +86,18 @@ export async function previewVariables(
       previews[name] = { value: null, origin: 'pre-request script', kind: 'dynamic' }
     }
   }
+  // `{{@holder}}` names its variable as the step runs: known now only when the name is.
+  for (const name of referencedVariables(step).filter((ref) => ref.startsWith('@'))) {
+    const origin = `the variable ${name.slice(1)} names`
+    const target = safeInterpolate(`{{${name.slice(1)}}}`, scope)
+    const value = safeInterpolate(`{{${name}}}`, scope)
+    previews[name] =
+      target !== null && scope.isSecret(target)
+        ? { value: null, origin, kind: 'secret' }
+        : value === null
+          ? { value: null, origin, kind: 'dynamic' }
+          : { value, origin, kind: 'static' }
+  }
   return previews
 }
 

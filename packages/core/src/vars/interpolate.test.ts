@@ -76,6 +76,33 @@ describe('interpolate', () => {
   })
 })
 
+describe('{{@name}}: the variable a name holds', () => {
+  it('reads the variable whose name another holds, keeping its type', () => {
+    const scope = scopeOf({ saveAs: 'accessToken1', accessToken1: 'tok-1', countAs: 'n', n: 3 })
+    expect(interpolate('Bearer {{@saveAs}}', scope)).toBe('Bearer tok-1')
+    expect(interpolate('{{@countAs}}', scope)).toBe(3)
+  })
+
+  it('takes a name built from variables, and one that names a built-in', () => {
+    const scope = scopeOf({ which: 'token{{n}}', n: 2, token2: 'second', random: '$uuid' })
+    expect(interpolate('{{@which}}', scope)).toBe('second')
+    expect(interpolate('{{@random}}', scope)).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it('says which name failed: the holder, what it holds, or what that names', () => {
+    const scope = scopeOf({ empty: '', count: 3, saveAs: 'accessToken1', self: '@self' })
+    expect(() => interpolate('{{@missing}}', scope)).toThrow('Variable "missing" is not defined')
+    expect(() => interpolate('{{@count}}', scope)).toThrow(
+      '{{@count}} reads the variable count names, but count is 3, not a variable name'
+    )
+    expect(() => interpolate('{{@empty}}', scope)).toThrow('but empty is "", not a variable name')
+    expect(() => interpolate('{{@saveAs}}', scope)).toThrow(
+      'Variable "accessToken1", which {{@saveAs}} names, is not defined in this environment.'
+    )
+    expect(() => interpolate('{{@self}}', scope)).toThrow(/refers to itself/)
+  })
+})
+
 describe('built-in variables', () => {
   it('generates a uuid per reference', () => {
     const scope = scopeOf({})

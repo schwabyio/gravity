@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import { CheckSession } from '../assert/session.js'
 import { sendHttpRequest } from '../http/client.js'
-import type { Collection, Step, VarValue } from '../model/documents.js'
+import type { Body, Collection, Step, VarValue } from '../model/documents.js'
 import {
   isUseStep,
   mergeHeaders,
@@ -118,7 +118,7 @@ export interface SetRun {
   /** Which of its steps this is, 0-based, and how many it has. */
   child: number
   of: number
-  /** The use step's own `tests`, run after the set's last step. */
+  /** The use step's own `tests`, run on the step marked `useTests`, else the set's last. */
   useTests?: string | undefined
 }
 
@@ -267,7 +267,9 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
         }
       : {})
   })
-  const last = set ? set.child === set.of - 1 : false
+  // The use step's own checks look at the step marked `useTests`, else the set's last.
+  const marked = set ? set.doc.steps.findIndex((s) => s.useTests === true) : -1
+  const useChecksThis = set ? set.child === (marked >= 0 ? marked : set.of - 1) : false
   const layers: Layer[] = []
   if (endpoint) {
     layers.push({
@@ -287,8 +289,8 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   layers.push({ script: 'collection', label: 'collection', ...partsOf(input.collection) })
   if (set) layers.push({ script: 'set', label: 'set', ...partsOf(set.doc) })
   layers.push({ script: 'step', label: '', before: step.before, tests: step.tests })
-  // The use step's own checks come after the whole set has run.
-  if (last && set?.useTests) layers.push({ script: 'use', label: 'use', tests: set.useTests })
+  if (useChecksThis && set?.useTests)
+    layers.push({ script: 'use', label: 'use', tests: set.useTests })
   // What the request is built from: every layer's headers and settings.
   const collection = folded(layers, input.collection)
   const failed = (error: RunError) => ({
@@ -321,28 +323,36 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   const filenameOf = (layer: Layer, kind: 'before.script' | 'tests') =>
     layer.label === '' ? kind : `${layer.label} ${kind}`
 
+  /** The request as written, with what the scripts changed of its body and headers. */
+  let edited: SentRequest | null = null
   // Outermost first, so each may build on what came before.
   for (const layer of layers) {
     const before = layer.before
     const script = layer.script
     if (before?.script) {
+      const shown: SentRequest = edited ?? toSentRequestSafely(step, collection)
+      let view: RequestView | undefined
       const error = await runScript(before.script, {
         phase: 'pre-request',
         filename: filenameOf(layer, 'before.script'),
         logs,
         ...(checks ? { checks } : {}),
-        globals: (adopt) => ({
-          ...shared(adopt),
-          gta: preRequestGta(scope, control),
-          req: requestView(toSentRequestSafely(step, collection), adopt)
-        })
+        globals: (adopt) => {
+          view = requestView(shown, adopt)
+          return { ...shared(adopt), gta: preRequestGta(scope, control), req: view }
+        }
       })
       if (error) return failed({ ...error, script })
+      try {
+        edited = changedRequest(shown, view, step.body) ?? edited
+      } catch (cause) {
+        return failed({ phase: 'pre-request', message: (cause as Error).message, script })
+      }
       // `gta.skip`: nothing is sent, and no later script runs.
       if (control.skip !== null) {
         return {
           item,
-          request: toSentRequestSafely(step, collection),
+          request: edited ?? toSentRequestSafely(step, collection),
           response: null,
           assertions: [],
           ...withLogs(),
@@ -358,7 +368,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   let payload: Uint8Array | null
   try {
     const prepared = await prepareRequest(
-      toSentRequest(step, collection),
+      edited ?? toSentRequest(step, collection),
       step.body,
       scope,
       filesRoot(set?.path ?? context?.collectionPath ?? itemPath)
@@ -449,6 +459,49 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
     status: deriveStatus(checked.assertions, testsError, true),
     durationMs: performance.now() - startedHr
   }
+}
+
+/** What a `before.script` sees of the request, and may change: `req`. */
+type RequestView = { body?: unknown; headers?: unknown }
+
+/**
+ * What a `before.script` changed of the request it is about to send, which is
+ * still as written, `{{variables}}` and all (SPEC.md §5): its body, when that
+ * is text of the step's own, and its headers. Null when it changed neither.
+ */
+function changedRequest(
+  shown: SentRequest,
+  view: RequestView | undefined,
+  body: Body | undefined
+): SentRequest | null {
+  if (!view) return null
+  let next: SentRequest | null = null
+  if (view.body !== shown.body) {
+    if (typeof view.body !== 'string') {
+      throw new Error(`req.body is the body's text; a script set it to ${typeof view.body}`)
+    }
+    const text = body?.json ?? body?.xml ?? body?.text ?? body?.graphql
+    if (text === undefined) {
+      throw new Error(
+        'req.body can be changed for a json, xml, text or graphql body; a form, multipart or file body is built from its parts, and a step with no body has none to change'
+      )
+    }
+    next = { ...shown, body: view.body }
+  }
+  const was = Object.fromEntries(shown.headers.map((header) => [header.name, header.value]))
+  if (JSON.stringify(view.headers) !== JSON.stringify(was)) {
+    const headers = view.headers
+    if (headers === null || typeof headers !== 'object' || Array.isArray(headers)) {
+      throw new Error('req.headers is a map of header names to their values')
+    }
+    next = {
+      ...(next ?? shown),
+      headers: Object.entries(headers)
+        .filter(([, value]) => value !== undefined && value !== null)
+        .map(([name, value]) => ({ name, value: String(value) }))
+    }
+  }
+  return next
 }
 
 /**

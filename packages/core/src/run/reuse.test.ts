@@ -107,6 +107,27 @@ beforeAll(async () => {
     `id: typo\nparams:\n  who: '{{nobody}}'\nsteps:\n  - GET: "${origin}/typo/{{params.who}}"\n`
   )
   await write(
+    path.join(shop, 'requests', 'user.yml'),
+    [
+      'id: user',
+      'params:',
+      '  saveTokenAs: { required: true }',
+      'steps:',
+      '  - name: token',
+      `    POST: "${origin}/token"`,
+      '    tests: |',
+      '      gta.set(params.saveTokenAs, res.body.token)',
+      '  - name: profile',
+      `    GET: "${origin}/profile"`,
+      '    headers:',
+      "      Authorization: 'Bearer {{@params.saveTokenAs}}'",
+      '    useTests: true',
+      '  - name: wait',
+      `    GET: "${origin}/wait"`,
+      ''
+    ].join('\n')
+  )
+  await write(
     path.join(shop, 'requests', 'not-a-set.yml'),
     `id: not-a-set\nsteps:\n  - GET: "${origin}/x"\n`
   )
@@ -164,6 +185,7 @@ describe('finding what a project can reuse', () => {
       'project:not-a-set',
       'project:orders/place',
       'project:typo',
+      'project:user',
       'global:ping'
     ])
   })
@@ -418,6 +440,49 @@ describe('a set’s params', () => {
   it('skips a use its flags rule out, whatever its params', async () => {
     const { summary } = await run([{ use: 'loop', flags: { beta: true } }], {}, { beta: false })
     expect(summary.results.map((result) => result.status)).toEqual(['skipped', 'skipped'])
+  })
+})
+
+describe('a set that saves under the caller’s name, and checks a step of its choosing', () => {
+  it('reads back what it saved with {{@params.x}}, and runs the use step’s tests on the marked step', async () => {
+    const { summary, reported } = await run([
+      {
+        use: 'user',
+        name: 'user 1',
+        with: { saveTokenAs: 'accessToken1' },
+        tests: "gta.expectResponseBodyToHaveProperty('url', '/profile')"
+      },
+      { name: 'after', GET: `${origin}/after/{{accessToken1}}` }
+    ])
+    expect(seen.map((request) => request.url)).toEqual([
+      '/token',
+      '/profile',
+      '/wait',
+      '/after/tok-1'
+    ])
+    expect(seen[1]?.headers.authorization).toBe('Bearer tok-1')
+    expect(reported.map(([, result]) => [result.item.name, result.assertions.length])).toEqual([
+      ['token', 0],
+      ['profile', 1],
+      ['wait', 0],
+      ['after', 0]
+    ])
+    expect(summary).toMatchObject({ total: 4, passed: 4 })
+  })
+
+  it('refuses useTests outside a request set, and on two steps of one', () => {
+    expect(() => CollectionSchema.parse({ steps: [{ GET: 'http://x', useTests: true }] })).toThrow(
+      /useTests marks the request set step .* not a request set/
+    )
+    expect(() =>
+      CollectionSchema.parse({
+        params: {},
+        steps: [
+          { GET: 'http://x/1', useTests: true },
+          { GET: 'http://x/2', useTests: true }
+        ]
+      })
+    ).toThrow('only one step can have useTests; step 1 has it already')
   })
 })
 

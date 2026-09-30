@@ -62,6 +62,11 @@ export interface EditorState {
    * `{{roots}}`, or a JSON array. Empty for none; a use step never has one.
    */
   forEach: string
+  /**
+   * In a request set: the use step's own tests check this step's response
+   * rather than the set's last (SPEC.md §2.5).
+   */
+  useTests: boolean
   /** The step's own settings; anything absent is inherited from the collection. */
   settings: Settings
   /**
@@ -116,6 +121,7 @@ export const emptyRequest = (): EditorState => ({
   tags: [],
   flags: {},
   forEach: '',
+  useTests: false,
   settings: {},
   use: null,
   with: {},
@@ -307,6 +313,7 @@ export function fromStep(step: Step): EditorState {
     tags: step.tags ?? [],
     flags: step.flags ?? {},
     forEach: step.forEach ?? '',
+    useTests: step.useTests === true,
     settings: step.settings ?? {},
     use: null,
     with: {},
@@ -381,6 +388,9 @@ export function mergeIntoStep(original: Step, edited: EditorState): Step {
 
   if (edited.forEach.trim() === '') delete next['forEach']
   else next['forEach'] = edited.forEach
+
+  if (edited.useTests) next['useTests'] = true
+  else delete next['useTests']
 
   const settings = Object.fromEntries(
     Object.entries(edited.settings).filter(([, value]) => value !== undefined)

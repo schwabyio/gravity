@@ -4565,3 +4565,17 @@ section[aria-labelledby='project-eol-title'] button {
   font-size: 11px;
   color: var(--text-dim);
 }
+
+/* A request set's step: whether a use step's own tests check its response. */
+.step-use-tests {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.step-use-tests .hint {
+  font-size: 11px;
+}

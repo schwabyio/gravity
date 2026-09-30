@@ -87,6 +87,9 @@ interface Props {
   /** The selected step's `forEach`, as the editor holds it (SPEC.md §2.1). */
   stepForEach: string
   onStepForEach: (forEach: string) => void
+  /** In a request set: whether the use step's tests check the selected step (SPEC.md §2.5). */
+  stepUseTests: boolean
+  onStepUseTests: (useTests: boolean) => void
   onCollectionTags: (tags: string[]) => void
   onStepTagsEnabled: (enabled: boolean) => void
   onCollectionExcluded: (excluded: boolean) => void
@@ -423,6 +426,15 @@ export default function CollectionView(props: Props) {
               onCopyVariable={props.onCopyVariable}
             />
           )}
+          {selectedStep && props.collection.params && props.selectedList === 'steps' && (
+            <UseTestsToggle
+              on={props.stepUseTests}
+              onChange={props.onStepUseTests}
+              markedElsewhere={props.collection.steps.findIndex(
+                (step, index) => step.useTests === true && index !== props.selectedIndex
+              )}
+            />
+          )}
         </div>
 
         {summary && !props.runningAll && (
@@ -587,6 +599,38 @@ export default function CollectionView(props: Props) {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * In a request set, which step's response a use step's own tests check
+ * (SPEC.md §2.5): this one, when ticked, else the set's last. One step at a
+ * time, so it cannot be ticked while another step has it.
+ */
+function UseTestsToggle(props: {
+  on: boolean
+  onChange: (on: boolean) => void
+  /** Another step that has it, by index; -1 for none. */
+  markedElsewhere: number
+}) {
+  const taken = props.markedElsewhere >= 0 && !props.on
+  return (
+    <label className="step-use-tests">
+      <input
+        type="checkbox"
+        checked={props.on}
+        disabled={taken}
+        onChange={(event) => props.onChange(event.currentTarget.checked)}
+      />
+      A use step’s tests check this response
+      <span className="hint">
+        {taken
+          ? ` — step ${props.markedElsewhere + 1} has this; untick it there first`
+          : props.on
+            ? ''
+            : ' — otherwise they check the last step’s'}
+      </span>
+    </label>
   )
 }
 
