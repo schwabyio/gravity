@@ -1802,6 +1802,23 @@ body.resizing * {
   transform: translate(-50%, -100%);
 }
 
+/* A few lines on what a control does: a title, then what to know. */
+.tooltip.wide {
+  max-width: 320px;
+  padding: 8px 11px;
+}
+
+.tip-title {
+  display: block;
+  font-weight: 600;
+}
+
+.tip-line {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-dim);
+}
+
 .body-lines {
   margin: 0;
   padding: 4px 0;

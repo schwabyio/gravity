@@ -82,6 +82,27 @@ test('every icon-only button is explained on hover', async () => {
   }
 })
 
+test('each way of adding projects says what it does, inside the window', async () => {
+  const cases: Array<[string, string, RegExp]> = [
+    ['+ Project', 'Add a project folder', /is added as a shared project/],
+    ['+ Monorepo', 'Add every project in a folder', /up to six levels down/],
+    ['+ Clone', 'Clone a git repository and add it', /choose the folder to clone into/]
+  ]
+  const width = await page.evaluate(
+    () => (globalThis as unknown as { innerWidth: number }).innerWidth
+  )
+  for (const [name, title, detail] of cases) {
+    await page.mouse.move(0, 0)
+    await page.getByRole('button', { name, exact: true }).hover()
+    await expect(tip().locator('.tip-title')).toHaveText(title)
+    await expect(tip()).toContainText(detail)
+    // Wider than the button is from the window's edge, it is moved in rather than cut off.
+    const box = (await tip().boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(7)
+    expect(box.x + box.width).toBeLessThanOrEqual(width - 7)
+  }
+})
+
 test('the Pull explanation says why it is unavailable', async () => {
   // A repository with no remote has nothing to pull from, changes or not.
   fs.appendFileSync(path.join(tmp, 'r', 'collections', 'c.yml'), '\n')

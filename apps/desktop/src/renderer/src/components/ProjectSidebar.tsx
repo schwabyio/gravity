@@ -177,24 +177,25 @@ export default function ProjectSidebar(props: Props) {
       </div>
 
       <div className="sidebar-actions">
-        <button type="button" onClick={props.onAddProject} title="Add a project folder">
-          + Project
-        </button>
-        <button
-          type="button"
-          onClick={props.onAddProjectsIn}
-          title="Add every project in a folder — a monorepo, or a folder of repositories"
-        >
-          + Monorepo
-        </button>
-        <button
-          type="button"
-          onClick={() => setCloning(!cloning)}
-          title="Clone a repository"
-          disabled={props.cloning !== null}
-        >
-          + Clone
-        </button>
+        <Tooltip wide text={<AddTip {...ADD_TIPS.project} />}>
+          <button type="button" onClick={props.onAddProject}>
+            + Project
+          </button>
+        </Tooltip>
+        <Tooltip wide text={<AddTip {...ADD_TIPS.monorepo} />}>
+          <button type="button" onClick={props.onAddProjectsIn}>
+            + Monorepo
+          </button>
+        </Tooltip>
+        <Tooltip wide text={<AddTip {...ADD_TIPS.clone} />}>
+          <button
+            type="button"
+            onClick={() => setCloning(!cloning)}
+            disabled={props.cloning !== null}
+          >
+            + Clone
+          </button>
+        </Tooltip>
       </div>
 
       {cloning && (
@@ -465,3 +466,42 @@ const usersOf = (project: ProjectView, projects: ProjectView[]): string[] =>
   projects
     .filter((other) => other.global && pathKey(other.global.path) === pathKey(project.path))
     .map((other) => other.name)
+
+/** What each way of adding projects does: the tooltip over its button. */
+const ADD_TIPS = {
+  project: {
+    title: 'Add a project folder',
+    lines: [
+      'A project is a folder holding collections/ — a service’s repository, or a folder in one.',
+      'A folder with no collections/ but other project files, such as project.yml or requests/, is added as a shared project.',
+      'Choose a monorepo’s root to be offered every project in it; choose any other folder to make it a project.'
+    ]
+  },
+  monorepo: {
+    title: 'Add every project in a folder',
+    lines: [
+      'Searches the folder you choose — a monorepo, or a folder of repositories — up to six levels down, and adds each folder holding collections/, with the shared projects they use.',
+      'node_modules, dot-folders and build output are skipped. Projects already here stay as they are.'
+    ]
+  },
+  clone: {
+    title: 'Clone a git repository and add it',
+    lines: [
+      'Enter its URL, then choose the folder to clone into.',
+      'Every project in the clone is added. A repository with none becomes one project, with collections/ made for it.'
+    ]
+  }
+}
+
+function AddTip({ title, lines }: { title: string; lines: string[] }) {
+  return (
+    <>
+      <span className="tip-title">{title}</span>
+      {lines.map((line) => (
+        <span key={line} className="tip-line">
+          {line}
+        </span>
+      ))}
+    </>
+  )
+}

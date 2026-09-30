@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { cloneElement, type ReactElement } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { cloneElement, type ReactElement, type ReactNode } from 'react'
+
+/** How close a tooltip may come to the window's edge. */
+const EDGE = 8
 
 interface Props {
-  /** What the control does, in a few words. */
-  text: string
+  /** What the control does, in a few words — or a title and a few lines, for a `wide` one. */
+  text: ReactNode
+  /** Room for a few lines of explanation, rather than a few words. */
+  wide?: boolean
   /** The control itself. Its accessible name is left alone. */
   children: ReactElement<Record<string, unknown>>
   /** Milliseconds of hover before it appears. Focus shows it at once. */
@@ -17,7 +22,8 @@ interface Position {
 }
 
 /**
- * A hover and focus explanation for a control with no visible text.
+ * A hover and focus explanation for a control with no visible text, or one
+ * whose few words cannot say all it does.
  *
  * Preferred over the native `title` attribute, which waits about a second,
  * renders in the OS style regardless of theme, and never appears for keyboard
@@ -31,9 +37,10 @@ interface Position {
  * is attached with `aria-describedby`, so screen readers hear the name first and
  * the explanation after.
  */
-export default function Tooltip({ text, children, delay = 350 }: Props) {
+export default function Tooltip({ text, wide = false, children, delay = 350 }: Props) {
   const id = useId()
   const triggerRef = useRef<HTMLSpanElement>(null)
+  const tipRef = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [position, setPosition] = useState<Position | null>(null)
 
@@ -55,6 +62,29 @@ export default function Tooltip({ text, children, delay = 350 }: Props) {
   }, [])
 
   useEffect(() => () => clearTimeout(timer.current), [])
+
+  // Placed before its size is known, a tooltip by the window's edge would run
+  // off it: moved in from the side, or above its trigger, before it paints.
+  useLayoutEffect(() => {
+    const tip = tipRef.current
+    if (!tip || !position) return
+    const { left, right, bottom } = tip.getBoundingClientRect()
+    const shift = Math.round(
+      left < EDGE
+        ? EDGE - left
+        : right > window.innerWidth - EDGE
+          ? window.innerWidth - EDGE - right
+          : 0
+    )
+    const flip = !position.above && bottom > window.innerHeight - EDGE
+    if (shift === 0 && !flip) return
+    const trigger = triggerRef.current?.firstElementChild ?? triggerRef.current
+    setPosition({
+      left: position.left + shift,
+      top: flip && trigger ? Math.round(trigger.getBoundingClientRect().top - 8) : position.top,
+      above: position.above || flip
+    })
+  }, [position])
 
   // A tooltip left hanging over the page is worse than none, so anything that
   // takes attention elsewhere dismisses it.
@@ -93,9 +123,10 @@ export default function Tooltip({ text, children, delay = 350 }: Props) {
 
       {position && (
         <div
+          ref={tipRef}
           id={id}
           role="tooltip"
-          className={`tooltip${position.above ? ' above' : ''}`}
+          className={`tooltip${wide ? ' wide' : ''}${position.above ? ' above' : ''}`}
           style={{ left: position.left, top: position.top }}
         >
           {text}
