@@ -30,7 +30,13 @@ const BODY = {
     { licenseKey: 'k1', modules: { '': { params: { edition: 'maker' } } } },
     { licenseKey: 'k2', modules: { '': { params: { edition: 'basic' } } } }
   ],
-  byId: { '7': { city: 'Sacramento' } }
+  byId: { '7': { city: 'Sacramento' } },
+  people: [{ name: 'Ada', phone: null }],
+  // The same description twice: only the org tells the items apart.
+  values: [
+    { field: 'tier', value: 'gold', org: 'o1' },
+    { field: 'tier', value: 'gold', org: 'o2' }
+  ]
 }
 
 let server: http.Server
@@ -38,6 +44,16 @@ let origin: string
 
 beforeAll(async () => {
   server = http.createServer((req, res) => {
+    if (req.url === '/download') {
+      res.writeHead(200, { 'content-type': 'application/octet-stream' })
+      res.end(Buffer.from([0x00, 0xff, 0x10]))
+      return
+    }
+    if (req.url === '/page') {
+      res.writeHead(200, { 'content-type': 'text/html' })
+      res.end('<html><body>Hello</body></html>')
+      return
+    }
     res.writeHead(200, { 'content-type': 'application/json', 'x-request-id': 'abc-123' })
     res.end(JSON.stringify({ ...BODY, url: req.url }))
   })
@@ -298,6 +314,114 @@ describe('paths given as a list of keys, as xtest took them', () => {
       ],
       ['pass', undefined]
     ])
+  })
+})
+
+describe('where xtest’s reading differs by strict validation, or was lenient', () => {
+  const notJoined = (value: string) =>
+    `[{ pathToProperty: 'description', expectedValue: ${value}, specialHandling: 'notThisExpectedValue' }]`
+
+  it('reads a lone notThisExpectedValue entry as “no item has it” without strict validation', async () => {
+    const result = await run(`
+      gta.expectResponseBodyToHaveUnorderedArray('empty', ${notJoined("'Savings'")})
+      gta.expectResponseBodyToHaveUnorderedArray('account', ${notJoined("'Savings'")})
+      gta.expectResponseBodyToHaveUnorderedArray('account', ${notJoined('/^Brok/')})
+    `)
+    expect(statuses(result)).toEqual(['pass', 'fail', 'pass'])
+    expect(result.assertions[1]).toMatchObject({
+      name: 'account does not contain {"description":"Savings"}',
+      message: 'Must not contain: {"description":"Savings"}'
+    })
+  })
+
+  it('reads it as one item with another value under strict validation, turned on after it', async () => {
+    const result = await run(`
+      gta.expectResponseBodyToHaveUnorderedArray('empty', ${notJoined("'Savings'")})
+      gta.expectResponseBodyToHaveUnorderedArray('account', ${notJoined("'Savings'")})
+      gta.useStrictValidation(true)
+    `)
+    expect(statuses(result).slice(0, 2)).toEqual(['fail', 'pass'])
+    expect(result.assertions[0]?.message).toMatch(/^Missing from the array/)
+    const strict = result.assertions.find((a) => a.target === 'strict')!
+    // The item it matched is accounted for: the Checking account's description.
+    expect(strict.unasserted).not.toContain('account[1].description')
+  })
+
+  it('takes a RegExp compareValue in …NotThisItem', async () => {
+    const result = await run(`
+      gta.expectResponseBodyToHaveUnorderedArrayNotThisItem('account', [{ pathToProperty: 'description', compareValue: /^Sav/ }])
+      gta.expectResponseBodyToHaveUnorderedArrayNotThisItem('account', [{ pathToProperty: 'description', compareValue: /^Brok/ }])
+    `)
+    expect(statuses(result)).toEqual(['fail', 'pass'])
+  })
+
+  it('reads a path that runs into a null as that null, for a check that it is null', async () => {
+    const result = await run(`
+      gta.expectResponseBodyToHaveProperty('null.value.number', null)
+      gta.expectResponseBodyToHaveUnorderedArray('people', [
+        { pathToProperty: 'name', expectedValue: 'Ada' },
+        { pathToProperty: 'phone.number', expectedValue: null }
+      ])
+      gta.expectResponseBodyToHaveProperty('null.value.number', 'x')
+      gta.expectResponseBodyToHaveProperty('null.value.number')
+      gta.expectResponseBodyToHaveProperty('missing.number', null)
+    `)
+    expect(statuses(result)).toEqual(['pass', 'pass', 'fail', 'fail', 'fail'])
+    expect(result.assertions[0]?.actual).toBe('null')
+  })
+
+  it('prefers an item an earlier call did not match, so the same description finds the next', async () => {
+    const tier = (into: string) =>
+      `gta.expectResponseBodyToHaveUnorderedArray('values', [
+        { pathToProperty: 'field', expectedValue: 'tier' },
+        { pathToProperty: 'value', expectedValue: 'gold' },
+        { pathToProperty: 'org', expectedValue: '${into}', specialHandling: 'setAsCollectionVariable' }
+      ])`
+    const result = await run(`
+      gta.useStrictValidation(true)
+      ${tier('first')}
+      ${tier('second')}
+      gta.test('each call took its own item', () => {
+        assert.equal(gta.get('first'), 'o1')
+        assert.equal(gta.get('second'), 'o2')
+      })
+    `)
+    expect(named(result, 'each call').status).toBe('pass')
+    const strict = result.assertions.find((a) => a.target === 'strict')!
+    expect(strict.unasserted).not.toContain('values[0].org')
+    expect(strict.unasserted).not.toContain('values[1].org')
+  })
+
+  it('starts over after a sort, whose indexes name other items', async () => {
+    const result = await run(`
+      gta.expectResponseBodyToHaveUnorderedArray('values', [
+        { pathToProperty: 'org', expectedValue: 'first', specialHandling: 'setAsCollectionVariable' }
+      ])
+      gta.sortResponseBodyArrays('org')
+      gta.expectResponseBodyToHaveUnorderedArray('values', [
+        { pathToProperty: 'org', expectedValue: 'again', specialHandling: 'setAsCollectionVariable' }
+      ])
+      gta.test('both took the first item', () => {
+        assert.equal(gta.get('first'), 'o1')
+        assert.equal(gta.get('again'), 'o1')
+      })
+    `)
+    expect(named(result, 'both took').status).toBe('pass')
+  })
+
+  it('passes strict validation on a body it cannot read, binary or HTML', async () => {
+    for (const where of ['download', 'page']) {
+      const result = await run('gta.useStrictValidation(true)', { GET: `${origin}/${where}` })
+      expect(result.assertions).toEqual([
+        { name: 'Strict: every body property is asserted', status: 'pass', target: 'strict' }
+      ])
+    }
+    const checked = await run(
+      `gta.useStrictValidation(true)
+      gta.expectResponseBodyToHaveProperty('x')`,
+      { GET: `${origin}/download` }
+    )
+    expect(checked.assertions[0]).toMatchObject({ name: 'Response body', status: 'fail' })
   })
 })
 

@@ -1,9 +1,11 @@
 import { bodyAsObject } from '../model/bodyObject.js'
-import { parsePath, resolvePath, sortArraysBy } from '../model/path.js'
+import { parsePath, sortArraysBy } from '../model/path.js'
 import type { AssertionResult } from '../model/run.js'
 import {
   checkBody,
   checkScalarTarget,
+  isNullCheck,
+  locate,
   type CheckMatcher,
   type Coverage,
   type CheckContext,
@@ -30,6 +32,13 @@ export class CheckSession {
   /** While true, checks recorded are defaults: an endpoint base's (SPEC.md §2.6). */
   private recordingDefaults = false
   private readonly defaults = new Set<AssertionResult>()
+  /** Checks whose meaning waits on strict validation: what each would be with it on. */
+  private readonly byStrictness: Array<{
+    assertion: AssertionResult
+    strict: { assertion: AssertionResult; covered: Coverage[] }
+  }> = []
+  /** Items of each array unordered checks matched, by the array's path. */
+  private readonly claims = new Map<string, Set<number>>()
 
   constructor(private readonly context: CheckContext) {}
 
@@ -49,6 +58,8 @@ export class CheckSession {
     if (properties.length === 0) return
     this.sortKeys = [...properties, ...this.sortKeys]
     this.sorted = undefined
+    // An index an earlier check matched names another item now.
+    this.claims.clear()
   }
 
   status(matcher: CheckMatcher) {
@@ -72,9 +83,37 @@ export class CheckSession {
     const body = this.body_()
     if (body === BODY_UNAVAILABLE) return null
     const segments = parsePath(path)
-    const result = checkBody(path, segments, matcher, resolvePath(body, segments), this.context)
+    const located = locate(body, segments, isNullCheck(matcher))
+    const result = checkBody(path, segments, matcher, located, {
+      ...this.context,
+      claimed: (arrayPath) => this.claimsOn(arrayPath)
+    })
     this.covered.push(...result.covered)
     return this.record(result.assertion)
+  }
+
+  /**
+   * A body check that means one thing under strict validation and another
+   * without, as xtest's lone `notThisExpectedValue` entry did (SPEC.md §3).
+   * Both are checked now, against the body as it is now, and `finish()` keeps
+   * the one the step's last word on strict validation asks for.
+   */
+  bodyByStrictness(path: string, matchers: { strict: CheckMatcher; lenient: CheckMatcher }) {
+    const body = this.body_()
+    if (body === BODY_UNAVAILABLE) return null
+    const segments = parsePath(path)
+    const located = locate(body, segments, false)
+    const strict = checkBody(path, segments, matchers.strict, located, this.context)
+    const lenient = checkBody(path, segments, matchers.lenient, located, this.context)
+    const assertion = this.record(lenient.assertion)
+    this.byStrictness.push({ assertion, strict })
+    return assertion
+  }
+
+  private claimsOn(arrayPath: string): Set<number> {
+    let claimed = this.claims.get(arrayPath)
+    if (!claimed) this.claims.set(arrayPath, (claimed = new Set()))
+    return claimed
   }
 
   /** Account for a path under strict validation without asserting anything. */
@@ -120,9 +159,18 @@ export class CheckSession {
   }
 
   finish(): CheckOutcome {
+    if (this.strict) {
+      for (const { assertion, strict } of this.byStrictness) {
+        for (const key of Object.keys(assertion)) delete (assertion as Record<string, unknown>)[key]
+        Object.assign(assertion, strict.assertion)
+        this.covered.push(...strict.covered)
+      }
+    }
     this.replaceDefaults()
     if (this.strict) {
-      const body = this.body_()
+      // A body xtest could not read, binary or HTML, has no properties to leave unasserted.
+      const readable = !['binary', 'html'].includes(this.context.response.bodyKind)
+      const body = readable ? this.body_() : {}
       if (body !== BODY_UNAVAILABLE) {
         const unasserted = findUnasserted(body, this.covered)
         this.assertions.push({

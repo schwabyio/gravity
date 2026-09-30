@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { StepSchema } from '../model/documents.js'
+import { StepSchema, type VarValue } from '../model/documents.js'
 import type { SentRequest } from '../model/run.js'
 import { InterpolationError, VariableScope } from '../vars/scope.js'
 import { toSentRequest } from './buildRequest.js'
@@ -18,16 +18,21 @@ beforeAll(async () => {
   await fs.mkdir(path.join(root, 'files'))
   await fs.writeFile(path.join(root, 'files', 'avatar.png'), PNG)
   await fs.writeFile(path.join(root, 'files', 'order.json'), '{"id": "{{notResolved}}"}')
+  await fs.writeFile(path.join(root, 'files', 'empty'), '')
 })
 
 afterAll(async () => {
   await fs.rm(root, { recursive: true, force: true })
 })
 
-const scope = (vars: Record<string, string> = {}) =>
+const scope = (vars: Record<string, VarValue> = {}) =>
   new VariableScope([{ source: 'test', vars }], {})
 
-async function prepare(step: unknown, vars: Record<string, string> = {}, at: string | null = root) {
+async function prepare(
+  step: unknown,
+  vars: Record<string, VarValue> = {},
+  at: string | null = root
+) {
   const parsed = StepSchema.parse(step)
   return prepareRequest(toSentRequest(parsed), parsed.body, scope(vars), at)
 }
@@ -109,6 +114,29 @@ describe('prepareRequest', () => {
     expect(doc.type).toBe('text/plain')
     // A file is sent as it is: its own {{…}} are not variables.
     expect(await doc.text()).toBe('{"id": "{{notResolved}}"}')
+  })
+
+  it('sends an empty filename, as a browser does with no file chosen', async () => {
+    const { request, payload } = await prepare({
+      POST: 'http://x/',
+      body: { multipart: { avatar: { file: 'files/empty', filename: '' } } }
+    })
+    expect(request.body).toContain('Content-Disposition: form-data; name="avatar"; filename=""')
+    expect(payload).not.toBeNull()
+  })
+
+  it('writes a null as null in a JSON body, and as nothing elsewhere', async () => {
+    const vars = { site: null, whole: null }
+    const json = await prepare(
+      { POST: 'http://x/{{site}}', body: { json: '{"website": {{site}}, "note": "{{site}}"}' } },
+      vars
+    )
+    expect(json.request.body).toBe('{"website": null, "note": "null"}')
+    expect(json.request.url).toBe('http://x/')
+    const sole = await prepare({ POST: 'http://x/', body: { json: '{{whole}}' } }, vars)
+    expect(sole.request.body).toBe('null')
+    const text = await prepare({ POST: 'http://x/', body: { text: 'site: {{site}}' } }, vars)
+    expect(text.request.body).toBe('site: ')
   })
 
   it('keeps a declared boundary, and adds one to a declared type without', async () => {

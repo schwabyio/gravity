@@ -74,8 +74,8 @@ export const MultipartPartSchema = z.union(
       file: relativePath('a multipart file'),
       /** Absent: from the file's extension, else application/octet-stream. */
       contentType: z.string().min(1).optional(),
-      /** The name sent for it; absent, the file's own. */
-      filename: z.string().min(1).optional()
+      /** The name sent for it; absent, the file's own. `''`, as a browser sends no file chosen. */
+      filename: z.string().optional()
     })
   ],
   {

@@ -32,6 +32,13 @@ describe('multipart bodies in the editor', () => {
     expect(mergeIntoStep(original, fromStep(original))).toEqual(original)
   })
 
+  it('keeps an empty filename, as a browser sends when no file is chosen', () => {
+    const empty = { avatar: { file: 'files/empty', filename: '' } }
+    expect(toMultipart(partRows(empty))).toEqual(empty)
+    const original = step({ multipart: empty })
+    expect(mergeIntoStep(original, fromStep(original))).toEqual(original)
+  })
+
   it('groups a repeated name under its first place, and leaves out a file not yet chosen', () => {
     const row = (name: string, value: string, kind: 'text' | 'file' = 'text') => ({
       ...newPart(),

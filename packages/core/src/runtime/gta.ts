@@ -149,7 +149,8 @@ function itemFrom(list: ValidationEntry[], valueKey: 'expectedValue' | 'compareV
   for (const entry of list) {
     const path = pathOf(entry.pathToProperty, 'pathToProperty')
     if (valueKey === 'compareValue') {
-      item[path] = entry.compareValue
+      const value = entry.compareValue
+      item[path] = isRegExp(value) ? { matches: value } : value
       continue
     }
     // xtest lists often name a property twice — once to check it, once to
@@ -158,6 +159,21 @@ function itemFrom(list: ValidationEntry[], valueKey: 'expectedValue' | 'compareV
     item[path] = { ...(item[path] as object | undefined), ...matcher }
   }
   return item
+}
+
+/**
+ * A list that is one `notThisExpectedValue` entry and nothing else. Without
+ * strict validation xtest read it as "no item has this value", so an empty
+ * array passes; with it, as one item whose value is something else, as gta
+ * reads any list (SPEC.md §3). This is the first reading, as a matcher.
+ */
+function loneNotThisValue(list: unknown[]): CheckMatcher | null {
+  const [entry] = list
+  if (list.length !== 1 || !isValidationEntry(entry)) return null
+  if (entry.specialHandling !== 'notThisExpectedValue' || !('expectedValue' in entry)) return null
+  const value = entry.expectedValue
+  const path = pathOf(entry.pathToProperty, 'pathToProperty')
+  return { unorderedNot: [{ [path]: isRegExp(value) ? { matches: value } : value }] }
 }
 
 function toList(validationList: unknown): unknown[] {
@@ -250,7 +266,9 @@ export function testsGta({ session, scope, pending, warn = () => {} }: TestsApi)
         const unordered = list.every(isValidationEntry)
           ? [itemFrom(list as ValidationEntry[], 'expectedValue')]
           : list
-        session.body(path, { unordered })
+        const lone = loneNotThisValue(list)
+        if (lone) session.bodyByStrictness(path, { strict: { unordered }, lenient: lone })
+        else session.body(path, { unordered })
       }
     ),
 

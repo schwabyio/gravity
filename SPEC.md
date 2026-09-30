@@ -454,6 +454,9 @@ body:
 | `{ file, contentType?, filename? }` | A file part.                                     |
 | a list of the above                 | One part for each item, all with the field name. |
 
+`filename: ''` sends an empty name, as a browser does when no file is chosen. Pair it
+with an empty file for the whole of that request.
+
 The `Content-Type` is `multipart/form-data` with a boundary chosen for the request. A
 declared multipart type without a boundary, such as `multipart/mixed`, gets one added.
 A declared boundary is used as written.
@@ -837,6 +840,10 @@ Each item is one key, whatever it holds, and a number is its digits, so
 `['groups', 0, 'name']` reads an index. Every function that takes a path takes a list
 too, and so does `pathToProperty`.
 
+A path that runs into a `null` before its end, such as `phoneNumber.number` when
+`phoneNumber` is `null`, reads as that `null` for a check that the value is `null`, as
+xtest read it. For any other check the property is not present.
+
 ### Body conversion
 
 A JSON body is used as it is. An XML body is converted: the root element is the single
@@ -888,7 +895,15 @@ gta.expectResponseBodyToHaveUnorderedArray('users', [
 ```
 
 `gta.expectResponseBodyToHaveUnorderedArrayNotThisItem(path, list)` passes when no item
-matches.
+matches. A `compareValue` may be a `RegExp`.
+
+- **Each call prefers items an earlier call did not match.** Two calls with the same
+  description find two items when there are two, so each capture and strict validation
+  see a different one. A sort starts this over, since its indexes name other items.
+- **A list of one `notThisExpectedValue` entry reads as xtest read it.** Without strict
+  validation it means no item has that value, so an empty array passes. With it, it
+  means one item whose value is something else, as any list does. The step's last word
+  on strict validation decides.
 
 ### Strict validation
 
@@ -901,6 +916,8 @@ checked, ignored or captured.
   vouch for what is inside.
 - It is judged after the collection's and the step's `tests` have both run, over what
   either checked.
+- A binary or HTML body has no properties to leave unchecked, so strict validation
+  passes. A check on one still fails.
 
 ### Sorting
 
@@ -942,7 +959,8 @@ to. Whitespace inside the braces is ignored. In code, read a variable with
 
 - **Values keep their type.** A string that is exactly one reference returns the
   variable's own value, so a variable written as `true` arrives as a boolean. Anything
-  else is text, and `null` becomes the empty string inside it.
+  else is text, and `null` becomes the empty string inside it, except in a `json` body,
+  where it is written `null`, so `"website": {{site}}` stays valid JSON.
 - **An unknown variable is an error**, never literal text. The step fails in its own
   `interpolate` phase, naming the variable, and nothing is sent. A reference loop, or a
   chain more than 16 deep, fails the same way.

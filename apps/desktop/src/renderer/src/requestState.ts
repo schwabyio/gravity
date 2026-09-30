@@ -201,7 +201,7 @@ export function toMultipart(rows: PartRow[]): Record<string, MultipartField> {
         ? {
             file: row.value.trim(),
             ...(contentType ? { contentType } : {}),
-            ...(row.filename ? { filename: row.filename } : {})
+            ...(row.filename !== undefined ? { filename: row.filename } : {})
           }
         : contentType
           ? { value: row.value, contentType }
@@ -226,7 +226,7 @@ export function partRows(multipart: Record<string, MultipartField> | undefined):
           kind: 'file',
           value: part.file,
           contentType: part.contentType ?? '',
-          ...(part.filename ? { filename: part.filename } : {})
+          ...(part.filename !== undefined ? { filename: part.filename } : {})
         })
       } else
         rows.push({ ...newPart(), name, value: part.value, contentType: part.contentType ?? '' })

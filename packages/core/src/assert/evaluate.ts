@@ -26,6 +26,11 @@ export interface CheckContext {
   scope: VariableScope
   /** Injectable clock for `dateAsEpoch` offsets. */
   now?: () => number
+  /**
+   * The items of the array at a path (`formatPath`) that earlier unordered
+   * checks matched: a later one prefers others, as xtest's did (SPEC.md §3).
+   */
+  claimed?: (arrayPath: string) => Set<number>
 }
 
 /** A value a matcher compares against directly. */
@@ -77,6 +82,26 @@ export interface Coverage {
 }
 
 /* ---------------------------------------------------------------- checks -- */
+
+/**
+ * Where a check finds its value. As xtest read a path, one that runs into a
+ * `null` before its end reads as that `null` — for a check that the value is
+ * `null` (`nullAlong`), so `phoneNumber.number` is null when `phoneNumber` is.
+ */
+export function locate(root: unknown, segments: PathSegment[], nullAlong: boolean): Located[] {
+  const located = resolvePath(root, segments)
+  if (located.length > 0 || !nullAlong || segments.some((s) => s.kind === 'each')) return located
+  for (let end = 1; end < segments.length; end++) {
+    const [reached] = resolvePath(root, segments.slice(0, end))
+    if (!reached) return []
+    if (reached.value === null) return [reached]
+  }
+  return []
+}
+
+/** A check that the value is `null`, and nothing else. */
+export const isNullCheck = (wanted: CheckMatcher): boolean =>
+  wanted.equals === null && Object.keys(wanted).length === 1
 
 /** Status and headers: one value or none, compared as text. */
 export function checkScalarTarget(
@@ -154,7 +179,7 @@ export function checkBody(
   const covered: Coverage[] = []
   let failure: string | null = null
   for (const { path: at, value } of located) {
-    const check = checkBodyValue(wanted, value, context)
+    const check = checkBodyValue(wanted, value, context, context.claimed?.(formatPath(at)))
     covered.push(...check.covered.map((c) => ({ ...c, pattern: [...at, ...c.pattern] })))
     if (check.failure && !failure) {
       failure = fanOut ? `At ${formatPath(at)}: ${check.failure}` : check.failure
@@ -177,7 +202,9 @@ export function checkBody(
 function checkBodyValue(
   wanted: CheckMatcher,
   value: unknown,
-  context: CheckContext
+  context: CheckContext,
+  /** Items of this array earlier checks matched; the ones this check matches are added. */
+  claimed: Set<number> = new Set()
 ): { failure: string | null; covered: Coverage[] } {
   const failures: Array<string | null> = []
   // A value is accounted for when its content was checked. `isArray` and
@@ -222,12 +249,15 @@ function checkBodyValue(
       const missing: unknown[] = []
       const used = new Set<number>()
       for (const expected of wanted.unordered) {
-        // Prefer an item no earlier entry claimed, but do not require it:
-        // xtest let two entries describe the same item.
+        // Prefer an item neither an earlier entry nor an earlier check claimed,
+        // but do not require it: xtest let two entries describe the same item.
         const matches = value
           .map((item, index) => ({ index, match: matchItem(item, expected, context) }))
           .filter((candidate) => candidate.match !== null)
-        const chosen = matches.find((m) => !used.has(m.index)) ?? matches[0]
+        const chosen =
+          matches.find((m) => !used.has(m.index) && !claimed.has(m.index)) ??
+          matches.find((m) => !used.has(m.index)) ??
+          matches[0]
         if (!chosen) {
           missing.push(expected)
           continue
@@ -238,6 +268,7 @@ function checkBodyValue(
           covered.push({ pattern: [{ kind: 'index', index: chosen.index }, ...c.pattern] })
         }
       }
+      for (const index of used) claimed.add(index)
       if (missing.length > 0)
         failures.push(`Missing from the array: ${missing.map(show).join(', ')}`)
     }
@@ -416,7 +447,11 @@ function matchItem(item: unknown, expected: unknown, context: CheckContext): Ite
   const captures: Array<() => void> = []
   for (const [key, want] of entries) {
     const segments = parsePath(key)
-    const located = resolvePath(item, segments)
+    const located = locate(
+      item,
+      segments,
+      isMatcherObject(want) ? isNullCheck(want) : want === null
+    )
     if (isMatcherObject(want)) {
       if (want.absent) {
         if (located.length > 0) return null

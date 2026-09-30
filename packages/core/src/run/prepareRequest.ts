@@ -105,7 +105,16 @@ export async function prepareRequest(
   }
 
   return {
-    request: { ...request, body: written.body === null ? null : resolve(written.body) },
+    request: {
+      ...request,
+      // In a JSON body a null is JSON's own, not a gap that leaves it malformed.
+      body:
+        written.body === null
+          ? null
+          : body?.json !== undefined
+            ? interpolateToString(written.body, scope, { nullAs: 'null' })
+            : resolve(written.body)
+    },
     payload: null
   }
 }

@@ -22,22 +22,45 @@ const MAX_DEPTH = 16
  * request sent to `{{baseUrl}}/users` because a variable was missing fails in a
  * way that takes far longer to understand than being told which name is unset.
  */
-export function interpolate(value: string, scope: VariableScope): VarValue {
+export function interpolate(
+  value: string,
+  scope: VariableScope,
+  options: TextOptions = {}
+): VarValue {
   const sole = SOLE_REFERENCE.exec(value)
   if (sole?.[1]) {
     const resolved = resolveName(sole[1], scope, [])
-    return typeof resolved === 'string' ? resolveString(resolved, scope, [sole[1]]) : resolved
+    return typeof resolved === 'string'
+      ? resolveString(resolved, scope, [sole[1]], options)
+      : resolved
   }
-  return resolveString(value, scope, [])
+  return resolveString(value, scope, [], options)
+}
+
+export interface TextOptions {
+  /**
+   * How `null` is written into text: empty, the default, or as `null` in a
+   * JSON body, where it is JSON's own null (SPEC.md §4).
+   */
+  nullAs?: string
 }
 
 /** Resolve to a string, for a URL or a header value. */
-export function interpolateToString(value: string, scope: VariableScope): string {
-  const result = interpolate(value, scope)
-  return result === null || result === undefined ? '' : String(result)
+export function interpolateToString(
+  value: string,
+  scope: VariableScope,
+  options: TextOptions = {}
+): string {
+  const result = interpolate(value, scope, options)
+  return result === null || result === undefined ? (options.nullAs ?? '') : String(result)
 }
 
-function resolveString(text: string, scope: VariableScope, seen: string[]): string {
+function resolveString(
+  text: string,
+  scope: VariableScope,
+  seen: string[],
+  options: TextOptions
+): string {
   if (seen.length > MAX_DEPTH) {
     throw new InterpolationError(
       `Variable nesting is too deep (${seen.join(' -> ')}); this is probably a loop`
@@ -52,9 +75,9 @@ function resolveString(text: string, scope: VariableScope, seen: string[]): stri
       )
     }
     const resolved = resolveName(name, scope, seen)
-    if (resolved === null || resolved === undefined) return ''
+    if (resolved === null || resolved === undefined) return options.nullAs ?? ''
     return typeof resolved === 'string'
-      ? resolveString(resolved, scope, [...seen, name])
+      ? resolveString(resolved, scope, [...seen, name], options)
       : String(resolved)
   })
 }
