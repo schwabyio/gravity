@@ -3,6 +3,7 @@ import type { HtmlCollection, HtmlRun } from './html.js'
 import type { LoadedCollection } from '@schwabyio/gravity-core'
 import type { ListingProblem, RunTarget } from './select.js'
 import { unattempted, type StepRef } from './job.js'
+import type { Settings, SettingSources } from './settings.js'
 
 /**
  * The run as JSON, for machines: CI tooling, scripts, and agents debugging a
@@ -130,6 +131,8 @@ export function jsonListing(options: {
   project: { name: string; root: string }
   environments: readonly string[]
   environmentType: string | null
+  /** Every setting, and where each came from (SPEC.md §1.3). */
+  settings: { values: Settings; sources: SettingSources }
   flags: { values: Record<string, string | number | boolean>; sources: Record<string, string> }
   tags: readonly string[]
   notTags?: readonly string[]
@@ -144,6 +147,7 @@ export function jsonListing(options: {
     project: options.project,
     environments: options.environments,
     environmentType: options.environmentType,
+    settings: { values: options.settings.values, sources: options.settings.sources },
     flags: { values: options.flags.values, sources: options.flags.sources },
     tags: options.tags,
     notTags: options.notTags ?? [],

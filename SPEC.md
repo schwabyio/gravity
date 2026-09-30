@@ -152,16 +152,16 @@ tls:
 
 The file is optional, and so is every key in it. Any other key is an error.
 
-| Key      | Type                   | Default     | Meaning                                                            |
-| -------- | ---------------------- | ----------- | ------------------------------------------------------------------ |
-| `name`   | string                 | folder name | Display name.                                                      |
-| `uses`   | string (relative path) | none        | A global project whose variables and environments this one shares. |
-| `vars`   | map of plain values    | none        | Variables for every collection in the project (§4).                |
-| `tls.ca` | list of relative paths | none        | Certificate files that requests trust (below).                     |
+| Key      | Type                   | Default     | Meaning                                               |
+| -------- | ---------------------- | ----------- | ----------------------------------------------------- |
+| `name`   | string                 | folder name | Display name.                                         |
+| `uses`   | string (relative path) | none        | A global project whose files this one shares (below). |
+| `vars`   | map of plain values    | none        | Variables for every collection in the project (§4).   |
+| `tls.ca` | list of relative paths | none        | Certificate files that requests trust (below).        |
 
 **`uses`** names a **global project**: an ordinary project whose `project.yml`
-variables, `environments/`, `requests/`, `endpoints/`, `bases/` and `checks/` every
-project using it shares.
+variables, `environments/`, `requests/`, `endpoints/`, `bases/`, `checks/` and
+`settings.yml` every project using it shares.
 
 - It must be a relative path. An absolute path is refused, since it would only work on
   one machine. Write it with `/`; `\` reads the same.
@@ -170,6 +170,7 @@ project using it shares.
 - An environment in the global project merges under the project's environment of the
   same name, key by key, and the project's values win. An environment only the global
   project has is available too.
+- The global project's `settings.yml` lies under the project's the same way (§1.3).
 
 **`tls.ca`** lists certificate files that requests trust, for a server whose certificate
 a company or local CA signed, or a server's own self-signed certificate. A request
@@ -257,9 +258,22 @@ The results folder is emptied before every run. `gta` refuses to empty one that 
 files it did not write, or one that holds the project itself. Every report replaces
 each secret's value with `[secret: NAME]` (§6).
 
+**From the global project.** A global project (§1.1) can have a `settings.yml` too.
+Every project that `uses` it runs with those settings under its own: a key the
+project's file sets wins, and a key it leaves out comes from the global project's file.
+
+- There is no switch to turn this off. A project undoes a shared setting by setting it
+  in its own file, back to the default if need be: `environmentType: null`, `tags: []`.
+- A project still needs a `settings.yml` of its own, even an empty one. A global project
+  need not have one.
+- A relative `testResultsBasePath` is relative to the project being run, whichever file
+  set it.
+
 **Overrides.** Each setting can be overridden by an environment variable, then by a
 command-line flag: `GTA_LIMIT_CONCURRENCY=8`, then `--limitConcurrency 8`. A list is
-comma-separated: `--tags smoke,api`.
+comma-separated: `--tags smoke,api`. In all, from lowest to highest: the default, the
+global project's `settings.yml`, the project's, the environment variable, the flag.
+`gta get` lists each setting that is not a default, and where it came from.
 
 **Running.** `gta` runs from the project folder:
 
@@ -1372,8 +1386,8 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - `uses` and `tls.ca` entries are relative paths.
 - The folder `uses` names has a `project.yml`, and does not itself `uses` another.
 - Each `tls.ca` file exists and holds a PEM or DER certificate.
-- `settings.yml` exists for `gta`, and its `environmentType`, if set, names an
-  environment that exists.
+- `settings.yml` exists for `gta`; a global project's is optional. The `environmentType`
+  a run ends up with, if any, names an environment that exists.
 
 **At run time**
 

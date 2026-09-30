@@ -2,7 +2,13 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS, envNameOf, loadSettings, SettingsError } from './settings.js'
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_SOURCE,
+  envNameOf,
+  loadSettings,
+  SettingsError
+} from './settings.js'
 
 let root: string
 beforeEach(async () => {
@@ -14,10 +20,20 @@ afterEach(async () => {
 
 const write = (text: string) => fs.writeFile(path.join(root, 'settings.yml'), text)
 
+/** A global project beside the project, with `text` as its settings.yml; null for none. */
+async function sharedProject(text: string | null) {
+  const shared = path.join(root, 'shared')
+  await fs.mkdir(shared)
+  if (text !== null) await fs.writeFile(path.join(shared, 'settings.yml'), text)
+  return { root: shared, uses: '../shared' }
+}
+
 describe('loadSettings', () => {
   it('fills in defaults for an empty file', async () => {
     await write('')
-    expect(await loadSettings({ root, env: {} })).toEqual(DEFAULT_SETTINGS)
+    const { settings, sources } = await loadSettings({ root, env: {} })
+    expect(settings).toEqual(DEFAULT_SETTINGS)
+    expect(Object.values(sources).every((source) => source === DEFAULT_SOURCE)).toBe(true)
     expect(DEFAULT_SETTINGS).toMatchObject({
       environmentType: null,
       limitConcurrency: 1,
@@ -28,7 +44,7 @@ describe('loadSettings', () => {
 
   it('layers the file, then GTA_* variables, then flags', async () => {
     await write('environmentType: demo\nlimitConcurrency: 2\ntags: [smoke]\nbail: true\n')
-    const settings = await loadSettings({
+    const { settings, sources } = await loadSettings({
       root,
       env: { GTA_LIMIT_CONCURRENCY: '6', GTA_ENVIRONMENT_TYPE: 'staging' },
       overrides: { environmentType: 'prod', tags: 'api, slow', bail: 'false' }
@@ -38,6 +54,12 @@ describe('loadSettings', () => {
       limitConcurrency: 6,
       tags: ['api', 'slow'],
       bail: false
+    })
+    expect(sources).toMatchObject({
+      environmentType: '--environmentType',
+      limitConcurrency: 'GTA_LIMIT_CONCURRENCY',
+      bail: '--bail',
+      timeoutCollection: DEFAULT_SOURCE
     })
   })
 
@@ -91,5 +113,84 @@ describe('loadSettings', () => {
     await expect(loadSettings({ root, env: {} })).rejects.toThrow('settings.yml will not parse')
     await write('- a list\n')
     await expect(loadSettings({ root, env: {} })).rejects.toThrow('must be a map')
+  })
+
+  describe('with a global project', () => {
+    it('lies under the project’s own file, key by key', async () => {
+      const global = await sharedProject(
+        'environmentType: stage\nlimitConcurrency: 4\ntags: [smoke]\ngenerateJUnitResults: true\n'
+      )
+      await write('limitConcurrency: 8\ntags: []\n')
+      const { settings, sources } = await loadSettings({ root, global, env: {} })
+      expect(settings).toMatchObject({
+        environmentType: 'stage',
+        limitConcurrency: 8,
+        tags: [],
+        generateJUnitResults: true,
+        bail: false
+      })
+      expect(sources).toMatchObject({
+        environmentType: '../shared/settings.yml',
+        limitConcurrency: 'settings.yml',
+        tags: 'settings.yml',
+        generateJUnitResults: '../shared/settings.yml',
+        bail: DEFAULT_SOURCE
+      })
+    })
+
+    it('lets the project set a shared key back to its default', async () => {
+      const global = await sharedProject('environmentType: stage\nbail: true\n')
+      await write('environmentType: null\nbail: false\n')
+      const { settings } = await loadSettings({ root, global, env: {} })
+      expect(settings).toEqual(DEFAULT_SETTINGS)
+    })
+
+    it('lies under GTA_* variables and flags too', async () => {
+      const global = await sharedProject('limitConcurrency: 4\nbail: true\n')
+      await write('')
+      const { settings, sources } = await loadSettings({
+        root,
+        global,
+        env: { GTA_LIMIT_CONCURRENCY: '6' },
+        overrides: { bail: 'false' }
+      })
+      expect(settings).toMatchObject({ limitConcurrency: 6, bail: false })
+      expect(sources).toMatchObject({ limitConcurrency: 'GTA_LIMIT_CONCURRENCY', bail: '--bail' })
+    })
+
+    it('shares nothing when the global project has no settings.yml', async () => {
+      const global = await sharedProject(null)
+      await write('limitConcurrency: 3\n')
+      const { settings, sources } = await loadSettings({ root, global, env: {} })
+      expect(settings).toEqual({ ...DEFAULT_SETTINGS, limitConcurrency: 3 })
+      expect(sources.limitConcurrency).toBe('settings.yml')
+    })
+
+    it('still needs the project’s own settings.yml', async () => {
+      const global = await sharedProject('limitConcurrency: 4\n')
+      await expect(loadSettings({ root, global, env: {} })).rejects.toThrow(
+        'There is no settings.yml'
+      )
+    })
+
+    it('names the global project’s file when it is the one to fix', async () => {
+      const global = await sharedProject('limitConcurency: 4\n')
+      await write('')
+      await expect(loadSettings({ root, global, env: {} })).rejects.toThrow(
+        'Unknown setting "limitConcurency" (from ../shared/settings.yml)'
+      )
+      await fs.writeFile(path.join(global.root, 'settings.yml'), 'limitConcurrency: 0\n')
+      await expect(loadSettings({ root, global, env: {} })).rejects.toThrow(
+        'limitConcurrency (from ../shared/settings.yml)'
+      )
+      await fs.writeFile(path.join(global.root, 'settings.yml'), 'limitConcurrency: [\n')
+      await expect(loadSettings({ root, global, env: {} })).rejects.toThrow(
+        '../shared/settings.yml will not parse'
+      )
+      await fs.writeFile(path.join(global.root, 'settings.yml'), '- a list\n')
+      await expect(loadSettings({ root, global, env: {} })).rejects.toThrow(
+        '../shared/settings.yml must be a map'
+      )
+    })
   })
 })

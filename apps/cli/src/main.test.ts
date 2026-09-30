@@ -787,6 +787,52 @@ describe('gta', () => {
     expect(out).toContain('Environment:  stage')
   })
 
+  it('runs with the global project’s settings.yml under its own, and get says which is which', async () => {
+    const root = await project({
+      'service/project.yml': 'uses: ../shared\n',
+      'service/settings.yml': 'limitConcurrency: 3\n',
+      'service/collections/a.yml': collection('a', ['/ok']),
+      'shared/project.yml': 'name: shared\n',
+      'shared/settings.yml': 'environmentType: stage\nlimitConcurrency: 1\n',
+      'shared/environments/stage.yml': `name: stage\nvars:\n  baseUrl: ${server.origin}\n`
+    })
+    const service = path.join(root, 'service')
+    const { code, out } = await gta(service, 'all')
+    expect(code).toBe(EXIT.passed)
+    expect(out).toContain('Environment:  stage')
+    expect(out).toContain('Concurrency:  3')
+
+    const listed = await gta(service, 'get', '--bail')
+    expect(listed.out).toMatch(/Settings: +environmentType: stage +\.\.\/shared\/settings\.yml/)
+    expect(listed.out).toMatch(/ {14}limitConcurrency: 3 +settings\.yml/)
+    expect(listed.out).toMatch(/ {14}bail: true +--bail/)
+    expect(listed.out).not.toContain('timeoutCollection')
+
+    const json = JSON.parse((await gta(service, 'get', '--json')).out)
+    expect(json.settings.values).toMatchObject({ environmentType: 'stage', limitConcurrency: 3 })
+    expect(json.settings.sources).toMatchObject({
+      environmentType: '../shared/settings.yml',
+      limitConcurrency: 'settings.yml',
+      bail: 'default'
+    })
+
+    await fs.writeFile(path.join(root, 'shared/settings.yml'), 'environmentType: prod\n')
+    const missing = await gta(service, 'all')
+    expect(missing.code).toBe(EXIT.unusable)
+    expect(missing.err).toContain(
+      'environmentType (from ../shared/settings.yml): there is no environment called "prod"'
+    )
+  })
+
+  it('says when every setting is its default', async () => {
+    const root = await project({
+      'settings.yml': '',
+      'collections/a.yml': collection('a', ['/ok'])
+    })
+    const { out } = await gta(root, 'get')
+    expect(out).toContain('Settings:     all defaults')
+  })
+
   it('trusts a server signed by the CA in tls.ca, and says so', async () => {
     const tls = fileURLToPath(new URL('../../../packages/core/test-fixtures/tls/', import.meta.url))
     const secure = https.createServer(

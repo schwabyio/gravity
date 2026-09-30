@@ -115,7 +115,7 @@ would stop at.
 
 Settings come from `settings.yml`, then `GTA_*` environment variables, then flags on the
 command line, each overriding the one before. An unknown setting is an error.
-`gta --help` lists them all:
+`gta --help` lists them all, and `gta get` shows where each one came from:
 
 | Setting                  | Default        | What it does                                                   |
 | ------------------------ | -------------- | -------------------------------------------------------------- |
@@ -133,6 +133,11 @@ command line, each overriding the one before. An unknown setting is an error.
 
 The results folder is emptied before every run, so everything in it is from the last one.
 `gta` only ever deletes a folder that holds nothing but its own reports.
+
+In a monorepo, projects that share a global project (`uses:` in `project.yml`) share its
+`settings.yml` too. It comes before the project's own, so a project changes a shared
+setting by setting it again in its own file. Each project still needs a `settings.yml`,
+even an empty one.
 
 ## In CI
 

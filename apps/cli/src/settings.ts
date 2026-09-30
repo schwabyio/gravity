@@ -12,8 +12,9 @@ import { z } from 'zod'
  * with the desktop app; `settings.yml` says how a CLI run goes, and CI
  * overrides it per job.
  *
- * Lowest precedence first: default → `settings.yml` → `GTA_*` environment
- * variables → `--key value` on the command line.
+ * Lowest precedence first: default → the global project's `settings.yml` →
+ * the project's → `GTA_*` environment variables → `--key value` on the
+ * command line.
  */
 export { SETTINGS_FILE }
 
@@ -105,47 +106,64 @@ export const envNameOf = (key: SettingKey): string =>
 export interface LoadSettingsOptions {
   /** The project folder: where `settings.yml` is. */
   root: string
+  /**
+   * The global project the project `uses:`, if any. Its `settings.yml`, when it
+   * has one, lies under the project's (SPEC.md §1.3).
+   */
+  global?: { root: string; uses: string } | null
   /** From the command line, as typed: a string, or `true` for a bare `--flag`. */
   overrides?: Record<string, string | true>
   env?: Record<string, string | undefined>
 }
 
-/** Read, layer and check a project's settings. Throws `SettingsError` saying what to fix. */
-export async function loadSettings(options: LoadSettingsOptions): Promise<Settings> {
-  const { root, overrides = {}, env = process.env } = options
-  const file = path.join(root, SETTINGS_FILE)
+/** Where a setting came from when nothing set it. */
+export const DEFAULT_SOURCE = 'default'
 
-  let source: string
-  try {
-    source = await fs.readFile(file, 'utf8')
-  } catch {
+/**
+ * Where each setting's value came from: `default`, `settings.yml`, the global
+ * project's file as `uses:` reaches it (`../shared/settings.yml`), a `GTA_*`
+ * variable or a `--key`.
+ */
+export type SettingSources = Record<SettingKey, string>
+
+export interface LoadedSettings {
+  settings: Settings
+  sources: SettingSources
+}
+
+/** Read, layer and check a project's settings. Throws `SettingsError` saying what to fix. */
+export async function loadSettings(options: LoadSettingsOptions): Promise<LoadedSettings> {
+  const { root, global = null, overrides = {}, env = process.env } = options
+
+  const own = await readSettingsFile(path.join(root, SETTINGS_FILE), SETTINGS_FILE)
+  if (own === null) {
     throw new SettingsError(
       `There is no ${SETTINGS_FILE} in ${root}.\n` +
         `gta runs from a project folder: the one holding collections/ and ${SETTINGS_FILE}.\n` +
         `A minimal ${SETTINGS_FILE}:\n\n  environmentType: demo\n  limitConcurrency: 4\n`
     )
   }
-
-  let fromFile: unknown
-  try {
-    fromFile = parse(source) ?? {}
-  } catch (cause) {
-    throw new SettingsError(`${SETTINGS_FILE} will not parse: ${(cause as Error).message}`)
-  }
-  if (typeof fromFile !== 'object' || fromFile === null || Array.isArray(fromFile)) {
-    throw new SettingsError(
-      `${SETTINGS_FILE} must be a map of settings, such as limitConcurrency: 4`
-    )
-  }
+  // Named as the project reaches it, so a message says which of the two files to fix.
+  const sharedLabel = global ? path.posix.join(global.uses, SETTINGS_FILE) : ''
+  // A global project need not have one: then nothing is shared.
+  const shared = global
+    ? await readSettingsFile(path.join(global.root, SETTINGS_FILE), sharedLabel)
+    : null
 
   /** Where each value came from, so an error names the place to fix it. */
   const origin = new Map<string, string>()
   const merged: Record<string, unknown> = {}
 
-  for (const [key, value] of Object.entries(fromFile)) {
-    checkKey(key, SETTINGS_FILE)
-    merged[key] = value
-    origin.set(key, SETTINGS_FILE)
+  const files: Array<[string, Record<string, unknown> | null]> = [
+    [sharedLabel, shared],
+    [SETTINGS_FILE, own]
+  ]
+  for (const [label, fromFile] of files) {
+    for (const [key, value] of Object.entries(fromFile ?? {})) {
+      checkKey(key, label)
+      merged[key] = value
+      origin.set(key, label)
+    }
   }
   for (const key of KEYS) {
     const value = env[envNameOf(key)]
@@ -167,7 +185,35 @@ export async function loadSettings(options: LoadSettingsOptions): Promise<Settin
     })
     throw new SettingsError(`Settings are not valid:\n${lines.join('\n')}`)
   }
-  return result.data
+  const sources = Object.fromEntries(
+    KEYS.map((key) => [key, origin.get(key) ?? DEFAULT_SOURCE])
+  ) as SettingSources
+  return { settings: result.data, sources }
+}
+
+/** A settings file's map, or null when there is no such file. `label` is how messages name it. */
+async function readSettingsFile(
+  file: string,
+  label: string
+): Promise<Record<string, unknown> | null> {
+  let source: string
+  try {
+    source = await fs.readFile(file, 'utf8')
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw new SettingsError(`${label} cannot be read: ${(cause as Error).message}`)
+  }
+
+  let fromFile: unknown
+  try {
+    fromFile = parse(source) ?? {}
+  } catch (cause) {
+    throw new SettingsError(`${label} will not parse: ${(cause as Error).message}`)
+  }
+  if (typeof fromFile !== 'object' || fromFile === null || Array.isArray(fromFile)) {
+    throw new SettingsError(`${label} must be a map of settings, such as limitConcurrency: 4`)
+  }
+  return fromFile as Record<string, unknown>
 }
 
 function checkKey(key: string, where: string): asserts key is SettingKey {

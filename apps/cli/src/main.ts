@@ -48,13 +48,15 @@ import {
 } from './select.js'
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_SOURCE,
   envNameOf,
   loadSettings,
   SETTING_KEYS,
   SETTINGS_FILE,
   SettingsError,
   type SettingKey,
-  type Settings
+  type Settings,
+  type SettingSources
 } from './settings.js'
 
 declare const __GTA_VERSION__: string | undefined
@@ -129,6 +131,7 @@ export async function main(argv: readonly string[], cli: CliContext): Promise<nu
             project: { name: project.name, root: project.root },
             environments: project.environments,
             environmentType: project.settings.environmentType,
+            settings: { values: project.settings, sources: project.settingSources },
             flags: project.flags,
             tags: project.settings.tags,
             notTags: project.settings.notTags,
@@ -170,6 +173,8 @@ interface OpenProject {
   root: string
   name: string
   settings: Settings
+  /** Where each setting came from: the global project's settings.yml, the project's, … */
+  settingSources: SettingSources
   /** The run's feature flags: fixed values, the environment's command, overrides (SPEC.md §2.9). */
   flags: FlagResolution
   collections: LoadedCollection[]
@@ -192,8 +197,13 @@ async function openProject(
         `gta runs from a project folder: the one holding ${COLLECTIONS_DIR}/ and ${SETTINGS_FILE}.`
     )
   }
-  const settings = await loadSettings({ root, overrides, env: ctx.env })
   const info = await readProject(root)
+  const { settings, sources: settingSources } = await loadSettings({
+    root,
+    global: info.global,
+    overrides,
+    env: ctx.env
+  })
   const layout = await discoverProject(root)
   // Ids checked against each other too: a shared id is reported on both files.
   const collections = await loadProjectCollections(root, layout.files)
@@ -201,7 +211,7 @@ async function openProject(
 
   if (settings.environmentType && !environments.includes(settings.environmentType)) {
     throw new ProjectError(
-      `environmentType: there is no environment called "${settings.environmentType}". ` +
+      `environmentType (from ${settingSources.environmentType}): there is no environment called "${settings.environmentType}". ` +
         (environments.length > 0
           ? `This project has: ${environments.join(', ')}`
           : `This project has no environments/.`)
@@ -234,6 +244,7 @@ async function openProject(
     root,
     name: info.doc?.name ?? path.basename(root),
     settings,
+    settingSources,
     flags,
     collections,
     environments,
@@ -304,8 +315,7 @@ function list(
   )
   ctx.out(field('Flags', flagLine(project.flags, p)))
   if (project.caFiles.length > 0) ctx.out(field('CA files', project.caFiles.join(', ')))
-  if (settings.tags.length > 0) ctx.out(field('Tags', settings.tags.join(', ')))
-  if (settings.notTags.length > 0) ctx.out(field('Not tags', settings.notTags.join(', ')))
+  for (const line of settingLines(project, p)) ctx.out(line)
   ctx.out('')
 
   const width = nameWidthFor(selection.targets.map((t) => t.id))
@@ -357,6 +367,29 @@ function list(
   const steps = selection.targets.reduce((n, t) => n + stepCountOf(t), 0)
   ctx.out(field('Total', `${selection.targets.length} collections, ${steps} steps`))
 }
+
+/**
+ * `gta get`'s settings: each one something set, and where it came from — the
+ * global project's `settings.yml` (SPEC.md §1.3), the project's, `GTA_*` or a flag.
+ */
+function settingLines(project: OpenProject, p: Paint): string[] {
+  const rows = (Object.keys(SETTING_KEYS) as SettingKey[])
+    .filter((key) => project.settingSources[key] !== DEFAULT_SOURCE)
+    .map((key) => ({
+      cell: `${key}: ${shownSetting(project.settings[key])}`,
+      source: project.settingSources[key]
+    }))
+  if (rows.length === 0) return [field('Settings', p.dim('all defaults'))]
+  const width = Math.max(...rows.map((row) => row.cell.length))
+  const indent = ' '.repeat(field('Settings', '').length)
+  return rows.map(
+    (row, i) =>
+      `${i === 0 ? field('Settings', '') : indent}${row.cell.padEnd(width)}  ${p.dim(row.source)}`
+  )
+}
+
+const shownSetting = (value: Settings[SettingKey]): string =>
+  Array.isArray(value) ? (value.length > 0 ? value.join(', ') : '[]') : String(value ?? 'none')
 
 /** Run the selection at `limitConcurrency`, reporting each collection as it finishes. */
 async function run(
@@ -599,7 +632,8 @@ export function usage(p: Paint): string {
     '                    Override a feature flag for this run; any number of them.',
     '                    GTA_FLAG_<name>=value does the same from the environment.',
     '',
-    `  ${p.bold('Settings')} (settings.yml, then GTA_* environment variables, then --flags):`,
+    `  ${p.bold('Settings')} (the global project's settings.yml, then this project's, then`,
+    '  GTA_* environment variables, then --flags; gta get shows where each came from):',
     ...settings,
     '',
     `  ${p.bold('Exit code:')} 0 passed, 1 failed, 2 could not run (or write a report).`

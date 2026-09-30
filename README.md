@@ -77,7 +77,8 @@ gta all --tags smoke --generateJUnitResults
 ```
 
 The exit code is `0` when everything passed, `1` when something failed, and `2` when
-`gta` could not run. `gta --help` lists every setting.
+`gta` could not run. `gta --help` lists every setting. Projects that share a global
+project share its `settings.yml` too, under their own ([SPEC.md §1.3](./SPEC.md)).
 
 ## Running from source
 
