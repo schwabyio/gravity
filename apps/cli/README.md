@@ -108,8 +108,8 @@ The steps within a collection always run in order.
 
 The exit code is `0` when everything passed, `1` when something failed, and `2` when
 `gta` could not run at all, such as with a bad setting or an unknown collection.
-`gta get` exits `1` when a collection is broken, or has a `use:` or `extends:` a run
-would stop at.
+`gta get` exits `1` when a collection is broken, or has a `use:`, an `extends:` or a
+file its body sends that a run would stop at.
 
 ## Settings
 

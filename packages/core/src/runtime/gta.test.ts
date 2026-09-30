@@ -508,6 +508,25 @@ describe('before.script', () => {
     expect(result.request.url).toBe(`${origin}/from-collection/15`)
   })
 
+  it('sets undefined as null: it reads == null, and replaces what was there', async () => {
+    const scope = new VariableScope()
+    scope.set('email', 'old@example.com')
+    const result = await runRequest({
+      step: StepSchema.parse({
+        GET: `${origin}/x{{email}}{{never}}`,
+        before: {
+          script: `gta.set('email', undefined); gta.set('never', undefined, { scope: 'run' })`
+        },
+        tests: `gta.test('reads == null', () => assert.ok(gta.get('email') == null))`
+      }),
+      scope
+    })
+    expect(scope.get('email')).toBeNull()
+    expect(scope.get('never')).toBeNull()
+    expect(result.request.url).toBe(`${origin}/x`)
+    expect(statuses(result)).toEqual(['pass'])
+  })
+
   it('refuses response checks, and never sends the request', async () => {
     const result = await runRequest({
       step: StepSchema.parse({

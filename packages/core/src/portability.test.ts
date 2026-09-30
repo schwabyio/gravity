@@ -69,7 +69,10 @@ describe('a name spelled in another case than on disk', () => {
     expect(trust.problems[0]?.message).toMatch(differs)
 
     const request = { method: 'POST', url: 'http://x', headers: [], body: null }
-    const sent = prepareRequest(request, { file: 'files/Order.json' }, new VariableScope(), shop)
+    const sent = prepareRequest(request, { file: 'files/Order.json' }, new VariableScope(), {
+      project: shop,
+      global: null
+    })
     await expect(sent).rejects.toThrow(BodyFileError)
     await expect(sent).rejects.toThrow(/^body\.file: files\/Order\.json is spelled/)
   })

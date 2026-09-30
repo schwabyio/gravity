@@ -14,6 +14,7 @@ import { interpolate } from '../vars/interpolate.js'
 import { InterpolationError, ParamsScope, type VariableScope } from '../vars/scope.js'
 import { resolveBase, resolveRequestSet } from '../workspace/library.js'
 import { projectRootOf, readProject } from '../workspace/project.js'
+import { BodyFileError, bodyFiles, findBodyFile, type FileRoots } from './prepareRequest.js'
 
 /**
  * What a collection run actually sends: every step in order, with each use
@@ -31,7 +32,7 @@ export interface PlannedSet {
   useName: string | undefined
   path: string
   doc: Collection
-  /** The use step's `with:`, as written; strings are resolved when the set starts. */
+  /** The use step's `with:`, as written; strings are resolved as the set's first request starts. */
   with: Record<string, VarValue>
   useTests: string | undefined
 }
@@ -86,6 +87,16 @@ async function projectOf(collectionPath: string) {
 }
 
 /**
+ * Where the files a step's body names are read from (SPEC.md §2.2): the
+ * folder of the project `file` is in — for a request set's steps, the set's
+ * file — and the global project of the collection being run.
+ */
+export async function fileRootsOf(file: string, collectionPath: string): Promise<FileRoots> {
+  const { global } = await projectOf(collectionPath)
+  return { project: projectRootOf(file) ?? path.dirname(file), global: global?.root ?? null }
+}
+
+/**
  * A use step's values against its set's params: every required one given, and
  * nothing given that the set does not take — usually a typo that would
  * otherwise fall back to a default in silence.
@@ -106,9 +117,10 @@ function checkWith(name: string, set: Collection, given: Record<string, VarValue
 }
 
 /**
- * A set's params for one use, resolved when the set starts, so its scripts
- * see the values its requests send (SPEC.md §2.5): what `with:` gives, its
- * `{{variables}}` read now, else each param's default, read the same way. A
+ * A set's params for one use, resolved once, as its first request reaches the
+ * set's own layer, so its scripts see the values its requests send (SPEC.md
+ * §2.5): what `with:` gives, its `{{variables}}` read now, else each param's
+ * default, read the same way. A
  * default may name another param, as in `'{{params.id}}@example.com'`; each is
  * resolved once, so a `{{$uuid}}` is one value wherever it is read. A param
  * with neither (running a set on its own) is left out, so `{{params.x}}`
@@ -176,7 +188,8 @@ export interface ReferenceProblem {
 /**
  * What a run of the collection would find wrong before sending anything: an
  * `extends:` or `use:` that names no usable file, a `with:` the set does not
- * take, a required param left out. For `gta get`, which runs nothing.
+ * take, a required param left out, a file a body names that is in neither
+ * the project nor its global project. For `gta get`, which runs nothing.
  */
 export async function referenceProblems(
   collection: Collection,
@@ -194,11 +207,39 @@ export async function referenceProblems(
   for (const list of STEP_LISTS) {
     const steps = collection[list]
     if (!steps) continue
+    const stage = list === 'steps' ? {} : { stage: list }
     for (const planned of await planSteps({ ...collection, steps }, collectionPath)) {
-      if (planned.kind !== 'broken') continue
-      const stage = list === 'steps' ? {} : { stage: list }
-      problems.push({ step: planned.index, ...stage, message: planned.error.message })
+      if (planned.kind === 'broken') {
+        problems.push({ step: planned.index, ...stage, message: planned.error.message })
+        continue
+      }
+      for (const message of await missingFiles(planned, collectionPath)) {
+        problems.push({ step: planned.index, ...stage, message })
+      }
     }
   }
   return problems
+}
+
+/**
+ * The files a step's body names that a run would not find. A path with
+ * `{{variables}}` is left to the run, which resolves them.
+ */
+async function missingFiles(
+  planned: Extract<PlannedStep, { kind: 'request' }>,
+  collectionPath: string
+): Promise<string[]> {
+  const named = bodyFiles(planned.step.body).filter(({ written }) => !written.includes('{{'))
+  if (named.length === 0) return []
+  const roots = await fileRootsOf(planned.set?.path ?? collectionPath, collectionPath)
+  const messages: string[] = []
+  for (const { what, written } of named) {
+    try {
+      await findBodyFile(roots, written, what)
+    } catch (cause) {
+      if (!(cause instanceof BodyFileError)) throw cause
+      messages.push(planned.set ? `use: ${planned.set.name} — ${cause.message}` : cause.message)
+    }
+  }
+  return messages
 }

@@ -266,7 +266,7 @@ const selectFor = (project: OpenProject, request: Request): Selection =>
 
 /**
  * What `gta get` finds wrong beyond the collections it lists as broken: a
- * `use:` or `extends:` a run would stop at, and a collection it leaves out that
+ * `use:`, `extends:` or body file a run would stop at, and a collection it leaves out that
  * would not load. Every collection is checked, those `gta all` leaves out too,
  * which would otherwise go unnoticed until one is run by name.
  */
@@ -616,8 +616,8 @@ export function usage(p: Paint): string {
     '',
     `  ${p.bold('Commands:')}`,
     '    g, get          List the collections `gta all` would run, without running them.',
-    '                    Exits 1 on a broken collection, or a use: or extends: that',
-    '                    would stop a run, in any collection.',
+    '                    Exits 1 on a broken collection, or a use:, extends: or body',
+    '                    file that would stop a run, in any collection.',
     '    a, all          Run every collection, less those with exclude: true.',
     '    <list>          Run the collections and directories named, comma separated,',
     '                    in that order: smoke,checkout/sessions,payments',

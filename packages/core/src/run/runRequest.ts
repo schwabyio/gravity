@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import path from 'node:path'
 import { CheckSession } from '../assert/session.js'
 import { sendHttpRequest } from '../http/client.js'
 import type { Body, Collection, Step, VarValue } from '../model/documents.js'
@@ -29,15 +28,14 @@ import {
 } from '../runtime/gta.js'
 import { runScript, type Adopt } from '../runtime/sandbox.js'
 import { loadLibrary, type CheckFile, type EndpointBase } from '../workspace/library.js'
-import { projectRootOf } from '../workspace/project.js'
 import type { ProjectTrust } from '../workspace/projectTls.js'
 import { findEndpoint, placeholdersOf } from '../model/endpoints.js'
 import { buildScope, type ScopeContext } from '../vars/resolve.js'
 import { InterpolationError, OverlayScope, ParamsScope, VariableScope } from '../vars/scope.js'
 import { interpolateToString } from '../vars/interpolate.js'
 import { resolveSettings, toSentRequest } from './buildRequest.js'
-import { resolveParams } from './plan.js'
-import { BodyFileError, prepareRequest } from './prepareRequest.js'
+import { fileRootsOf, resolveParams } from './plan.js'
+import { BodyFileError, bodyFiles, prepareRequest, type FileRoots } from './prepareRequest.js'
 
 export interface RunStepInput {
   step: Step
@@ -113,8 +111,13 @@ export interface SetRun {
   path?: string
   /** The set: its headers, settings, `before` and `tests` apply to each of its steps. */
   doc: Collection
-  /** Its params, resolved: `params.<name>` in scripts, `{{params.<name>}}` in requests. */
-  params: Record<string, VarValue>
+  /**
+   * Its params: `params.<name>` in its scripts, `{{params.<name>}}` in its
+   * requests. Asked for as the set's own layer begins, once the caller's
+   * endpoint, base and collection `before.script` have run (SPEC.md §2.5);
+   * resolved the first time, and throwing when they cannot be.
+   */
+  params: () => Record<string, VarValue>
   /** Which of its steps this is, 0-based, and how many it has. */
   child: number
   of: number
@@ -299,24 +302,32 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   })
 
   let spec: SentRequest
-  let scope: VariableScope
+  let run: VariableScope
+  /** The params, once known: a set's only from its own layer on (below). */
   let params: Record<string, VarValue> | undefined
   try {
-    const run = provided ?? (context ? await buildScope(context) : new VariableScope())
+    run = provided ?? (context ? await buildScope(context) : new VariableScope())
     // A set opened and run on its own takes its params' defaults.
-    params =
-      set?.params ??
-      input.params ??
-      (input.collection?.params ? resolveParams(input.collection.params, {}, run) : undefined)
-    const own = params ? new ParamsScope(run, params) : run
-    scope = each ? new OverlayScope(own, new Map([['item', itemText(each.value)]]), 'forEach') : own
+    if (!set)
+      params =
+        input.params ??
+        (input.collection?.params ? resolveParams(input.collection.params, {}, run) : undefined)
   } catch (cause) {
     return failed(interpolateError(cause))
   }
+  /** What names resolve against: the run's, the params once known, and the forEach item. */
+  const scopeOf = (known: Record<string, VarValue> | undefined): VariableScope => {
+    const own = known ? new ParamsScope(run, known) : run
+    return each ? new OverlayScope(own, new Map([['item', itemText(each.value)]]), 'forEach') : own
+  }
+  let scope = scopeOf(params)
+  // A set's params are its own: the layers outside it — endpoint, base and the
+  // caller's collection — run before they resolve, and never see them.
+  const opens = set ? layers.findIndex((layer) => layer.script === 'set') : 0
   /** What every script gets besides `gta`, `req` and `res`. */
-  const shared = (adopt: Adopt) => ({
+  const shared = (adopt: Adopt, index: number) => ({
     assert,
-    ...(params ? { params: adopt(params) } : {}),
+    ...(params && index >= opens ? { params: adopt(params) } : {}),
     ...(each ? { item: adopt(each.value) } : {}),
     ...(endpoint ? { endpoint: adopt(endpointValues(endpoint, step, scope)) } : {})
   })
@@ -326,7 +337,16 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   /** The request as written, with what the scripts changed of its body and headers. */
   let edited: SentRequest | null = null
   // Outermost first, so each may build on what came before.
-  for (const layer of layers) {
+  for (const [index, layer] of layers.entries()) {
+    // A use's with: resolves here, so it reads what the caller's scripts just set.
+    if (set && index === opens) {
+      try {
+        params = set.params()
+      } catch (cause) {
+        return failed({ phase: 'use', message: (cause as Error).message })
+      }
+      scope = scopeOf(params)
+    }
     const before = layer.before
     const script = layer.script
     if (before?.script) {
@@ -339,7 +359,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
         ...(checks ? { checks } : {}),
         globals: (adopt) => {
           view = requestView(shown, adopt)
-          return { ...shared(adopt), gta: preRequestGta(scope, control), req: view }
+          return { ...shared(adopt, index), gta: preRequestGta(scope, control), req: view }
         }
       })
       if (error) return failed({ ...error, script })
@@ -371,7 +391,11 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       edited ?? toSentRequest(step, collection),
       step.body,
       scope,
-      filesRoot(set?.path ?? context?.collectionPath ?? itemPath)
+      await fileRoots(
+        step,
+        set?.path ?? context?.collectionPath ?? itemPath,
+        context?.collectionPath ?? itemPath
+      )
     )
     spec = prepared.request
     payload = prepared.payload
@@ -410,7 +434,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   const session = new CheckSession({ response, scope })
   let testsError: RunError | null = null
   try {
-    for (const layer of layers) {
+    for (const [index, layer] of layers.entries()) {
       const code = layer.tests
       if (!code || testsError) continue
       const pending: Promise<unknown>[] = []
@@ -422,7 +446,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
           ...(checks ? { checks } : {}),
           pending: () => pending,
           globals: (adopt) => ({
-            ...shared(adopt),
+            ...shared(adopt, index),
             gta: testsGta({
               session,
               scope,
@@ -505,12 +529,18 @@ function changedRequest(
 }
 
 /**
- * The folder the files a step's body names are read from: that of the project
- * its file is in — for one of a request set's steps, the set's file, which may
- * be a global project's. Null for a request in no file.
+ * Where the files a step's body names are read from (SPEC.md §2.2), for a
+ * step in `file` — for one of a request set's steps, the set's, which may be a
+ * global project's. Null for a request in no file, and for a body that names
+ * no file, which needs none.
  */
-function filesRoot(file: string | null | undefined): string | null {
-  return file ? (projectRootOf(file) ?? path.dirname(file)) : null
+async function fileRoots(
+  step: Step,
+  file: string | null | undefined,
+  collection: string | null | undefined
+): Promise<FileRoots | null> {
+  if (!file || bodyFiles(step.body).length === 0) return null
+  return fileRootsOf(file, collection ?? file)
 }
 
 /**

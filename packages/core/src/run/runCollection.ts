@@ -92,10 +92,27 @@ export async function runCollection(options: CollectionRunOptions): Promise<Coll
   const own = collection.params ? selfAsSet(collection, collectionPath) : undefined
   const plan = await planSteps(running, collectionPath)
   const results: RunResult[] = []
-  /** Params of the use running now, resolved when its first step starts. */
-  let params: Record<string, VarValue> = {}
-  /** Why the use running now could not start: each of its steps reports it. */
+  /**
+   * Params of the use running now, once resolved: a use's when its first
+   * request reaches the set's own layer, after the caller's `before.script`
+   * (SPEC.md §2.5); a set run on its own's as its first step starts.
+   */
+  let params: Record<string, VarValue> | null = null
+  /** Why the use running now could not start: each of its steps after that reports it. */
   let unstarted: RunError | null = null
+  /** The params of `using`, resolved the first time they are asked for. */
+  const paramsOf = (using: PlannedSet) => (): Record<string, VarValue> => {
+    if (unstarted) throw new Error(unstarted.message)
+    if (!params) {
+      try {
+        params = resolveParams(using.doc.params, using.with, scope)
+      } catch (cause) {
+        unstarted = { phase: 'use', message: `use: ${using.name} — ${(cause as Error).message}` }
+        throw new Error(unstarted.message)
+      }
+    }
+    return params
+  }
   /** Why the steps still to come are skipped: `gta.skipRest` in one before them. */
   let rest: string | null = null
   /** Planned steps begun, so those never begun count as not run. */
@@ -132,12 +149,14 @@ export async function runCollection(options: CollectionRunOptions): Promise<Coll
       const using = set?.planned ?? own!
       const starting = set ? set.child === 0 : planned.index === 0
       if (starting) {
-        try {
-          params = resolveParams(using.doc.params, using.with, scope)
-          unstarted = null
-        } catch (cause) {
-          params = {}
-          unstarted = { phase: 'use', message: `use: ${using.name} — ${(cause as Error).message}` }
+        params = null
+        unstarted = null
+        if (!set) {
+          try {
+            paramsOf(using)()
+          } catch {
+            // `unstarted` says why, below.
+          }
         }
       }
     }
@@ -197,14 +216,14 @@ export async function runCollection(options: CollectionRunOptions): Promise<Coll
                 ...(set.planned.useName ? { useName: set.planned.useName } : {}),
                 path: set.planned.path,
                 doc: set.planned.doc,
-                params,
+                params: paramsOf(set.planned),
                 child: set.child,
                 of: set.of,
                 useTests: set.planned.useTests
               }
             }
           : own
-            ? { params }
+            ? { params: params ?? {} }
             : {}),
         ...(signal ? { signal } : {})
       })

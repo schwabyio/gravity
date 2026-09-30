@@ -6,23 +6,31 @@ import { StepSchema, type VarValue } from '../model/documents.js'
 import type { SentRequest } from '../model/run.js'
 import { InterpolationError, VariableScope } from '../vars/scope.js'
 import { toSentRequest } from './buildRequest.js'
-import { BodyFileError, prepareRequest } from './prepareRequest.js'
+import { BodyFileError, prepareRequest, type FileRoots } from './prepareRequest.js'
 
 /** Bytes that are not text: a PNG signature, a NUL and a byte UTF-8 never uses. */
 const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff])
 
+let tmp: string
 let root: string
+let shared: string
 
 beforeAll(async () => {
-  root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gta-body-')))
-  await fs.mkdir(path.join(root, 'files'))
+  tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gta-body-')))
+  root = path.join(tmp, 'shop')
+  shared = path.join(tmp, 'shared')
+  await fs.mkdir(path.join(root, 'files'), { recursive: true })
   await fs.writeFile(path.join(root, 'files', 'avatar.png'), PNG)
   await fs.writeFile(path.join(root, 'files', 'order.json'), '{"id": "{{notResolved}}"}')
   await fs.writeFile(path.join(root, 'files', 'empty'), '')
+  // The global project's: one only it has, and one the project has its own of.
+  await fs.mkdir(path.join(shared, 'files'), { recursive: true })
+  await fs.writeFile(path.join(shared, 'files', 'terms.txt'), 'shared terms')
+  await fs.writeFile(path.join(shared, 'files', 'avatar.png'), 'shared avatar')
 })
 
 afterAll(async () => {
-  await fs.rm(root, { recursive: true, force: true })
+  await fs.rm(tmp, { recursive: true, force: true })
 })
 
 const scope = (vars: Record<string, VarValue> = {}) =>
@@ -31,11 +39,14 @@ const scope = (vars: Record<string, VarValue> = {}) =>
 async function prepare(
   step: unknown,
   vars: Record<string, VarValue> = {},
-  at: string | null = root
+  files: FileRoots | null = { project: root, global: null }
 ) {
   const parsed = StepSchema.parse(step)
-  return prepareRequest(toSentRequest(parsed), parsed.body, scope(vars), at)
+  return prepareRequest(toSentRequest(parsed), parsed.body, scope(vars), files)
 }
+
+/** The project, with the global project it uses. */
+const withGlobal = (): FileRoots => ({ project: root, global: shared })
 
 /** Read a multipart body back the way a server would, with an independent parser. */
 async function received(request: SentRequest, payload: Uint8Array | null) {
@@ -190,6 +201,76 @@ describe('prepareRequest', () => {
     await expect(
       prepare({ POST: 'http://x/', body: { file: 'files/avatar.png' } }, {}, null)
     ).rejects.toThrow('save the collection in a project first')
+  })
+
+  it('reads a file the project does not have from its global project, and says so', async () => {
+    const whole = await prepare(
+      { PUT: 'http://x/', body: { file: 'files/terms.txt' } },
+      {},
+      withGlobal()
+    )
+    expect(whole.payload).toEqual(Buffer.from('shared terms'))
+    expect(whole.request.body).toBe('‹file global:files/terms.txt, 12 bytes›')
+    expect(whole.request.headers).toEqual([{ name: 'Content-Type', value: 'text/plain' }])
+
+    // The project's own copy wins; global: reads the global project's alone.
+    const { request, payload } = await prepare(
+      {
+        POST: 'http://x/',
+        body: {
+          multipart: {
+            own: { file: 'files/avatar.png' },
+            shared: { file: 'global:files/avatar.png' },
+            named: { file: '{{where}}files/terms.txt' }
+          }
+        }
+      },
+      { where: 'global:' },
+      withGlobal()
+    )
+    const form = await received(request, payload)
+    expect(new Uint8Array(await (form.get('own') as File).arrayBuffer())).toEqual(PNG)
+    const theirs = form.get('shared') as File
+    expect(theirs.name).toBe('avatar.png')
+    expect(await theirs.text()).toBe('shared avatar')
+    expect((form.get('named') as File).name).toBe('terms.txt')
+    expect(request.body).toContain('‹file files/avatar.png, 10 bytes›')
+    expect(request.body).toContain('‹file global:files/avatar.png, 13 bytes›')
+    expect(request.body).toContain('‹file global:files/terms.txt, 12 bytes›')
+  })
+
+  it('says where it looked for a file, in the project and its global project', async () => {
+    const file = async (written: string, files: FileRoots | null = withGlobal()) =>
+      prepare({ POST: 'http://x/', body: { file: written } }, {}, files)
+    await expect(file('files/gone.png')).rejects.toThrow(
+      new BodyFileError(
+        "body.file: files/gone.png — no such file in the project folder, or in its global project's (../shared)"
+      )
+    )
+    await expect(file('global:files/gone.png')).rejects.toThrow(
+      'body.file: global:files/gone.png — no such file in the global project folder'
+    )
+    await expect(file('global:files/terms.txt', { project: root, global: null })).rejects.toThrow(
+      'body.file: global:files/terms.txt — this project does not use a global project'
+    )
+    await expect(file('global:../shop/files/avatar.png')).rejects.toThrow(
+      'body.file: global:../shop/files/avatar.png — a global: path stays in the global project folder'
+    )
+    await expect(file('global:/etc/hosts')).rejects.toThrow('must be a relative path')
+    // A path out of the project names its place itself: no global project to fall back to.
+    await expect(file('../elsewhere/terms.txt')).rejects.toThrow(
+      'body.file: ../elsewhere/terms.txt — no such file in the project folder'
+    )
+    expect((await file('../shared/files/terms.txt')).request.body).toBe(
+      '‹file ../shared/files/terms.txt, 12 bytes›'
+    )
+    // Misspelled in the project is an error, never a reason to look further.
+    await expect(file('files/Avatar.png')).rejects.toThrow(
+      /^body\.file: files\/Avatar\.png is spelled/
+    )
+    // The global project's own steps: its folder is both.
+    const own = await file('global:files/terms.txt', { project: shared, global: shared })
+    expect(own.request.body).toBe('‹file global:files/terms.txt, 12 bytes›')
   })
 
   it('reports a missing variable in a part as an interpolation error', async () => {

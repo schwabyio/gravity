@@ -145,7 +145,8 @@ export function UseStepEditor(props: EditorProps) {
                   The values this run of <strong>{set.title}</strong> gets, as{' '}
                   <code>{'{{params.name}}'}</code> in its requests and <code>params.name</code> in
                   its code. Empty takes the default. A value can use <code>{'{{variables}}'}</code>,
-                  resolved when the set starts.
+                  resolved as the set’s first request starts, after the collection’s{' '}
+                  <code>before.script</code>.
                 </p>
                 {params.length === 0 && <p className="hint">This set takes no params.</p>}
                 {params.map(([key, spec]) => (

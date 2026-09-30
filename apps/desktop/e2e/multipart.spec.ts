@@ -20,6 +20,8 @@ import { sizeWindow } from './window'
 
 const MAIN = path.resolve(process.cwd(), 'out/main/index.js')
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff])
+/** A file only the global project has. */
+const TERMS = Buffer.from('shared terms')
 
 let tmp: string
 let shop: string
@@ -59,6 +61,10 @@ test.beforeAll(async () => {
   fs.mkdirSync(path.join(shop, 'collections'), { recursive: true })
   fs.mkdirSync(path.join(shop, 'files'))
   fs.writeFileSync(path.join(shop, 'files', 'avatar.png'), PNG)
+  fs.writeFileSync(path.join(shop, 'project.yml'), 'uses: ../shared\n')
+  fs.mkdirSync(path.join(tmp, 'shared', 'files'), { recursive: true })
+  fs.writeFileSync(path.join(tmp, 'shared', 'project.yml'), 'name: Shared\n')
+  fs.writeFileSync(path.join(tmp, 'shared', 'files', 'terms.txt'), TERMS)
   fs.writeFileSync(
     path.join(shop, 'collections', 'upload.yml'),
     ['id: upload', 'steps:', `  - POST: "${origin}/upload"`, ''].join('\n')
@@ -149,4 +155,29 @@ test('a file that is not there stops the send, naming it', async () => {
   await expect(page.locator('.placeholder.error')).toContainText(
     'body.file: files/gone.png — no such file in the project folder'
   )
+})
+
+test('a file the project does not have is sent from its global project', async () => {
+  await page.getByLabel('Body file').fill('files/terms.txt')
+  const received = await send()
+  await expect(received).toContainText('"type": "text/plain"')
+  await expect(received).toContainText(`"hex": "${TERMS.toString('hex')}"`)
+})
+
+test('a file chosen in the global project is named as the global project’s', async () => {
+  // Not there first, so what is received next is this send's.
+  await page.getByLabel('Body file').fill('global:files/gone.txt')
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page.locator('.placeholder.error')).toContainText(
+    'body.file: global:files/gone.txt — no such file in the global project folder'
+  )
+
+  await pickNext(path.join(tmp, 'shared', 'files', 'terms.txt'))
+  await page.getByRole('button', { name: 'Choose file…' }).click()
+  await expect(page.getByLabel('Body file')).toHaveValue('global:files/terms.txt')
+  await expect
+    .poll(collectionFile, { timeout: 5_000 })
+    .toContain('body:\n      file: global:files/terms.txt')
+  const received = await send()
+  await expect(received).toContainText(`"hex": "${TERMS.toString('hex')}"`)
 })

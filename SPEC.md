@@ -213,8 +213,9 @@ Projects are shared between macOS, Windows and Linux, and read the same on all t
   without an extension. A file with such a name, made on macOS or Linux, is reported.
 - Files should use LF line endings. Gravity writes LF, and can add a `.gitattributes`
   scoped to the project's own files so that git keeps them LF on every platform. The same
-  block keeps `files/` exactly as committed, so a body sends the same bytes everywhere. For
-  files a body sends from another folder, add a `-text` line of your own.
+  block keeps `files/` exactly as committed, so a body sends the same bytes everywhere. A
+  global project is a project too: its own block covers its `files/`. For files a body
+  sends from another folder, add a `-text` line of your own.
 - The process environment is read by exact name on every platform, although Windows
   itself ignores case (§4, §6).
 
@@ -283,9 +284,11 @@ global project's `settings.yml`, the project's, the environment variable, the fl
 | `gta all`             | Every collection, except those with `exclude: true` (§2.4). |
 | `gta smoke,checkout/` | The collections and directories named, in that order.       |
 
-`gta get` also reports each `use:` and `extends:` that would stop a run, in every
-collection, including those `gta all` leaves out (Appendix A). It exits `1` when it finds
-one, or a broken collection, and `0` otherwise.
+`gta get` also reports each `use:` and `extends:` that would stop a run, and each file a
+body names that is in neither the project nor its global project (§2.2), in every
+collection, including those `gta all` leaves out (Appendix A). A file path with
+`{{variables}}` is left to the run. It exits `1` when it finds one, or a broken
+collection, and `0` otherwise.
 
 A collection is named by its `id`, or by its place (`checkout/sessions`). A directory is
 named by its name, and `checkout/` names only the directory. `--flag name=value` sets a
@@ -501,13 +504,28 @@ the project the step belongs to. For a step of a request set, that is the set's 
 project, which may be a global one. The path is the same wherever the collection sits
 inside `collections/`.
 
+A file that is not there is looked for in the global project (§1.1), as a request set
+or a base collection is, so projects can share one copy of a file. A project's own file
+of the same path wins. `global:` before the path reads only the global project's:
+
+```yaml
+body:
+  multipart:
+    avatar: { file: files/test-png.png } # the project's, else the global project's
+    terms: { file: global:files/terms.pdf } # the global project's only
+```
+
 - It must be a relative path, written with `/`. An absolute path is refused.
+- A path out of the project folder, such as `../other/files/a.png`, is read from where
+  it points, with no global project to fall back to. A `global:` path stays inside the
+  global project folder, and is an error in a project that uses none.
 - `{{variables}}` resolve in the path, so a data file row (§2.8) can choose the file.
 - A file is sent byte for byte. `{{…}}` inside it is not a variable.
 - A file that cannot be read stops the step before anything is sent, in its own `body`
-  phase, naming the file.
+  phase, naming the file and each place it was looked for.
 - Where a request is shown (results, reports, `req.body`), a file's bytes appear as
-  `‹file files/avatar.png, 1234 bytes›`.
+  `‹file files/avatar.png, 1234 bytes›`, and a global project's file as
+  `‹file global:files/terms.pdf, 5254 bytes›`, however the step named it.
 
 ### 2.3 `settings` and `headers`
 
@@ -624,8 +642,8 @@ steps:
 values. No variable can take the place of a `params.` name.
 
 A default may name variables and other params, as in
-`email: '{{params.accountId}}@example.com'`. Like a `with:` value, it is resolved once,
-when the set starts, so `accountId: '{{$uuid}}'` is one id wherever the set reads it.
+`email: '{{params.accountId}}@example.com'`. Like a `with:` value, it is resolved once
+for each use, so `accountId: '{{$uuid}}'` is one id wherever the set reads it.
 
 **A use step** holds only `use`, `with`, `name`, `tags`, `flags`, `docs` and `tests`. A
 method key, `headers`, `body`, `settings` or `before` on it is an error, and `with`
@@ -635,9 +653,11 @@ without `use` is an error too.
   global project. `use: auth/login` is one directory down. `use: global:login` looks
   only in the global project.
 - **`with:`** gives plain values; a param left out takes its default. A string may hold
-  `{{variables}}`, resolved when the set starts. A missing required value, a name the
-  set does not take, or a value or default that cannot be resolved stops the set's
-  steps before anything is sent.
+  `{{variables}}`, resolved as the set's first request starts, just after the
+  collection's `before.script` has run for it: a value that script sets for each step
+  (§4) reaches the set. A missing required value, a name the set does not take, or a
+  value or default that cannot be resolved stops the set's steps before anything is
+  sent.
 - **Running.** A use step runs each of the set's steps in turn, in the collection's
   variable scope, so what one sets the next can read, and so can the steps after the use
   step. Each request is reported as its own result. When the use step has a `name`,
@@ -646,7 +666,10 @@ without `use` is an error too.
 - **Layers.** Headers and settings: the collection's, under the set's, under each
   step's own. Scripts run collection, then set, then step: `before.script` before the
   request and `tests` after. The use step's own `tests` run last, on the response of
-  the set's step marked `useTests: true`, or else its last step.
+  the set's step marked `useTests: true`, or else its last step. `params` is the set's
+  alone: the collection's scripts, and a base collection's or an endpoint's (§2.6,
+  §2.7), never see it. In an endpoint's `before.script`, a segment written as
+  `{{params.id}}` reads as written.
 - **One level.** A request set must not `use:` another, and has `params`, not `vars`. A
   file in `requests/` without `params` is not a request set.
 
@@ -1162,6 +1185,10 @@ There is nothing to load, and no `startXTest` or `endXTest`.
 | `gta.randomInt(min, max)`: a whole number, both ends included                                    |         ✓          |
 | `gta.date(format, secondsOffset = 0, timeZone = 'local')`                                        |         ✓          |
 
+`gta.set` keeps a string, number, boolean or null as it is, and stores an object or array
+as JSON text. `undefined` is stored as `null`, so a variable set to nothing still reads
+`== null`, and `{{name}}` resolves as a null does (§4).
+
 Calling a response check in `before.script` is an error, and so is `gta.skip` in
 `tests`, where the request has been sent. After `gta.skip` the script runs to its end,
 and no later `before.script` runs. `gta.skipRest` skips steps of this row only: the next
@@ -1396,9 +1423,11 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - Every feature flag named is known to the run.
 - The flag `command`, if any, has every quote closed, starts, and exits `0` within 60
   seconds, printing a JSON object.
-- Every file a body names can be read from the project folder.
+- Every file a body names can be read from the project folder, or its global
+  project's (§2.2).
 - Every `use:` and `extends:` names a usable file, and every `with:` suits its set.
-  `gta get` checks these without running anything (§1.3).
+  `gta get` checks these, and the body files named without `{{variables}}`, without
+  running anything (§1.3).
 - A step's `forEach` resolves to a JSON array.
 - In `{{@name}}`, `name` holds text naming a variable that exists.
 - A `before.script` sets `req.body` to text, and only for a `json`, `xml`, `text` or

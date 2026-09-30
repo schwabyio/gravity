@@ -52,7 +52,7 @@ describe('gta', () => {
     expect(code).toBe(EXIT.passed)
     expect(out).toContain('Usage: gta <command>')
     expect(out).toContain('--limitConcurrency')
-    expect(out).toContain('Exits 1 on a broken collection, or a use: or extends: that')
+    expect(out).toContain('Exits 1 on a broken collection, or a use:, extends: or body')
   })
 
   it('refuses a folder with no collections/', async () => {
@@ -875,7 +875,7 @@ describe('gta', () => {
     expect(err).toContain('certs/gone.pem: no such file (tls.ca in project.yml)')
   })
 
-  it('uploads files from the project folder, and names one it cannot read', async () => {
+  it('uploads files from the project folder, and names one it cannot read, run or not', async () => {
     const upload = (file: string) =>
       [
         'id: upload',
@@ -893,12 +893,19 @@ describe('gta', () => {
       'collections/checkout/upload.yml': upload('files/avatar.png')
     })
     expect((await gta(root, 'all')).code).toBe(EXIT.passed)
+    expect((await gta(root, 'get')).code).toBe(EXIT.passed)
 
     await fs.writeFile(path.join(root, 'collections/checkout/upload.yml'), upload('files/gone.png'))
     const { code, out } = await gta(root, 'all')
     expect(code).toBe(EXIT.failed)
     expect(out).toContain(
       'body error: multipart field avatar: files/gone.png — no such file in the project folder'
+    )
+    // gta get finds it without a run.
+    const listed = await gta(root, 'get')
+    expect(listed.code).toBe(EXIT.failed)
+    expect(listed.out).toContain(
+      'broken upload, step 1: multipart field avatar: files/gone.png — no such file in the project folder'
     )
   })
 

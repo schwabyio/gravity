@@ -18,10 +18,12 @@ import {
   FLAG_NAME_PATTERN,
   FlagValueSchema,
   GitCommandError,
+  GLOBAL_FILE,
   isAbsoluteAnywhere,
   isInside,
   projectRootOf,
   PROJECT_FIELDS,
+  readProject,
   relativePosix,
   samePath,
   previewVariables,
@@ -575,6 +577,13 @@ export function registerIpc(projects: ProjectService): void {
       // Spelled as the project root is: through symlinks (/var is /private/var on
       // macOS), and on Windows with long names, never 8.3 ones like RUNNER~1.
       const file = await canonical(picked)
+      // One of the global project's, not the project's own: named as its (SPEC.md §2.2).
+      if (kind === 'upload' && !isInside(root, file)) {
+        const { global } = await readProject(root)
+        if (global && isInside(global.root, file)) {
+          return { path: `${GLOBAL_FILE}${relativePosix(global.root, file)}` }
+        }
+      }
       // Written relative so it works on every machine; another drive has no relative path.
       if (path.isAbsolute(path.relative(root, file))) {
         throw new Error(

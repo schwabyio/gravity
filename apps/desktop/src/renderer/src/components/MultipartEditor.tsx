@@ -107,7 +107,7 @@ export default function MultipartEditor({
                         onChange={(e) => update(row.id, { value: e.target.value })}
                       />
                       {onPickFile && (
-                        <Tooltip text="Choose a file in the project folder">
+                        <Tooltip text="Choose a file in the project folder or its global project’s">
                           <button
                             type="button"
                             aria-label={`Choose a file for ${label}`}
@@ -143,7 +143,7 @@ export default function MultipartEditor({
       </table>
       <p className="hint">
         {onPickFile
-          ? 'A file’s path is from the project folder, and can use {{variables}}.'
+          ? 'A file’s path is from the project folder, else its global project’s — or only that with global: before it — and can use {{variables}}.'
           : 'Save the collection in a project to send files: their paths are from its folder.'}{' '}
         A name on more than one row is sent once for each.
       </p>
@@ -193,7 +193,7 @@ export function FileBodyEditor(props: {
       <p className="hint">
         Sent as it is, with a Content-Type from its extension unless a header sets one.{' '}
         {onPickFile
-          ? 'The path is from the project folder, and can use {{variables}}.'
+          ? 'The path is from the project folder, else its global project’s — or only that with global: before it — and can use {{variables}}.'
           : 'Save the collection in a project to send a file: the path is from its folder.'}
       </p>
       {error && (

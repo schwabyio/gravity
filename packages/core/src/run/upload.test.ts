@@ -86,6 +86,18 @@ beforeAll(async () => {
       ''
     ].join('\n')
   )
+  // One the global project's own set names with global:, which is its own folder.
+  await write(
+    path.join(shared, 'requests', 'send-terms.yml'),
+    [
+      'id: send-terms',
+      'params: {}',
+      'steps:',
+      `  - PUT: ${origin}/terms`,
+      '    body: { file: global:files/terms.txt }',
+      ''
+    ].join('\n')
+  )
 })
 
 afterAll(async () => {
@@ -158,6 +170,33 @@ describe('uploads', () => {
     expect(summary.passed).toBe(1)
   })
 
+  it('reads a file the project does not have from its global project, and global: from there only', async () => {
+    const summary = await run(
+      path.join(shop, 'collections', 'shared-files.yml'),
+      [
+        'id: shared-files',
+        'steps:',
+        `  - POST: ${origin}/terms`,
+        '    body:',
+        '      multipart:',
+        '        fallback: { file: files/terms.txt }',
+        '        named: { file: global:files/terms.txt }',
+        '  - use: send-terms',
+        ''
+      ].join('\n')
+    )
+    const [parts, whole] = summary.results
+    const terms = {
+      filename: 'terms.txt',
+      type: 'text/plain',
+      bytes: [...Buffer.from('shared terms')]
+    }
+    expect(JSON.parse(parts!.response!.body)).toMatchObject({ fallback: terms, named: terms })
+    expect(parts!.request.body).toContain('‹file global:files/terms.txt, 12 bytes›')
+    expect(JSON.parse(whole!.response!.body)).toEqual({ type: 'text/plain', bytes: terms.bytes })
+    expect(whole!.request.body).toBe('‹file global:files/terms.txt, 12 bytes›')
+  })
+
   it('stops a step whose file cannot be read, sending nothing', async () => {
     hits = 0
     const summary = await run(
@@ -175,7 +214,8 @@ describe('uploads', () => {
       status: 'error',
       error: {
         phase: 'body',
-        message: 'multipart field avatar: files/gone.png — no such file in the project folder'
+        message:
+          "multipart field avatar: files/gone.png — no such file in the project folder, or in its global project's (../shared)"
       }
     })
   })

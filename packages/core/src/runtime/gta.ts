@@ -501,6 +501,8 @@ const isThenable = (value: unknown): value is PromiseLike<unknown> =>
   typeof (value as { then?: unknown }).then === 'function'
 
 function toVarValue(value: unknown): VarValue {
+  // No value is null, not the text "undefined", so it still reads `== null`.
+  if (value === undefined) return null
   if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) {
     return value as VarValue
   }

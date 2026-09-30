@@ -91,6 +91,10 @@ beforeAll(async () => {
       ''
     ].join('\n')
   )
+  await write(
+    path.join(shop, 'requests', 'user.yml'),
+    "id: user\nparams:\n  id: { required: true }\nsteps:\n  - GET: '{{baseUrl}}/users/{{params.id}}'\n"
+  )
   await write(path.join(shop, 'bases', 'bad.yml'), `id: bad\nsteps:\n  - GET: "${origin}/x"\n`)
 })
 
@@ -207,6 +211,19 @@ describe('a request under its endpoint’s base', () => {
   it('uses the global project’s endpoint where the project has none', async () => {
     await run([{ GET: '{{baseUrl}}/health' }])
     expect(seen[0]?.headers['x-from']).toBe('global')
+  })
+})
+
+describe('a request set’s step under the caller’s base and its endpoint’s', () => {
+  it('reads with: after the base’s before.script, and checks endpoint.id as the set sent it', async () => {
+    const [result] = await run([{ use: 'user', with: { id: '{{fromBase}}' } }], {
+      extends: 'auth'
+    })
+    expect(seen.map((request) => request.url)).toEqual(['/users/yes'])
+    expect(result?.status).toBe('pass')
+    expect(
+      result?.assertions.map((assertion) => `${assertion.target}:${assertion.path ?? ''}`)
+    ).toEqual(['header:content-type', 'status:', 'body:id', 'custom:'])
   })
 })
 

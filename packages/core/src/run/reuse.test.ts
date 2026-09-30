@@ -128,6 +128,29 @@ beforeAll(async () => {
     ].join('\n')
   )
   await write(
+    path.join(shop, 'requests', 'greet.yml'),
+    [
+      'id: greet',
+      'params:',
+      '  who: { required: true }',
+      'before:',
+      '  script: |',
+      "    gta.set('greeting', `hi-${params.who}`)",
+      'steps:',
+      '  - name: greet',
+      `    GET: "${origin}/greet/{{greeting}}"`,
+      '  - name: again',
+      `    GET: "${origin}/greet/{{params.who}}"`,
+      ''
+    ].join('\n')
+  )
+  await write(
+    path.join(shop, 'requests', 'upload.yml'),
+    `id: upload\nparams: {}\nsteps:\n  - PUT: "${origin}/upload"\n    body: { file: files/gone.txt }\n`
+  )
+  await write(path.join(shop, 'files', 'own.txt'), 'own')
+  await write(path.join(shared, 'files', 'common.txt'), 'common')
+  await write(
     path.join(shop, 'requests', 'not-a-set.yml'),
     `id: not-a-set\nsteps:\n  - GET: "${origin}/x"\n`
   )
@@ -180,11 +203,13 @@ describe('finding what a project can reuse', () => {
     const sets = await listRequestSets(shop, { root: shared })
     expect(sets.map((set) => `${set.source}:${set.name}`)).toEqual([
       'project:account',
+      'project:greet',
       'project:login',
       'project:loop',
       'project:not-a-set',
       'project:orders/place',
       'project:typo',
+      'project:upload',
       'project:user',
       'global:ping'
     ])
@@ -380,6 +405,48 @@ describe('a set’s params', () => {
     ])
   })
 
+  it('resolves with: once the caller’s before.script has run for the set’s first request', async () => {
+    // The collection's scripts run for every request, and never see a set's params.
+    const unseen = "if (typeof params !== 'undefined') throw new Error('the collection saw params')"
+    const { summary } = await run(
+      [
+        { use: 'greet', with: { who: '{{n}}' } },
+        { name: 'plain', GET: `${origin}/plain/{{n}}` },
+        { use: 'greet', with: { who: '{{n}}' } }
+      ],
+      {
+        before: { script: `${unseen}\ngta.set('n', (gta.get('n') ?? 0) + 1)` },
+        tests: unseen
+      }
+    )
+    // Each use reads the n set for its first request, and keeps it for its second.
+    expect(seen.map((request) => request.url)).toEqual([
+      '/greet/hi-1',
+      '/greet/1',
+      '/plain/3',
+      '/greet/hi-4',
+      '/greet/4'
+    ])
+    expect(summary).toMatchObject({ total: 5, passed: 5 })
+  })
+
+  it('stops a use whose with: cannot resolve after the caller’s before.script, before sending', async () => {
+    const { reported } = await run([{ use: 'greet', with: { who: '{{never}}' } }], {
+      before: { script: "console.log('collection ran')" }
+    })
+    expect(seen).toEqual([])
+    const message = 'use: greet — Variable "never" is not defined in this environment.'
+    expect(reported.map(([, result]) => [result.status, result.error, result.use?.child])).toEqual([
+      ['error', { phase: 'use', message }, 0],
+      ['error', { phase: 'use', message }, 1]
+    ])
+    // The first request ran the collection's before.script; the second never began.
+    expect(reported[0]?.[1].logs).toEqual([
+      { level: 'log', phase: 'pre-request', message: 'collection ran' }
+    ])
+    expect(reported[1]?.[1].logs).toBeUndefined()
+  })
+
   it('resolves a default after the params it names, wherever they are declared', () => {
     const params = resolveParams(
       { email: '{{params.id}}@example.com', id: '{{$uuid}}' },
@@ -531,5 +598,40 @@ describe('checking references without a run', () => {
       { step: 2, message: 'use: nope — there is no nope.yml in requests/' }
     ])
     expect(seen).toEqual([])
+  })
+
+  it('finds each file a body names that neither the project nor its global project has', async () => {
+    const collection = CollectionSchema.parse({
+      id: 'suite',
+      setup: [{ PUT: `${origin}/x`, body: { file: 'files/nowhere.png' } }],
+      steps: [
+        {
+          POST: `${origin}/x`,
+          body: {
+            multipart: {
+              own: { file: 'files/own.txt' },
+              shared: { file: 'files/common.txt' },
+              gone: { file: 'global:files/own.txt' },
+              later: { file: 'files/{{which}}' }
+            }
+          }
+        },
+        { use: 'upload' }
+      ]
+    })
+    const problems = await referenceProblems(
+      collection,
+      path.join(shop, 'collections', 'suite.yml')
+    )
+    const neither = "no such file in the project folder, or in its global project's (../shared)"
+    expect(problems).toEqual([
+      { step: 0, stage: 'setup', message: `body.file: files/nowhere.png — ${neither}` },
+      {
+        step: 0,
+        message:
+          'multipart field gone: global:files/own.txt — no such file in the global project folder'
+      },
+      { step: 1, message: `use: upload — body.file: files/gone.txt — ${neither}` }
+    ])
   })
 })
