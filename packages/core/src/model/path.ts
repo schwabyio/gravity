@@ -5,6 +5,8 @@
  *     groups.0.name      an array index, dot form (what converted xtest suites use)
  *     groups[0].name     the same index, bracket form
  *     sessions[].id      `id` on every item of `sessions`
+ *     jwt["https://x.io/id"]   a key a dot would split, quoted as in JSON; `[""]` is
+ *                              the empty key
  *
  * Pure and dependency-free: the engine evaluates with it, and the renderer uses
  * the same parser to find which lines of a body an assertion is about.
@@ -16,27 +18,44 @@ export type PathSegment =
   /** `[]`: every item of an array. */
   | { kind: 'each' }
 
+/**
+ * A quoted key, `["…"]`, is a JSON string, so `\"` and `\\` escape as they do
+ * there. Only what `JSON.parse` accepts, control characters left out, reads as
+ * one; anything else reads as a plain key. Then a plain key, then `[n]` or `[]`.
+ */
+const SEGMENT =
+  // eslint-disable-next-line no-control-regex
+  /\[("(?:[^"\\\u0000-\u001f]|\\["\\/bfnrt]|\\u[0-9a-fA-F]{4})*")\]|([^.[\]]+)|\[(\d*)\]/g
+
 export function parsePath(path: string): PathSegment[] {
   const segments: PathSegment[] = []
-  const pattern = /([^.[\]]+)|\[(\d*)\]/g
-  for (const match of path.matchAll(pattern)) {
-    if (match[1] !== undefined) segments.push({ kind: 'key', key: match[1] })
-    else if (match[2] === '') segments.push({ kind: 'each' })
-    else segments.push({ kind: 'index', index: Number(match[2]) })
+  for (const match of path.matchAll(SEGMENT)) {
+    if (match[1] !== undefined) segments.push({ kind: 'key', key: JSON.parse(match[1]) as string })
+    else if (match[2] !== undefined) segments.push({ kind: 'key', key: match[2] })
+    else if (match[3] === '') segments.push({ kind: 'each' })
+    else segments.push({ kind: 'index', index: Number(match[3]) })
   }
   return segments
 }
 
-/** The canonical spelling: brackets for indexes, dots for keys. */
+/**
+ * The canonical spelling: brackets for indexes, dots for keys, and a quoted
+ * key for one a dot would not spell, so `parsePath` always reads it back.
+ */
 export function formatPath(segments: readonly PathSegment[]): string {
   let out = ''
   for (const segment of segments) {
-    if (segment.kind === 'key') out += out === '' ? segment.key : `.${segment.key}`
-    else if (segment.kind === 'index') out += `[${segment.index}]`
+    if (segment.kind === 'key') {
+      if (!plainKey(segment.key)) out += `[${JSON.stringify(segment.key)}]`
+      else out += out === '' ? segment.key : `.${segment.key}`
+    } else if (segment.kind === 'index') out += `[${segment.index}]`
     else out += '[]'
   }
   return out
 }
+
+/** A key written as it is: not empty, and holding no `.`, `[` or `]`. */
+const plainKey = (key: string): boolean => key !== '' && !/[.[\]]/.test(key)
 
 const isIndexKey = (key: string): boolean => /^\d+$/.test(key)
 

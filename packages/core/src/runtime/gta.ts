@@ -3,6 +3,7 @@ import type { CheckMatcher } from '../assert/evaluate.js'
 import { isRegExp, show } from '../assert/evaluate.js'
 import type { CheckSession } from '../assert/session.js'
 import { bodyAsObject } from '../model/bodyObject.js'
+import { formatPath, parsePath, type PathSegment } from '../model/path.js'
 import { UnknownFlagError } from '../flags/flags.js'
 import type { VarValue } from '../model/documents.js'
 import type { ReceivedResponse, SentRequest } from '../model/run.js'
@@ -99,9 +100,38 @@ function variableName(value: unknown): string {
   return value
 }
 
+/**
+ * A path, as xtest took one: a string, `'user.name'`, or a list of keys,
+ * `['decodedJwt', 'payload', 'https://x.io/id']`, for a key a string cannot
+ * spell. The engine reads the string `formatPath` makes of a list.
+ */
+type PathArg = string | Array<string | number>
+
+/**
+ * A path argument as the engine reads it (SPEC.md §3). In a list each key is
+ * taken as it is, and a number as its digits, as xtest's lodash `get` did, so
+ * `[0, 'city']` reads index 0 of an array and key `"0"` of an object alike.
+ */
+function pathOf(path: unknown, what: string): string {
+  if (typeof path === 'string') return path
+  if (!Array.isArray(path)) {
+    throw new GtaUsageError(
+      `${what} is a string, such as "user.name", or a list of keys, such as ["user", "name"]; got ${show(path)}`
+    )
+  }
+  if (path.length === 0) throw new GtaUsageError(`${what} is an empty list; it needs a key`)
+  return formatPath(
+    path.map((key): PathSegment => {
+      if (typeof key === 'string') return { kind: 'key', key }
+      if (typeof key === 'number') return { kind: 'key', key: String(key) }
+      throw new GtaUsageError(`${what}'s keys are strings or numbers; got ${show(key)}`)
+    })
+  )
+}
+
 /** One entry of an object `validationList`, as xtest documented it. */
 interface ValidationEntry {
-  pathToProperty: string
+  pathToProperty: PathArg
   expectedValue?: unknown
   compareValue?: unknown
   specialHandling?: string
@@ -117,7 +147,7 @@ const isValidationEntry = (value: unknown): value is ValidationEntry =>
 function itemFrom(list: ValidationEntry[], valueKey: 'expectedValue' | 'compareValue') {
   const item: Record<string, unknown> = {}
   for (const entry of list) {
-    const path = entry.pathToProperty
+    const path = pathOf(entry.pathToProperty, 'pathToProperty')
     if (valueKey === 'compareValue') {
       item[path] = entry.compareValue
       continue
@@ -201,55 +231,75 @@ export function testsGta({ session, scope, pending, warn = () => {} }: TestsApi)
       session,
       'expectResponseBodyToHaveProperty',
       (
-        ...args: [jsonPathToProperty: string, expectedValue?: unknown, specialHandling?: string]
+        ...args: [jsonPathToProperty: PathArg, expectedValue?: unknown, specialHandling?: string]
       ) => {
         const [path, value, specialHandling] = args
-        session.body(path, xtestMatcher(args.length > 1, value, specialHandling))
+        session.body(
+          pathOf(path, 'jsonPathToProperty'),
+          xtestMatcher(args.length > 1, value, specialHandling)
+        )
       }
     ),
 
     expectResponseBodyToHaveUnorderedArray: guarded(
       session,
       'expectResponseBodyToHaveUnorderedArray',
-      (jsonPathToArray: string, validationList: unknown) => {
+      (jsonPathToArray: PathArg, validationList: unknown) => {
+        const path = pathOf(jsonPathToArray, 'jsonPathToArray')
         const list = toList(validationList)
         const unordered = list.every(isValidationEntry)
           ? [itemFrom(list as ValidationEntry[], 'expectedValue')]
           : list
-        session.body(jsonPathToArray, { unordered })
+        session.body(path, { unordered })
       }
     ),
 
     expectResponseBodyToHaveUnorderedArrayNotThisItem: guarded(
       session,
       'expectResponseBodyToHaveUnorderedArrayNotThisItem',
-      (jsonPathToArray: string, validationList: unknown) => {
+      (jsonPathToArray: PathArg, validationList: unknown) => {
+        const path = pathOf(jsonPathToArray, 'jsonPathToArray')
         const list = toList(validationList)
         const unorderedNot = list.every(isValidationEntry)
           ? [itemFrom(list as ValidationEntry[], 'compareValue')]
           : list
-        session.body(jsonPathToArray, { unorderedNot })
+        session.body(path, { unorderedNot })
       }
     ),
 
-    ignoreResponseBodyProperty(jsonPathToProperty: string) {
-      session.ignore(jsonPathToProperty)
-    },
+    ignoreResponseBodyProperty: guarded(
+      session,
+      'ignoreResponseBodyProperty',
+      (jsonPathToProperty: PathArg) => {
+        session.ignore(pathOf(jsonPathToProperty, 'jsonPathToProperty'))
+      }
+    ),
 
-    ignoreResponseBodyArrayObjectProperty(
-      jsonPathToArray: string,
-      jsonPathOfObjectProperty: string
-    ) {
-      session.ignore(`${jsonPathToArray}[].${jsonPathOfObjectProperty}`)
-    },
+    ignoreResponseBodyArrayObjectProperty: guarded(
+      session,
+      'ignoreResponseBodyArrayObjectProperty',
+      (jsonPathToArray: PathArg, jsonPathOfObjectProperty: PathArg) => {
+        const array = parsePath(pathOf(jsonPathToArray, 'jsonPathToArray'))
+        const property = parsePath(pathOf(jsonPathOfObjectProperty, 'jsonPathOfObjectProperty'))
+        session.ignore(formatPath([...array, { kind: 'each' }, ...property]))
+      }
+    ),
 
-    sortResponseBodyArrays(propertyName: string) {
+    sortResponseBodyArrays(propertyName: PathArg) {
       // As in xtest: a missing name sorts nothing and is only worth a warning.
-      if (typeof propertyName !== 'string' || propertyName === '') {
+      const named =
+        (typeof propertyName === 'string' && propertyName !== '') ||
+        (Array.isArray(propertyName) && propertyName.length > 0)
+      if (!named) {
         warn('gta.sortResponseBodyArrays() needs a property name to sort by; nothing was sorted')
         return
       }
-      session.sortBy([propertyName])
+      try {
+        session.sortBy([pathOf(propertyName, 'propertyName')])
+      } catch (cause) {
+        if (!(cause instanceof GtaUsageError)) throw cause
+        warn(`gta.sortResponseBodyArrays(): ${cause.message}; nothing was sorted`)
+      }
     },
 
     /** Strict validation for this step. Replaces `startXTest`'s second argument. */

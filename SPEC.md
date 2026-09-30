@@ -828,6 +828,15 @@ tests: |
 A path addresses the body in dot or bracket notation: `user.name`; `groups.0.name` or
 `groups[0].name` for an index; and `sessions[].id` for a property of every item.
 
+A key that holds a `.`, `[` or `]`, or is empty, goes in brackets as a JSON string:
+`jwt.payload["https://example.com/id"]`, `modules[""].edition`. Reports show such keys
+the same way.
+
+As in xtest, a path can also be a list of keys: `['jwt', 'payload', 'https://example.com/id']`.
+Each item is one key, whatever it holds, and a number is its digits, so
+`['groups', 0, 'name']` reads an index. Every function that takes a path takes a list
+too, and so does `pathToProperty`.
+
 ### Body conversion
 
 A JSON body is used as it is. An XML body is converted: the root element is the single

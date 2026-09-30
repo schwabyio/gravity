@@ -21,7 +21,16 @@ const BODY = {
   account: [
     { id: { value: 'b' }, description: 'Savings', balance: 10 },
     { id: { value: 'a' }, description: 'Checking', balance: 20 }
-  ]
+  ],
+  // Keys only a list of keys, or a quoted key, can reach.
+  decodedJwt: {
+    payload: { 'https://data.ia.io/ia_acct_uuid': 'acct-1', 'https://data.ia.io/roles': ['admin'] }
+  },
+  licenses: [
+    { licenseKey: 'k1', modules: { '': { params: { edition: 'maker' } } } },
+    { licenseKey: 'k2', modules: { '': { params: { edition: 'basic' } } } }
+  ],
+  byId: { '7': { city: 'Sacramento' } }
 }
 
 let server: http.Server
@@ -201,6 +210,94 @@ describe('xtest functions on gta, without the boilerplate', () => {
       gta.test('date', () => assert.match(gta.date('%Y-%m-%d', 0, 'Z'), /^\\d{4}-\\d{2}-\\d{2}$/))
     `)
     expect(result.assertions[0]?.status).toBe('pass')
+  })
+})
+
+describe('paths given as a list of keys, as xtest took them', () => {
+  const jwtId = "['decodedJwt', 'payload', 'https://data.ia.io/ia_acct_uuid']"
+
+  it('reach keys holding dots, and numbers read as keys of arrays and objects alike', async () => {
+    const result = await run(`
+      gta.expectResponseBodyToHaveProperty(${jwtId}, 'acct-1')
+      gta.expectResponseBodyToHaveProperty(${jwtId}, 'acctId', 'setAsCollectionVariable')
+      gta.expectResponseBodyToHaveProperty('decodedJwt.payload["https://data.ia.io/roles"]', null, 'isArrayAndNotEmpty')
+      gta.expectResponseBodyToHaveProperty(['account', 1, 'description'], 'Checking')
+      gta.expectResponseBodyToHaveProperty(['byId', 7, 'city'], 'Sacramento')
+      gta.test('captured', () => assert.equal(gta.get('acctId'), 'acct-1'))
+    `)
+    expect(result.error).toBeNull()
+    expect(statuses(result)).toEqual(['pass', 'pass', 'pass', 'pass', 'pass', 'pass'])
+    expect(result.assertions[0]).toMatchObject({
+      path: 'decodedJwt.payload["https://data.ia.io/ia_acct_uuid"]',
+      name: 'decodedJwt.payload["https://data.ia.io/ia_acct_uuid"] is "acct-1"'
+    })
+    expect(result.assertions[3]?.path).toBe('account.1.description')
+  })
+
+  it('work in unordered-array lists, the empty key included', async () => {
+    const result = await run(`
+      gta.expectResponseBodyToHaveUnorderedArray(['licenses'], [
+        { pathToProperty: 'licenseKey', expectedValue: 'makerKey', specialHandling: 'setAsCollectionVariable' },
+        { pathToProperty: ['modules', '', 'params', 'edition'], expectedValue: 'maker' }
+      ])
+      gta.expectResponseBodyToHaveUnorderedArrayNotThisItem('licenses', [
+        { pathToProperty: ['modules', '', 'params', 'edition'], compareValue: 'enterprise' }
+      ])
+      gta.test('captured from the maker license', () => assert.equal(gta.get('makerKey'), 'k1'))
+    `)
+    expect(result.error).toBeNull()
+    expect(statuses(result)).toEqual(['pass', 'pass', 'pass'])
+  })
+
+  it('count for strict validation, which names a leftover key in its quoted form', async () => {
+    const result = await run(`
+      gta.useStrictValidation(true)
+      gta.expectResponseBodyToHaveProperty(${jwtId}, 'acct-1')
+      gta.ignoreResponseBodyArrayObjectProperty(['licenses'], ['modules', '', 'params'])
+    `)
+    const strict = result.assertions.find((a) => a.target === 'strict')!
+    expect(strict.unasserted).not.toContain('decodedJwt.payload["https://data.ia.io/ia_acct_uuid"]')
+    expect(strict.unasserted).toContain('decodedJwt.payload["https://data.ia.io/roles"][0]')
+    expect(strict.unasserted).not.toContain('licenses[0].modules[""].params.edition')
+    expect(strict.unasserted).toContain('licenses[0].licenseKey')
+  })
+
+  it('sort arrays by a key holding nothing a string could name', async () => {
+    const result = await run(`
+      gta.sortResponseBodyArrays(['modules', '', 'params', 'edition'])
+      gta.expectResponseBodyToHaveProperty('licenses.0.licenseKey', 'k2')
+    `)
+    expect(result.assertions[0]?.status).toBe('pass')
+    expect(result.sortedBy).toEqual(['modules[""].params.edition'])
+  })
+
+  it('turn a path that is neither a string nor a list of keys into a failed check, and carry on', async () => {
+    const result = await run(`
+      gta.expectResponseBodyToHaveProperty(5, 1)
+      gta.expectResponseBodyToHaveProperty(['decodedJwt', null], 1)
+      gta.expectResponseBodyToHaveProperty([], 1)
+      gta.ignoreResponseBodyProperty({})
+      gta.expectResponseBodyToHaveUnorderedArray('licenses', [{ pathToProperty: true, expectedValue: 1 }])
+      gta.expectResponseStatusCodeToBe(200)
+    `)
+    expect(result.error).toBeNull()
+    expect(result.assertions.map((a) => [a.status, a.message])).toEqual([
+      [
+        'fail',
+        'jsonPathToProperty is a string, such as "user.name", or a list of keys, such as ["user", "name"]; got 5'
+      ],
+      ['fail', "jsonPathToProperty's keys are strings or numbers; got null"],
+      ['fail', 'jsonPathToProperty is an empty list; it needs a key'],
+      [
+        'fail',
+        'jsonPathToProperty is a string, such as "user.name", or a list of keys, such as ["user", "name"]; got {}'
+      ],
+      [
+        'fail',
+        'pathToProperty is a string, such as "user.name", or a list of keys, such as ["user", "name"]; got true'
+      ],
+      ['pass', undefined]
+    ])
   })
 })
 

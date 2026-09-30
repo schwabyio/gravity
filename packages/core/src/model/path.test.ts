@@ -24,6 +24,56 @@ describe('parsePath', () => {
     expect(formatPath(parsePath('groups[1].name'))).toBe('groups[1].name')
     expect(formatPath(parsePath('sessions[].id'))).toBe('sessions[].id')
   })
+
+  it('reads a quoted key as one key, dots, brackets, escapes and emptiness included', () => {
+    expect(parsePath('jwt.payload["https://data.ia.io/id"].x')).toEqual([
+      { kind: 'key', key: 'jwt' },
+      { kind: 'key', key: 'payload' },
+      { kind: 'key', key: 'https://data.ia.io/id' },
+      { kind: 'key', key: 'x' }
+    ])
+    expect(parsePath('modules[""].params')).toEqual([
+      { kind: 'key', key: 'modules' },
+      { kind: 'key', key: '' },
+      { kind: 'key', key: 'params' }
+    ])
+    expect(parsePath('["a]b"]["say \\"hi\\""]["\\u00e9"]')).toEqual([
+      { kind: 'key', key: 'a]b' },
+      { kind: 'key', key: 'say "hi"' },
+      { kind: 'key', key: 'é' }
+    ])
+  })
+
+  it('reads what JSON would not accept as a quoted key as plain keys, as before', () => {
+    expect(parsePath('a["q\\z"]')).toEqual([
+      { kind: 'key', key: 'a' },
+      { kind: 'key', key: '"q\\z"' }
+    ])
+  })
+
+  it('quotes a key a dot would not spell, and reads every formatted path back as it was', () => {
+    expect(
+      formatPath([
+        { kind: 'key', key: 'jwt' },
+        { kind: 'key', key: 'https://data.ia.io/id' }
+      ])
+    ).toBe('jwt["https://data.ia.io/id"]')
+    expect(
+      formatPath([
+        { kind: 'key', key: '' },
+        { kind: 'key', key: 'x' }
+      ])
+    ).toBe('[""].x')
+    const keys = ['', '.', 'a.b', '[0]', ']', '"', 'say "hi"', '\\', 'tab\there', '0', ' ', 'é']
+    for (const key of keys) {
+      const segments = [
+        { kind: 'key', key: 'top' },
+        { kind: 'key', key },
+        { kind: 'index', index: 2 }
+      ]
+      expect(parsePath(formatPath(segments as never))).toEqual(segments)
+    }
+  })
 })
 
 describe('resolvePath', () => {
@@ -37,6 +87,13 @@ describe('resolvePath', () => {
 
   it('fans out across [] and reports each concrete path', () => {
     expect(resolvePath(body, parsePath('groups[].name')).map((l) => l.value)).toEqual(['a', 'b'])
+  })
+
+  it('reaches a key holding dots through its quoted form', () => {
+    const jwt = { payload: { 'https://data.ia.io/id': 'acct-1', https: { '//data': 'no' } } }
+    expect(resolvePath(jwt, parsePath('payload["https://data.ia.io/id"]'))).toEqual([
+      { path: parsePath('payload["https://data.ia.io/id"]'), value: 'acct-1' }
+    ])
   })
 
   it('distinguishes absent from null', () => {
