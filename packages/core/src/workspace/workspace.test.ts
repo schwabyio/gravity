@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { GitRepo, isClean, runGit } from '../git/index.js'
 import { flattenCollections, groupByDirectory, type CollectionSummary } from '../model/tree.js'
 import { isInside } from '../paths.js'
-import { collectionsDirOf, discoverCollections } from './discover.js'
+import { collectionsDirOf, discoverCollections, findProjects } from './discover.js'
 
 /**
  * These build real git repositories in a temp directory rather than mocking git.
@@ -147,6 +147,51 @@ describe('discoverCollections', () => {
     await fs.writeFile(path.join(bare, 'thing.yml'), 'steps: []\n')
     expect(await discoverCollections(bare)).toEqual([])
     await fs.rm(bare, { recursive: true, force: true })
+  })
+})
+
+describe('findProjects', () => {
+  it('finds each project in a folder, the global projects they use, and nothing to ignore', async () => {
+    const repo = path.join(tmp, 'find-projects')
+    await write(
+      path.join(repo, 'services', 'auth', 'collections', 'auth.yml'),
+      collection('auth', 'a')
+    )
+    await write(
+      path.join(repo, 'services', 'auth', 'collections', 'tokens', 'collections', 'x.yml'),
+      collection('x', 'x')
+    )
+    await write(path.join(repo, 'services', 'auth', 'project.yml'), 'uses: ../../shared\n')
+    // A project with no collections yet still has its folder.
+    await fs.mkdir(path.join(repo, 'teams', 'billing', 'invoices', 'collections'), {
+      recursive: true
+    })
+    await write(path.join(repo, 'shared', 'project.yml'), 'name: Shared\n')
+    await write(path.join(repo, 'shared', 'environments', 'dev.yml'), 'name: dev\nvars: {}\n')
+    // Never searched, and a folder that only looks like a shared one.
+    await write(
+      path.join(repo, 'node_modules', 'dep', 'collections', 'n.yml'),
+      collection('n', 'n')
+    )
+    await write(path.join(repo, '.cache', 'collections', 'c.yml'), collection('c', 'c'))
+    await write(path.join(repo, 'unused', 'environments', 'dev.yml'), 'name: dev\nvars: {}\n')
+
+    const found = await findProjects(repo)
+    const real = await fs.realpath(repo)
+    expect(found.map((root) => path.relative(real, root).split(path.sep).join('/'))).toEqual([
+      'services/auth',
+      'shared',
+      'teams/billing/invoices'
+    ])
+  })
+
+  it('finds the folder itself when it is a project, and nothing in a folder with none', async () => {
+    const single = path.join(tmp, 'find-single')
+    await write(path.join(single, 'collections', 'a.yml'), collection('a', 'a'))
+    expect(await findProjects(single)).toEqual([await fs.realpath(single)])
+    const none = path.join(tmp, 'find-none')
+    await write(path.join(none, 'README.md'), 'nothing here\n')
+    expect(await findProjects(none)).toEqual([])
   })
 })
 

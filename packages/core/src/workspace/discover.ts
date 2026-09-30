@@ -3,6 +3,7 @@ import path from 'node:path'
 import { COLLECTIONS_DIR, DOC_EXTENSION, IGNORED_DIRECTORIES } from '../format/constants.js'
 import { GitRepo } from '../git/index.js'
 import { canonical as canonicalize, isInside } from '../paths.js'
+import { readProject } from './project.js'
 
 /** How deep the non-git fallback walk will go before giving up. */
 const MAX_WALK_DEPTH = 10
@@ -116,3 +117,49 @@ const hasIgnoredSegment = (relativePath: string): boolean =>
     .split(/[/\\]/)
     .slice(0, -1)
     .some((segment) => IGNORED_DIRECTORIES.has(segment) || segment.startsWith('.'))
+
+/** How deep a search for projects goes: far enough for `services/<team>/<service>/`. */
+const MAX_PROJECT_DEPTH = 6
+
+/**
+ * Every project in a folder: each folder holding a `collections/`, at any depth
+ * down to a few levels, and each global project one of them `uses:` inside the
+ * folder (SPEC.md §1, §1.1). For adding a monorepo's projects at once.
+ *
+ * Folders never searched — `node_modules`, a dot-folder, build output — are
+ * skipped, and so is what is inside a `collections/`, which only groups
+ * collections. Canonical paths, sorted.
+ */
+export async function findProjects(folder: string): Promise<string[]> {
+  const root = await canonicalize(folder)
+  const found: string[] = []
+
+  const walk = async (current: string, depth: number): Promise<void> => {
+    let entries
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true })
+    } catch {
+      return
+    }
+    const folders = entries.filter(
+      (entry) =>
+        entry.isDirectory() && !IGNORED_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.')
+    )
+    if (folders.some((entry) => entry.name === COLLECTIONS_DIR)) found.push(current)
+    if (depth >= MAX_PROJECT_DEPTH) return
+    for (const entry of folders) {
+      if (entry.name !== COLLECTIONS_DIR) await walk(path.join(current, entry.name), depth + 1)
+    }
+  }
+  await walk(root, 0)
+
+  // A global project need hold no collections: it is found by those using it.
+  const shared = await Promise.all(
+    found.map(async (project) => (await readProject(project)).global?.root ?? null)
+  )
+  const all = new Set(found)
+  for (const global of shared) {
+    if (global && isInside(root, global)) all.add(global)
+  }
+  return [...all].sort((a, b) => a.localeCompare(b))
+}

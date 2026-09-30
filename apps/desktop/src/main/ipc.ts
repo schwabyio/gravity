@@ -38,6 +38,7 @@ import {
 } from '@schwabyio/gravity-core'
 import {
   IpcChannel,
+  type AddProjectsOutcome,
   type PreviewRequest,
   type Result,
   type RunCollectionRequest,
@@ -433,17 +434,25 @@ export function registerIpc(projects: ProjectService): void {
 
   /* ------------------------------------------------------------ projects -- */
 
-  ipcMain.handle(IpcChannel.projectPick, async (event): Promise<string | null> => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    const options = {
-      title: 'Add a project — the folder holding collections/, or a shared project',
-      properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>
+  ipcMain.handle(
+    IpcChannel.projectPick,
+    async (event, purpose: unknown): Promise<string | null> => {
+      const window = BrowserWindow.fromWebContents(event.sender)
+      const options = {
+        title:
+          purpose === 'all'
+            ? 'Add every project in a folder — a monorepo, or a folder of repositories'
+            : 'Add a project — the folder holding collections/, or a shared project',
+        properties: ['openDirectory', 'createDirectory'] as Array<
+          'openDirectory' | 'createDirectory'
+        >
+      }
+      const result = window
+        ? await dialog.showOpenDialog(window, options)
+        : await dialog.showOpenDialog(options)
+      return result.canceled ? null : (result.filePaths[0] ?? null)
     }
-    const result = window
-      ? await dialog.showOpenDialog(window, options)
-      : await dialog.showOpenDialog(options)
-    return result.canceled ? null : (result.filePaths[0] ?? null)
-  })
+  )
 
   ipcMain.handle(
     IpcChannel.projectAdd,
@@ -464,11 +473,25 @@ export function registerIpc(projects: ProjectService): void {
   )
 
   ipcMain.handle(
+    IpcChannel.projectAddAll,
+    async (_event, workspaceId: unknown, folder: unknown): Promise<AddProjectsOutcome> => {
+      if (typeof workspaceId !== 'string') return { ok: false, message: 'Missing workspace' }
+      if (typeof folder !== 'string' || folder === '')
+        return { ok: false, message: 'Missing folder' }
+      try {
+        return await projects.addProjectsIn(workspaceId, folder)
+      } catch (cause) {
+        return { ok: false, message: cause instanceof Error ? cause.message : String(cause) }
+      }
+    }
+  )
+
+  ipcMain.handle(
     IpcChannel.projectClone,
     guard(async (_event, workspaceId: unknown, url: unknown, parentDir: unknown) => {
       if (typeof url !== 'string' || url.trim() === '') throw new Error('Missing repository URL')
       if (typeof parentDir !== 'string' || parentDir === '') throw new Error('Missing directory')
-      return { project: await projects.cloneInto(String(workspaceId), url.trim(), parentDir) }
+      return await projects.cloneInto(String(workspaceId), url.trim(), parentDir)
     })
   )
 

@@ -29,6 +29,7 @@ import {
   createDirectory,
   defaultCloneName,
   discoverProject,
+  findProjects,
   gitAtLeast,
   GitCommandError,
   gitVersion,
@@ -56,6 +57,7 @@ import {
 } from '@schwabyio/gravity-core'
 import type {
   AddProjectOutcome,
+  AddProjectsOutcome,
   LibraryKind,
   LibraryFileView,
   GitProgress,
@@ -236,6 +238,15 @@ export class ProjectService {
     const collections = path.join(root, COLLECTIONS_DIR)
     if (!(await isDirectory(collections)) && !(await holdsProjectFiles(root))) {
       if (!options.createCollections) {
+        // A monorepo's root: its projects are inside, to be added rather than made.
+        const inside = await findProjects(root)
+        if (inside.length > 0) {
+          return {
+            ok: false,
+            projectsInside: inside.map((project) => relativePosix(root, project)),
+            message: `${path.basename(root)} is not a project, but holds ${inside.length} project${inside.length === 1 ? '' : 's'}: ${inside.map((project) => relativePosix(root, project)).join(', ')}.`
+          }
+        }
         return {
           ok: false,
           noCollections: true,
@@ -251,8 +262,45 @@ export class ProjectService {
     return { ok: true, project: view }
   }
 
-  /** Clone a repository into a folder and add it as a project, reporting progress as it goes. */
-  async cloneInto(workspaceId: string, url: string, parentDir: string): Promise<ProjectView> {
+  /**
+   * Add every project in a folder — a monorepo's services, a folder of
+   * repositories — and the global projects they use there (`findProjects`).
+   * One already in the workspace is left as it is, and named as already there.
+   */
+  async addProjectsIn(workspaceId: string, folder: string): Promise<AddProjectsOutcome> {
+    if (!(await isDirectory(folder))) return { ok: false, message: `Not a folder: ${folder}` }
+    const roots = await findProjects(folder)
+    if (roots.length === 0) {
+      return {
+        ok: false,
+        message: `No projects in ${path.basename(folder)}: a project is a folder holding ${COLLECTIONS_DIR}/.`
+      }
+    }
+    const workspace = this.registry.workspace(workspaceId)
+    if (!workspace) return { ok: false, message: 'Unknown workspace' }
+    const added: string[] = []
+    const already: string[] = []
+    for (const root of roots) {
+      const known = workspace.projects.some((project) => samePath(project.path, root))
+      const entry = await this.registry.addProject(workspaceId, root)
+      const view = (await this.refresh(entry.id)) ?? placeholder(entry, workspaceId)
+      ;(known ? already : added).push(view.name)
+    }
+    this.emitState()
+    return { ok: true, added, already }
+  }
+
+  /**
+   * Clone a repository into a folder and add it, reporting progress as it goes:
+   * a monorepo's projects each, as + Monorepo adds them; otherwise the clone
+   * itself, as + Project would, made a project if it is not one yet. Returns the
+   * clone's folder and the names of the projects added.
+   */
+  async cloneInto(
+    workspaceId: string,
+    url: string,
+    parentDir: string
+  ): Promise<{ folder: string; added: string[] }> {
     if (this.gitAvailable === false) throw new Error('git is not available, so cloning is not')
     const parent = path.resolve(parentDir)
     const target = path.join(parent, defaultCloneName(url))
@@ -275,9 +323,11 @@ export class ProjectService {
           if (progress.percent !== null) report(progress.phase, progress.percent, false)
         }
       })
+      const found = await this.addProjectsIn(workspaceId, cloned)
+      if (found.ok) return { folder: cloned, added: [...found.added, ...found.already] }
       const added = await this.addProject(workspaceId, cloned, { createCollections: true })
       if (!added.ok) throw new Error(added.message)
-      return added.project
+      return { folder: cloned, added: [added.project.name] }
     } finally {
       report('', null, true)
     }

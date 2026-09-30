@@ -78,6 +78,12 @@ export function useProjects() {
     const folder = await window.desktop.projects.pick()
     if (!folder) return
     let result = await window.desktop.projects.add(workspaceId, folder)
+    if (!result.ok && result.projectsInside) {
+      if (!window.confirm(`${result.message} Add them all?`)) return
+      const all = await window.desktop.projects.addAll(workspaceId, folder)
+      if (!all.ok) return fail(all.message)
+      return tell(addedMessage(folder, all.added, all.already))
+    }
     if (!result.ok && result.noCollections) {
       if (!window.confirm(`${result.message} Create collections/ in it and add it as a project?`)) {
         return
@@ -89,6 +95,18 @@ export function useProjects() {
     if (!result.ok) fail(result.message)
   }, [state.activeWorkspaceId])
 
+  /** Search a folder, a monorepo's say, and add every project in it. */
+  const addProjectsIn = useCallback(async () => {
+    setError(null)
+    const workspaceId = state.activeWorkspaceId ?? (await listing.current)?.activeWorkspaceId
+    if (!workspaceId) return
+    const folder = await window.desktop.projects.pick('all')
+    if (!folder) return
+    const result = await window.desktop.projects.addAll(workspaceId, folder)
+    if (!result.ok) return fail(result.message)
+    tell(addedMessage(folder, result.added, result.already))
+  }, [state.activeWorkspaceId])
+
   const cloneUrl = useCallback(
     async (url: string) => {
       setError(null)
@@ -97,7 +115,8 @@ export function useProjects() {
       const parentDir = await window.desktop.projects.pick()
       if (!parentDir) return
       const result = await window.desktop.projects.clone(workspaceId, url, parentDir)
-      if (!result.ok) fail(result.message, result.hint)
+      if (!result.ok) return fail(result.message, result.hint)
+      tell(clonedMessage(result.folder, result.added))
     },
     [state.activeWorkspaceId]
   )
@@ -132,6 +151,7 @@ export function useProjects() {
     notice,
     cloning,
     addProject,
+    addProjectsIn,
     cloneUrl,
     removeProject: (id: string) => window.desktop.projects.remove(id),
     fetch: (id: string) => void run(window.desktop.git.fetch(id)),
@@ -151,4 +171,25 @@ export function useProjects() {
       kind: LibraryKind = 'collection'
     ) => window.desktop.projects.createCollection(id, directory, name, kind)
   }
+}
+
+/** What adding a folder's projects did, in a sentence: `Added 3 projects from platform: …`. */
+export function addedMessage(folder: string, added: string[], already: string[]): string {
+  const name = folder.split(/[\\/]/).filter(Boolean).pop() ?? folder
+  const count = (n: number) => `${n} project${n === 1 ? '' : 's'}`
+  if (added.length === 0) {
+    return already.length === 1
+      ? `The project in ${name} was here already.`
+      : `All ${count(already.length)} in ${name} were here already.`
+  }
+  const were = already.length === 1 ? 'was' : 'were'
+  const rest = already.length > 0 ? ` ${already.length} more ${were} here already.` : ''
+  return `Added ${count(added.length)} from ${name}: ${added.join(', ')}.${rest}`
+}
+
+/** What a clone added, in a sentence: `Cloned platform and added 3 projects: …`. */
+export function clonedMessage(folder: string, added: string[]): string {
+  const name = folder.split(/[\\/]/).filter(Boolean).pop() ?? folder
+  const count = `${added.length} project${added.length === 1 ? '' : 's'}`
+  return `Cloned ${name} and added ${count}: ${added.join(', ')}.`
 }

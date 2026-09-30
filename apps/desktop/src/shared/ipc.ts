@@ -39,6 +39,7 @@ export const IpcChannel = {
 
   projectPick: 'projects:pick',
   projectAdd: 'projects:add',
+  projectAddAll: 'projects:addAll',
   projectClone: 'projects:clone',
   projectRemove: 'projects:remove',
   projectReveal: 'projects:reveal',
@@ -372,7 +373,18 @@ export interface EndpointView {
 
 /** Why a folder could not be added as it is, when the person can do something about it. */
 export type AddProjectOutcome =
-  { ok: true; project: ProjectView } | { ok: false; message: string; noCollections?: boolean }
+  | { ok: true; project: ProjectView }
+  | {
+      ok: false
+      message: string
+      /** Neither a project nor holding any: `createCollections` makes it one. */
+      noCollections?: boolean
+      /** Not a project, but the folder of the projects here, relative to it: add them all instead. */
+      projectsInside?: string[]
+    }
+
+/** Every project found in a folder, as added: those new to the workspace and those already in it. */
+export type AddProjectsOutcome = Result<{ added: string[]; already: string[] }>
 
 /** Set (or, with `undefined`, remove) one field of `project.yml`. */
 export interface ProjectEdit {
@@ -510,8 +522,11 @@ export interface DesktopApi {
   }
 
   projects: {
-    /** Open a folder picker; resolves null when cancelled. */
-    pick(): Promise<string | null>
+    /**
+     * Open a folder picker; resolves null when cancelled. `all`: the folder to
+     * search for projects, rather than a project itself.
+     */
+    pick(purpose?: 'all'): Promise<string | null>
     /**
      * Add a folder as a project: one with `collections/`, or a shared project with
      * the rest of one; `createCollections` makes a missing `collections/` otherwise.
@@ -521,11 +536,14 @@ export interface DesktopApi {
       folder: string,
       options?: { createCollections?: boolean }
     ): Promise<AddProjectOutcome>
+    /** Add every project in a folder, a monorepo's say, by name: those found and already there. */
+    addAll(workspaceId: string, folder: string): Promise<AddProjectsOutcome>
+    /** Clone a repository and add it: the projects in it, or itself as one. */
     clone(
       workspaceId: string,
       url: string,
       parentDir: string
-    ): Promise<Result<{ project: ProjectView }>>
+    ): Promise<Result<{ folder: string; added: string[] }>>
     remove(id: string): Promise<void>
     reveal(path: string): Promise<void>
     selectEnvironment(id: string, environment: string | null): Promise<void>

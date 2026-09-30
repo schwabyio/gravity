@@ -38,7 +38,9 @@ const api: DesktopApi = {
   },
 
   projects: {
-    pick: () => ipcRenderer.invoke(IpcChannel.projectPick),
+    pick: (purpose?: 'all') => ipcRenderer.invoke(IpcChannel.projectPick, purpose),
+    addAll: (workspaceId: string, folder: string) =>
+      ipcRenderer.invoke(IpcChannel.projectAddAll, workspaceId, folder),
     add: (workspaceId: string, folder: string, options?: { createCollections?: boolean }) =>
       ipcRenderer.invoke(IpcChannel.projectAdd, workspaceId, folder, options),
     clone: (workspaceId: string, url: string, parentDir: string) =>

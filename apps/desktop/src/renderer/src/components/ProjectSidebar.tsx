@@ -30,6 +30,8 @@ interface Props {
   onRenameWorkspace: (id: string, name: string) => Promise<string | null>
   onRemoveWorkspace: (id: string) => void
   onAddProject: () => void
+  /** Search a folder, a monorepo's say, and add every project in it. */
+  onAddProjectsIn: () => void
   onClone: (url: string) => void
   onRemoveProject: (id: string) => void
   onFetch: (id: string) => void
@@ -180,6 +182,13 @@ export default function ProjectSidebar(props: Props) {
         </button>
         <button
           type="button"
+          onClick={props.onAddProjectsIn}
+          title="Add every project in a folder — a monorepo, or a folder of repositories"
+        >
+          + Monorepo
+        </button>
+        <button
+          type="button"
           onClick={() => setCloning(!cloning)}
           title="Clone a repository"
           disabled={props.cloning !== null}
@@ -238,7 +247,8 @@ export default function ProjectSidebar(props: Props) {
         {props.projects.length === 0 && (
           <p className="hint empty">
             No projects in this workspace yet. Add a project — a folder with a{' '}
-            <code>collections/</code> directory in it.
+            <code>collections/</code> directory in it — or, with <strong>+ Monorepo</strong>, every
+            project in a folder at once.
           </p>
         )}
 

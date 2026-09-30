@@ -153,16 +153,21 @@ test('adds a repository as a project, and each service of a monorepo as its own'
   await addProject(singleRepo)
   await expect(project('payments-api')).toBeVisible()
 
-  // The monorepo's root has no collections/ of its own: the app asks rather
-  // than quietly adding an empty project.
+  // The monorepo's root is not a project: the app offers the projects in it,
+  // and adds nothing when told no.
   let asked = ''
   page.once('dialog', (dialog) => {
     asked = dialog.message()
     void dialog.dismiss()
   })
   await addProject(monorepo)
-  await expect.poll(() => asked).toContain('platform has no collections/ folder')
+  await expect
+    .poll(() => asked)
+    .toBe(
+      'platform is not a project, but holds 2 projects: services/auth, services/users. Add them all?'
+    )
   await expect(project('platform')).toHaveCount(0)
+  await expect(project('auth')).toHaveCount(0)
 
   await addProject(path.join(monorepo, 'services', 'auth'))
   // Picking a collections/ folder itself adds the project holding it.

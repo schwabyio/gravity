@@ -357,20 +357,51 @@ test('Project settings adds .gitattributes and converts files stored with CRLF',
   expect(git(work, 'ls-files', '--eol', 'services/api/collections/crlf.yml')).toMatch(/^i\/lf/)
 })
 
-test('clones a repository into a chosen folder, as a new project', async () => {
+test('clones a monorepo into a chosen folder, adding the projects in it', async () => {
   await closeChanges()
   const parent = path.join(tmp, 'clones')
   fs.mkdirSync(parent)
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
   }, parent)
+  const apis = page.getByRole('region', { name: 'Project api', exact: true })
+  await expect(apis).toHaveCount(1)
   await page.getByRole('button', { name: '+ Clone' }).click()
   await page.getByLabel('Repository URL').fill(remote)
   await page.getByRole('button', { name: 'Clone…' }).click()
 
-  await expect(page.getByRole('region', { name: 'Project remote', exact: true })).toBeVisible({
-    timeout: 15_000
-  })
+  // Its one project, services/api, beside the working copy's own.
+  // Its progress line may still be there beside it.
+  await expect(page.locator('.sidebar-status', { hasText: 'Cloned remote' })).toHaveText(
+    'Cloned remote and added 1 project: api.',
+    { timeout: 15_000 }
+  )
+  await expect(apis).toHaveCount(2)
+  await expect(page.getByRole('region', { name: 'Project remote', exact: true })).toHaveCount(0)
   expect(fs.existsSync(path.join(parent, 'remote', 'services', 'api', 'collections'))).toBe(true)
+  // Nothing made at its root.
+  expect(fs.existsSync(path.join(parent, 'remote', 'collections'))).toBe(false)
   await expect(page.getByRole('button', { name: '+ Clone' })).toBeEnabled()
+})
+
+test('clones a repository with no project in it yet as a new project', async () => {
+  const empty = path.join(tmp, 'empty.git')
+  fs.mkdirSync(empty)
+  git(empty, 'init', '--quiet', '--bare', '--initial-branch=main')
+  const seed = path.join(tmp, 'empty-seed')
+  git(tmp, 'clone', '--quiet', empty, seed)
+  write(path.join(seed, 'README.md'), 'Tests to come.\n')
+  git(seed, 'add', '.')
+  git(seed, 'commit', '--quiet', '-m', 'start')
+  git(seed, 'push', '--quiet', 'origin', 'main')
+
+  await page.getByRole('button', { name: '+ Clone' }).click()
+  await page.getByLabel('Repository URL').fill(empty)
+  await page.getByRole('button', { name: 'Clone…' }).click()
+  await expect(page.locator('.sidebar-status', { hasText: 'Cloned empty' })).toHaveText(
+    'Cloned empty and added 1 project: empty.',
+    { timeout: 15_000 }
+  )
+  await expect(page.getByRole('region', { name: 'Project empty', exact: true })).toBeVisible()
+  expect(fs.existsSync(path.join(tmp, 'clones', 'empty', 'collections'))).toBe(true)
 })

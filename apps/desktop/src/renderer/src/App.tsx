@@ -995,6 +995,7 @@ export default function App() {
           onRenameWorkspace={async (id, name) => messageOf(await ws.renameWorkspace(id, name))}
           onRemoveWorkspace={(id) => void ws.removeWorkspace(id)}
           onAddProject={() => void ws.addProject()}
+          onAddProjectsIn={() => void ws.addProjectsIn()}
           onClone={(url) => void ws.cloneUrl(url)}
           onRemoveProject={(id) => void ws.removeProject(id)}
           onFetch={ws.fetch}
