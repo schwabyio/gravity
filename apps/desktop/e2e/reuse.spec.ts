@@ -246,3 +246,14 @@ test('a request set’s step is marked as the one a use step’s tests check', a
     .poll(() => YAML.parse(fs.readFileSync(file, 'utf8')).steps[0].useTests, { timeout: 5_000 })
     .toBeUndefined()
 })
+
+test('a project’s filter narrows its request sets too', async () => {
+  const shopProject = page.getByRole('region', { name: 'Project shop' })
+  await shopProject.getByLabel('Filter shop').fill('ord')
+  await expect(
+    page.getByRole('group', { name: 'Request sets of shop' }).locator('.set-row')
+  ).toHaveText(['orders'])
+  await expect(shopProject.locator('.collection-row')).toHaveCount(0)
+  await shopProject.getByLabel('Filter shop').fill('')
+  await expect(shopProject.locator('.collection-row')).toHaveCount(1)
+})

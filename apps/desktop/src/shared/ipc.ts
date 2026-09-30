@@ -512,7 +512,10 @@ export interface DesktopApi {
   projects: {
     /** Open a folder picker; resolves null when cancelled. */
     pick(): Promise<string | null>
-    /** Add a folder as a project; `createCollections` makes its missing `collections/`. */
+    /**
+     * Add a folder as a project: one with `collections/`, or a shared project with
+     * the rest of one; `createCollections` makes a missing `collections/` otherwise.
+     */
     add(
       workspaceId: string,
       folder: string,

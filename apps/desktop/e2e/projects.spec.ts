@@ -217,3 +217,54 @@ test('a project variable of the same name overrides the shared one', async () =>
   await send()
   expect(received).toEqual(['/own/eu/mine'])
 })
+
+test('a shared project is added as it is, with no collections/ made for it', async () => {
+  // A request set of its own, so there is something of it to show.
+  fs.mkdirSync(path.join(shared, 'requests'), { recursive: true })
+  fs.writeFileSync(
+    path.join(shared, 'requests', 'ping.yml'),
+    'id: ping\nparams: {}\nsteps:\n  - GET: http://127.0.0.1:9/ping\n'
+  )
+  let asked = ''
+  page.once('dialog', (dialog) => {
+    asked = dialog.message()
+    void dialog.dismiss()
+  })
+  await app.evaluate(({ dialog }, target) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
+  }, shared)
+  await page.getByRole('button', { name: '+ Project' }).click()
+
+  const added = page.getByRole('region', { name: 'Project Shared' })
+  await expect(added).toBeVisible()
+  await expect(added.locator('.shared-project')).toHaveText(
+    'A shared project, with no collections of its own. Used by shop.'
+  )
+  await expect(added.getByRole('group', { name: 'Request sets of Shared' })).toContainText('ping')
+  expect(asked).toBe('')
+  expect(fs.existsSync(path.join(shared, 'collections'))).toBe(false)
+})
+
+test('a folder of request sets alone, with no project.yml, is added as a shared project too', async () => {
+  const library = path.join(tmp, 'platform', 'library')
+  fs.mkdirSync(path.join(library, 'requests'), { recursive: true })
+  fs.writeFileSync(
+    path.join(library, 'requests', 'login.yml'),
+    'id: login\nparams: {}\nsteps:\n  - GET: http://127.0.0.1:9/login\n'
+  )
+  let asked = ''
+  page.once('dialog', (dialog) => {
+    asked = dialog.message()
+    void dialog.dismiss()
+  })
+  await app.evaluate(({ dialog }, target) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
+  }, library)
+  await page.getByRole('button', { name: '+ Project' }).click()
+  const added = page.getByRole('region', { name: 'Project library' })
+  await expect(added.locator('.shared-project')).toHaveText(
+    'A shared project, with no collections of its own.'
+  )
+  expect(asked).toBe('')
+  expect(fs.existsSync(path.join(library, 'collections'))).toBe(false)
+})

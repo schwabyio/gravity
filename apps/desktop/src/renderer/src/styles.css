@@ -4579,3 +4579,27 @@ section[aria-labelledby='project-eol-title'] button {
 .step-use-tests .hint {
   font-size: 11px;
 }
+
+/* Each project's filter, over its collections and library files. */
+.project-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px 4px 22px;
+}
+
+.project-filter input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.project-filter .filter-count {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.hint.filter-empty {
+  padding-left: 22px;
+}

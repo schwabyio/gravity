@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CollectionSummary } from '@schwabyio/gravity-core/model'
 import type { GitProgress, LibraryKind, ProjectView, WorkspaceSummary } from '@shared/ipc.js'
 import { summaryOfFile } from '../reuse.js'
+import { filterCollections, filtering, keepsFile } from '../sidebarFilter.js'
 import CollectionList from './CollectionList.js'
 import NameForm from './NameForm.js'
 import ProjectHeading from './ProjectHeading.js'
@@ -66,6 +67,8 @@ export default function ProjectSidebar(props: Props) {
   const [cloneUrl, setCloneUrl] = useState('')
   const [cloning, setCloning] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  /** What each project's files are filtered by, by project id. */
+  const [filters, setFilters] = useState<Record<string, string>>({})
   const [naming, setNaming] = useState<Naming>(null)
   const [workspaceMenu, setWorkspaceMenu] = useState(false)
 
@@ -241,6 +244,29 @@ export default function ProjectSidebar(props: Props) {
 
         {props.projects.map((project) => {
           const open = !collapsed[project.id]
+          const query = filters[project.id] ?? ''
+          const setQuery = (value: string) =>
+            setFilters((current) => ({ ...current, [project.id]: value }))
+          const libraries = (
+            [
+              [
+                'Request sets',
+                'requests',
+                project.requestSets.map((set) => ({ ...set, stepCount: set.steps.length }))
+              ],
+              ['Endpoints', 'endpoints', project.endpointFiles],
+              ['Bases', 'bases', project.bases]
+            ] as const
+          ).map(([title, home, files]) => ({
+            title,
+            home,
+            all: files.length,
+            files: files.filter((file) => keepsFile(query, file))
+          }))
+          const shown = filterCollections(project.collections, project.directories, query)
+          const total = project.collections.length + libraries.reduce((n, l) => n + l.all, 0)
+          const found = shown.collections.length + libraries.reduce((n, l) => n + l.files.length, 0)
+          const nothingFound = filtering(query) && found === 0 && shown.directories.length === 0
           return (
             <section key={project.id} className="project" aria-label={`Project ${project.name}`}>
               <ProjectHeading
@@ -294,33 +320,54 @@ export default function ProjectSidebar(props: Props) {
                 />
               )}
 
+              {open && project.available && total + project.directories.length > 0 && (
+                <div className="project-filter" role="search">
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') setQuery('')
+                    }}
+                    placeholder="Filter collections"
+                    aria-label={`Filter ${project.name}`}
+                    spellCheck={false}
+                  />
+                  {filtering(query) && (
+                    <span className="filter-count" aria-live="polite">
+                      {found} of {total}
+                    </span>
+                  )}
+                </div>
+              )}
+              {open && project.available && nothingFound && (
+                <p className="hint filter-empty">Nothing matches “{query.trim()}”.</p>
+              )}
               {open &&
+                !nothingFound &&
                 (!project.available ? (
                   <p className="hint unavailable">Folder is missing — it may have been moved.</p>
+                ) : !project.hasCollections ? (
+                  <p className="hint shared-project">
+                    A shared project, with no collections of its own.
+                    {usersOf(project, props.projects).length > 0 &&
+                      ` Used by ${usersOf(project, props.projects).join(', ')}.`}
+                  </p>
                 ) : project.collections.length === 0 && project.directories.length === 0 ? (
                   <p className="hint">No collections yet.</p>
                 ) : (
                   <CollectionList
-                    collections={project.collections}
-                    directories={project.directories}
+                    collections={shown.collections}
+                    directories={shown.directories}
                     selectedPath={props.selectedRoot}
                     onSelect={(collection) => props.onSelectCollection(project, collection)}
+                    expanded={filtering(query)}
                   />
                 ))}
               {open &&
                 project.available &&
-                (
-                  [
-                    [
-                      'Request sets',
-                      'requests',
-                      project.requestSets.map((set) => ({ ...set, stepCount: set.steps.length }))
-                    ],
-                    ['Endpoints', 'endpoints', project.endpointFiles],
-                    ['Bases', 'bases', project.bases]
-                  ] as const
-                ).map(
-                  ([title, home, files]) =>
+                libraries.map(
+                  ({ title, home, files }) =>
                     files.length > 0 && (
                       <div
                         key={home}
@@ -396,3 +443,15 @@ function NewCollectionForm(props: {
     </NameForm>
   )
 }
+
+/**
+ * A path as compared here: `/` for `\`, no trailing slash. Case is kept: a
+ * `uses:` spelled in another case than its folder is a problem of its own (SPEC.md §1.2).
+ */
+const pathKey = (target: string) => target.replace(/\\/g, '/').replace(/\/+$/, '')
+
+/** The projects that `uses:` this one as their global project, by name (SPEC.md §1.1). */
+const usersOf = (project: ProjectView, projects: ProjectView[]): string[] =>
+  projects
+    .filter((other) => other.global && pathKey(other.global.path) === pathKey(project.path))
+    .map((other) => other.name)

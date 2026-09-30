@@ -13,6 +13,7 @@ import {
   mergeHeaders,
   type Collection,
   ENVIRONMENTS_DIR,
+  PROJECT_FILE,
   GitRepo,
   REQUESTS_DIR,
   isUseStep,
@@ -218,8 +219,10 @@ export class ProjectService {
 
   /**
    * Add a folder as a project. A `collections/` folder picked by mistake means
-   * its parent; a folder with no `collections/` is added only when asked to
-   * create one, so a wrong pick does not quietly become an empty project.
+   * its parent. A folder with no `collections/` is added as it is when it holds
+   * the rest of a project — a global project may hold nothing else (SPEC.md
+   * §1.1) — and otherwise only when asked to create one, so a wrong pick does
+   * not quietly become an empty project.
    */
   async addProject(
     workspaceId: string,
@@ -231,13 +234,12 @@ export class ProjectService {
     if (!stat?.isDirectory()) return { ok: false, message: `Not a folder: ${root}` }
 
     const collections = path.join(root, COLLECTIONS_DIR)
-    const hasCollections = await isDirectory(collections)
-    if (!hasCollections) {
+    if (!(await isDirectory(collections)) && !(await holdsProjectFiles(root))) {
       if (!options.createCollections) {
         return {
           ok: false,
           noCollections: true,
-          message: `${path.basename(root)} has no ${COLLECTIONS_DIR}/ folder.`
+          message: `${path.basename(root)} has no ${COLLECTIONS_DIR}/ folder, nor ${PROJECT_FILE} or anything else a project holds.`
         }
       }
       await fs.mkdir(collections)
@@ -883,6 +885,19 @@ async function changedFile(repo: GitRepo, repoPath: string) {
   const file = (await repo.status()).files.find((change) => change.path === repoPath)
   if (!file) throw GitCommandError.refused(`${repoPath} has no changes any more.`)
   return file
+}
+
+/**
+ * Whether a folder holds what a project holds besides `collections/`: a
+ * `project.yml`, or one of the folders a global project shares (SPEC.md §1.1).
+ */
+async function holdsProjectFiles(root: string): Promise<boolean> {
+  const file = await fs.stat(path.join(root, PROJECT_FILE)).catch(() => null)
+  if (file?.isFile()) return true
+  for (const directory of [ENVIRONMENTS_DIR, REQUESTS_DIR, BASES_DIR, ENDPOINTS_DIR, CHECKS_DIR]) {
+    if (await isDirectory(path.join(root, directory))) return true
+  }
+  return false
 }
 
 const isDirectory = (target: string) =>

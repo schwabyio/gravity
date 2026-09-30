@@ -11,6 +11,8 @@ interface Props {
   directories: string[]
   selectedPath: string | null
   onSelect: (collection: CollectionSummary) => void
+  /** Every directory shown open, as while a filter narrows the list. */
+  expanded?: boolean
 }
 
 /**
@@ -22,7 +24,8 @@ export default function CollectionList({
   collections,
   directories,
   selectedPath,
-  onSelect
+  onSelect,
+  expanded = false
 }: Props) {
   return (
     <>
@@ -33,6 +36,7 @@ export default function CollectionList({
             node={node}
             selectedPath={selectedPath}
             onSelect={onSelect}
+            expanded={expanded}
           />
         ) : (
           <CollectionRow
@@ -96,15 +100,18 @@ function Directory(props: {
   node: Extract<CollectionNode, { kind: 'directory' }>
   selectedPath: string | null
   onSelect: Props['onSelect']
+  expanded: boolean
 }) {
-  const [open, setOpen] = useState(true)
+  const [chosen, setOpen] = useState(true)
+  // A filter shows what it found, whatever was collapsed; clearing it restores the choice.
+  const open = chosen || props.expanded
   const { node } = props
   return (
     <>
       <button
         className="row group-row"
         style={{ paddingLeft: 14 }}
-        onClick={() => setOpen(!open)}
+        onClick={() => setOpen(!chosen)}
         aria-expanded={open}
       >
         <span className="chevron">{open ? '▾' : '▸'}</span>

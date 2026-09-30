@@ -79,7 +79,9 @@ export function useProjects() {
     if (!folder) return
     let result = await window.desktop.projects.add(workspaceId, folder)
     if (!result.ok && result.noCollections) {
-      if (!window.confirm(`${result.message} Create one and add it as a project?`)) return
+      if (!window.confirm(`${result.message} Create collections/ in it and add it as a project?`)) {
+        return
+      }
       result = await window.desktop.projects.add(workspaceId, folder, {
         createCollections: true
       })

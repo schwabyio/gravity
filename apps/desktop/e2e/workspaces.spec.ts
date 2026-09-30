@@ -238,6 +238,32 @@ test('a project heading collapses and expands its collections', async () => {
   await expect(auth.locator('.collection-row')).toHaveCount(2)
 })
 
+test('a project’s filter narrows its collections, and leaves other projects alone', async () => {
+  const auth = project('auth')
+  const filter = auth.getByLabel('Filter auth')
+  await filter.fill('REFR')
+  await expect(auth.locator('.collection-row')).toHaveText(['refresh'])
+  await expect(auth.locator('.group-row .label')).toHaveText(['tokens'])
+  await expect(auth.locator('.filter-count')).toHaveText('1 of 2')
+  await expect(project('users').locator('.collection-row')).toHaveCount(1)
+
+  await filter.fill('nothing here')
+  await expect(auth.locator('.filter-empty')).toHaveText('Nothing matches “nothing here”.')
+  await filter.press('Escape')
+  await expect(auth.locator('.collection-row')).toHaveText(['refresh', 'auth'])
+  await expect(auth.locator('.filter-count')).toHaveCount(0)
+
+  // A directory collapsed by hand shows what a filter finds in it, and is collapsed again after.
+  await auth.locator('.group-row', { hasText: 'tokens' }).click()
+  await expect(auth.locator('.collection-row')).toHaveText(['auth'])
+  await filter.fill('tokens')
+  await expect(auth.locator('.collection-row')).toHaveText(['refresh'])
+  await filter.fill('')
+  await expect(auth.locator('.collection-row')).toHaveText(['auth'])
+  await auth.locator('.group-row', { hasText: 'tokens' }).click()
+  await expect(auth.locator('.collection-row')).toHaveText(['refresh', 'auth'])
+})
+
 test('selecting another step swaps the editor without leaving the list', async () => {
   await openStep('capture')
   await expect(page.getByLabel('Request URL')).toHaveValue('http://127.0.0.1:1/capture')

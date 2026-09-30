@@ -436,7 +436,7 @@ export function registerIpc(projects: ProjectService): void {
   ipcMain.handle(IpcChannel.projectPick, async (event): Promise<string | null> => {
     const window = BrowserWindow.fromWebContents(event.sender)
     const options = {
-      title: 'Add a project — the folder holding collections/',
+      title: 'Add a project — the folder holding collections/, or a shared project',
       properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>
     }
     const result = window
