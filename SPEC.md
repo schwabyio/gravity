@@ -324,6 +324,8 @@ Any key not listed here is an error.
 | ---------- | ------------------- | -------- | ------- | ------------------------------------------------------------------------------ |
 | `id`       | string              | **yes**  |         | The file name without `.yml` (below).                                          |
 | `steps`    | list of steps       | no       | `[]`    | The requests, in run order (§2.1).                                             |
+| `setup`    | list of steps       | no       |         | Run once before `steps`; what it sets lasts the run (§2.10).                   |
+| `teardown` | list of steps       | no       |         | Run once after the rest, even when a step failed (§2.10).                      |
 | `docs`     | string              | no       |         | Markdown.                                                                      |
 | `tags`     | list of tags        | no       |         | Tags that select the whole collection (§2.4).                                  |
 | `stepTags` | boolean             | no       | `false` | `true` lets steps carry their own tags (§2.4).                                 |
@@ -380,6 +382,7 @@ Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
 | `tests`    | string       | no       | The checks, as JavaScript: calls on `gta` (§3) and any other code (§5).   |
 | `tags`     | list of tags | no       | The step's own tags. Only with `stepTags: true` on the collection (§2.4). |
 | `flags`    | map          | no       | Feature flags the step needs (§2.9).                                      |
+| `forEach`  | string       | no       | Send the request once for each item of a list (below).                    |
 | `base`     | `false`      | no       | `false` leaves the step's endpoint base out (§2.6).                       |
 | `docs`     | string       | no       | Markdown.                                                                 |
 
@@ -390,6 +393,23 @@ Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
   key.
 - **Any other key is an error**, so a misspelled key such as `heders:` fails at once
   rather than being ignored. A method key in lower case (`get:`) is reported as such.
+
+**`forEach`** sends the request once for each item of a list, each reported as its own
+result, `remove grant (item 2 of 3)`:
+
+```yaml
+- name: remove grant
+  DELETE: '{{baseUrl}}/grants/{{item}}'
+  forEach: '{{grantedRoots}}' # a variable holding ["r1", "r2"], or a list written in place
+```
+
+- Its `{{variables}}` resolve when the step runs, so an earlier step can make the list,
+  as `gta.set('grantedRoots', ids)` does. The result must be a JSON array.
+- Each item is `{{item}}` in the request and `item` in its scripts. An item that is an
+  object or a list is its JSON in the request.
+- An empty list skips the step. Anything that is not a list fails it before anything
+  is sent.
+- A use step cannot have `forEach`.
 
 ### 2.2 `body`
 
@@ -713,7 +733,8 @@ userId,expectedStatus,iterationLabel
 
 - **One run per row.** Every step runs for row 1, then every step again for row 2, and
   so on. Each run starts from a fresh variable scope, so nothing one row sets leaks into
-  the next. Three steps and two rows report six results.
+  the next, except a value set to last the run (§2.10). Three steps and two rows report
+  six results.
 - **Precedence.** A row's values sit over the environment and under what code sets
   (§4).
 - **`iterationLabel`**, an optional column, names the row in reports, as in
@@ -806,6 +827,41 @@ own, what the `command` prints, then overrides.
   else is text.
 
 Every report records the flag values a run used and where each came from.
+
+### 2.10 Setup, teardown and values that last the run
+
+`setup` and `teardown` are lists of steps, like `steps`, run once around it:
+
+```yaml
+id: approved-domains
+setup: # once, before the first row
+  - use: seed-admin # log in, grant an admin role, wait for it to land
+teardown: # once, after the last row, even when a row failed
+  - name: remove the grant
+    DELETE: '{{baseUrl}}/admins/{{adminId}}'
+steps: # once per row of approved-domains.csv, as before
+  - name: approve the domains
+    PUT: '{{baseUrl}}/orgs/{{orgId}}/domains'
+```
+
+- **Order.** Setup, then the steps once per data row (or once, with no data file), then
+  teardown. They work the same with or without a data file.
+- **What setup sets lasts the run.** Every value setup sets or captures is there for
+  every row and for teardown. It sits over the environment and under a row's values
+  (§4).
+- **A row keeps a value for the rows after it** with
+  `gta.set(name, value, { scope: 'run' })`. Anything else a row sets lasts only that
+  row, as §2.8 says.
+- **Setup failing stops the rows.** They are not run and count as skipped. Teardown
+  still runs.
+- **Teardown always runs**, every step of it, after failures and after `bail`. A run that
+  is cancelled, or stopped by `timeoutCollection`, stops where it is.
+- **The collection applies to them**: its headers, settings, `before`, `tests` and
+  flags, as to any step. Their steps may be use steps and may use `forEach`, but carry
+  no `tags`: they run whenever the collection does.
+- A request set, a base collection and an endpoints file have no setup or teardown.
+- Reports name their results `setup › log in` and `teardown › remove the grant`. Running
+  a single step in the desktop app does not run them.
 
 ---
 
@@ -983,7 +1039,8 @@ Lowest precedence first:
 
 ```
 global project vars → project vars → base collection vars → collection vars
-  → environment → data file row → gta.set and captures → process environment
+  → environment → what lasts the run → data file row → gta.set and captures
+  → process environment
 ```
 
 The environment is the global project's file of that name, if there is one, with the
@@ -1044,13 +1101,19 @@ There is nothing to load, and no `startXTest` or `endXTest`.
 | `gta.test(name, fn)`: a named check that passes unless `fn` throws or rejects; `fn` may be async |                    |
 | `gta.get(name)`: a variable's current value                                                      |         ✓          |
 | `gta.set(name, value)`: set a variable for the rest of the run                                   |         ✓          |
+| `gta.set(name, value, { scope: 'run' })`: the same, lasting past this data row too (§2.10)       |         ✓          |
+| `gta.skip(reason?)`: send nothing for this step, and report it skipped with the reason           |         ✓          |
+| `gta.skipRest(reason?)`: skip the rest of this row's steps; in `before.script`, this one too     |         ✓          |
 | `gta.flag(name)`: a feature flag's value; an unknown flag is an error                            |         ✓          |
 | `gta.uuid()`: a random (version 4) UUID                                                          |         ✓          |
 | `gta.uuidv7()`: a time-ordered (version 7) UUID                                                  |         ✓          |
 | `gta.randomInt(min, max)`: a whole number, both ends included                                    |         ✓          |
 | `gta.date(format, secondsOffset = 0, timeZone = 'local')`                                        |         ✓          |
 
-Calling a response check in `before.script` is an error.
+Calling a response check in `before.script` is an error, and so is `gta.skip` in
+`tests`, where the request has been sent. After `gta.skip` the script runs to its end,
+and no later `before.script` runs. `gta.skipRest` skips steps of this row only: the next
+row, and teardown, still run.
 
 `gta.date` formats with strftime specifiers: `%Y %y %m %d %e %H %I %M %S %L %p %b %B %a
 %A %j %Z %z %s %F %T %%`. An unrecognized specifier is left in the output, so a typo is
@@ -1192,7 +1255,8 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
   ignoring case.
 - There is no `name` key (use `id`).
 - A step has `tags` only if the collection has `stepTags: true`.
-- With `params`: no step is a use step, and there is no `vars`.
+- With `params`: no step is a use step, and there is no `vars`, `setup` or `teardown`.
+- A `setup` or `teardown` step has no `tags`.
 - A data file, when present, reads (§2.8).
 
 **Steps**
@@ -1205,6 +1269,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - `before` holds only `script`. `before.set` is not supported.
 - There is no `expect:` key; checks go in `tests`.
 - `base` is only ever `false`.
+- `forEach` is a string, and a use step has none.
 
 **Values**
 
@@ -1227,9 +1292,10 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 **Library files**
 
 - A request set (`requests/`) has `params`, uses no other set, and has no `vars`.
-- A base collection (`bases/`) has no `steps` or `params`, and no `extends`.
+- A base collection (`bases/`) has no `steps`, `setup`, `teardown` or `params`, and no
+  `extends`.
 - An endpoint (`endpoints/`) has a URL that is a path starting with `/`, and no use
-  steps.
+  steps. An endpoints file has no `setup` or `teardown`.
 - A check file's name is a JavaScript identifier; if it isn't, the file is not loaded.
 - `collections/`, `requests/`, `endpoints/` and `bases/` hold files at most one directory
   down.
@@ -1262,6 +1328,8 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - Every file a body names can be read from the project folder.
 - Every `use:` and `extends:` names a usable file, and every `with:` suits its set.
   `gta get` checks these without running anything (§1.3).
+- A step's `forEach` resolves to a JSON array.
+- `gta.set`'s `scope`, when given, is `'run'`.
 
 ---
 

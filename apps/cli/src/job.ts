@@ -6,9 +6,9 @@ import {
   environmentLayer,
   loadCollection,
   readDataFile,
-  runCollection,
+  runSuite,
   type CollectionRunSummary,
-  type DataRow
+  type Stage
 } from '@schwabyio/gravity-core'
 
 /** One collection to run, as sent to a worker: plain data only. */
@@ -24,18 +24,23 @@ export interface CollectionJob {
   flags: Record<string, string | number | boolean>
 }
 
-/** Steps never attempted — a bail, a cancel — as against those a flag skipped, which have results. */
+/**
+ * Steps never attempted — a bail, a cancel, rows a failed setup stopped — as
+ * against those a flag or a script skipped, which have results.
+ */
 export const unattempted = (summary: CollectionRunSummary): number =>
   summary.total - summary.results.length
 
-/** Every step of it skipped by a feature flag: the collection neither passed nor failed. */
+/** Every step of it skipped, by a feature flag or a script: the collection neither passed nor failed. */
 export const allSkipped = (summary: CollectionRunSummary): boolean =>
   summary.results.length > 0 && summary.results.every((r) => r.status === 'skipped')
 
 /** Where a result's step is in the collection file, for a person or an agent to go and fix it. */
 export interface StepRef {
-  /** The step's place in the file's `steps`, from 0. */
+  /** The step's place in its list in the file, from 0: `steps`, or `setup` or `teardown` when `stage` says. */
   index: number
+  /** For a setup or teardown step, which list it is in (SPEC.md §2.10). */
+  stage?: Stage
   /** Its line in the file, from 1; null when it cannot be told. */
   line: number | null
   /** For a collection with a data file: which row the result ran with, from 1. */
@@ -88,49 +93,34 @@ export async function runJob(job: CollectionJob): Promise<JobOutcome> {
     const context = { collectionPath: loaded.path, environmentName: job.environment }
     const lines = await stepLines(loaded.path)
     const data = loaded.dataFile ? await readDataFile(loaded.dataFile.path) : null
-    // A data file runs the whole collection once per row (SPEC.md §2.8), each
-    // with a scope of its own; without one it runs once, with no row.
-    const rows: Array<DataRow | null> = data ? data.rows : [null]
 
-    const summaries: CollectionRunSummary[] = []
+    // Setup, then the steps once per data row (SPEC.md §2.8) — each row with a
+    // scope of its own — or once without a data file, then teardown (§2.10).
     const refs: StepRef[] = []
-    let unrun = 0
-    for (const [i, row] of rows.entries()) {
-      const iteration = row ? { index: i + 1, of: rows.length, label: row.label } : undefined
+    const summary = await runSuite({
+      collection,
+      collectionPath: loaded.path,
+      context: { ...context, flags: job.flags, dataRow: null },
+      rows: data
+        ? data.rows.map((row, i) => ({
+            source: `${path.basename(data.path)} row ${i + 1}`,
+            vars: row.values,
+            label: row.label
+          }))
+        : null,
+      bail: job.bail,
       // Each result reports the step it ran under — a use step's requests all under it.
-      const summary = await runCollection({
-        collection,
-        collectionPath: loaded.path,
-        context: {
-          ...context,
-          flags: job.flags,
-          dataRow: row
-            ? { source: `${path.basename(data!.path)} row ${i + 1}`, vars: row.values }
-            : null
-        },
-        bail: job.bail,
-        onResult: (index) => {
-          const step = job.steps ? (job.steps[index] ?? index) : index
-          refs.push({ index: step, line: lines[step] ?? null, ...(iteration ? { iteration } : {}) })
-        }
-      })
-      summaries.push(summary)
-      // Bail stops the collection, every row still to come included.
-      if (job.bail && summary.failed + summary.errored > 0) {
-        unrun = summary.total * (rows.length - i - 1)
-        break
+      onResult: (index, result, iteration) => {
+        const stage = result.stage
+        const step = stage ? index : job.steps ? (job.steps[index] ?? index) : index
+        refs.push({
+          index: step,
+          line: lines[stage ?? 'steps'][step] ?? null,
+          ...(stage ? { stage } : {}),
+          ...(iteration ? { iteration } : {})
+        })
       }
-    }
-
-    const summary: CollectionRunSummary = {
-      total: summaries.reduce((n, s) => n + s.total, 0) + unrun,
-      passed: summaries.reduce((n, s) => n + s.passed, 0),
-      failed: summaries.reduce((n, s) => n + s.failed, 0),
-      errored: summaries.reduce((n, s) => n + s.errored, 0),
-      skipped: summaries.reduce((n, s) => n + s.skipped, 0) + unrun,
-      durationMs: summaries.reduce((n, s) => n + s.durationMs, 0),
-      results: summaries.flatMap((s) => s.results)
-    }
+    })
     return {
       ok: true,
       summary: redact(summary, await secretsOf(context)),
@@ -192,17 +182,21 @@ export function redact<T>(value: T, secrets: ReadonlyArray<[string, string]>): T
   return walk(value) as T
 }
 
-/** The line each step of a collection file starts on, from 1. */
-async function stepLines(file: string): Promise<Array<number | null>> {
+/** The line each step of a collection file starts on, from 1, in each of its lists. */
+async function stepLines(file: string): Promise<Record<'steps' | Stage, Array<number | null>>> {
+  const lines = { setup: [], steps: [], teardown: [] }
   try {
     const counter = new LineCounter()
     const document = parseDocument(await fs.readFile(file, 'utf8'), { lineCounter: counter })
-    const steps = document.get('steps', true)
-    if (!steps || typeof steps !== 'object' || !('items' in steps)) return []
-    return (steps.items as Array<{ range?: [number, number, number] | null }>).map((item) =>
-      item?.range ? counter.linePos(item.range[0]).line : null
-    )
+    const of = (key: string) => {
+      const list = document.get(key, true)
+      if (!list || typeof list !== 'object' || !('items' in list)) return []
+      return (list.items as Array<{ range?: [number, number, number] | null }>).map((item) =>
+        item?.range ? counter.linePos(item.range[0]).line : null
+      )
+    }
+    return { setup: of('setup'), steps: of('steps'), teardown: of('teardown') }
   } catch {
-    return []
+    return lines
   }
 }

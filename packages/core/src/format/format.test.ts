@@ -127,7 +127,7 @@ describe('validation', () => {
     expect(() =>
       parseCollection('steps:\n  - GET: "http://x"\n    heders:\n      Accept: x\n', 'a.yml')
     ).toThrow(
-      'unknown key "heders" on a step; a step holds a method (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) or use and with, and name, headers, body, settings, before, tests, tags, flags, base, docs (SPEC.md §2.1)'
+      'unknown key "heders" on a step; a step holds a method (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) or use and with, and name, headers, body, settings, before, tests, tags, flags, forEach, base, docs (SPEC.md §2.1)'
     )
     // On a use step too.
     expect(() =>

@@ -12,10 +12,9 @@ import {
   readRequestLine,
   stepLabel,
   UnknownFlagError,
-  runCollection,
   runRequest,
+  runSuite,
   type Collection,
-  type CollectionRunSummary,
   type RunResult,
   type Step,
   CollectionSchema,
@@ -158,47 +157,32 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
   inFlight.set(message.runId, controller)
   try {
     const collection = CollectionSchema.parse(message.collection)
-    // With a data file, once per row, as gta runs it (SPEC.md §2.8): each row a
-    // fresh scope, rows in order; Cancel stops the rows still to come.
-    const rows: Array<DataRow | null | undefined> = message.dataRows?.length
-      ? message.dataRows
-      : [message.dataRow]
-    const summaries: CollectionRunSummary[] = []
-    let unrun = 0
-    for (const [i, row] of rows.entries()) {
-      const iteration = message.dataRows?.length
-        ? { index: i + 1, of: rows.length, label: row?.label ?? null }
-        : undefined
-      const summary = await runCollection({
-        collection,
-        collectionPath: message.collectionPath,
-        signal: controller.signal,
-        // Report each step as it lands so the list fills in during the run.
-        onResult: (index, result) =>
-          process.parentPort.postMessage({
-            type: 'progress',
-            runId: message.runId,
-            index,
-            result,
-            ...(iteration ? { iteration } : {})
-          }),
-        ...contextFor({ ...message, dataRow: row })
-      })
-      summaries.push(summary)
-      if (controller.signal.aborted) {
-        unrun = summary.total * (rows.length - i - 1)
-        break
-      }
-    }
-    const summary: CollectionRunSummary = {
-      total: summaries.reduce((n, s) => n + s.total, 0) + unrun,
-      passed: summaries.reduce((n, s) => n + s.passed, 0),
-      failed: summaries.reduce((n, s) => n + s.failed, 0),
-      errored: summaries.reduce((n, s) => n + s.errored, 0),
-      skipped: summaries.reduce((n, s) => n + s.skipped, 0) + unrun,
-      durationMs: summaries.reduce((n, s) => n + s.durationMs, 0),
-      results: summaries.flatMap((s) => s.results)
-    }
+    // As gta runs it (SPEC.md §2.8, §2.10): setup once, then with a data file
+    // once per row — each row a fresh scope, rows in order — then teardown.
+    // Cancel stops where it is.
+    const summary = await runSuite({
+      collection,
+      collectionPath: message.collectionPath,
+      signal: controller.signal,
+      rows: message.dataRows?.length
+        ? message.dataRows.map((row) => ({
+            source: row.source,
+            vars: row.vars,
+            label: row.label ?? null
+          }))
+        : null,
+      // Report each step as it lands so the list fills in during the run;
+      // `result.stage` says when it is a setup or teardown step.
+      onResult: (index, result, iteration) =>
+        process.parentPort.postMessage({
+          type: 'progress',
+          runId: message.runId,
+          index,
+          result,
+          ...(iteration ? { iteration } : {})
+        }),
+      ...contextFor(message)
+    })
     process.parentPort.postMessage({ type: 'summary', runId: message.runId, summary })
   } catch (cause) {
     postFailure(message.runId, cause)

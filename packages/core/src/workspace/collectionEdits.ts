@@ -15,17 +15,20 @@ import {
   serialize,
   type ParsedFile
 } from '../format/index.js'
-import type { Collection, Step } from '../model/documents.js'
+import type { Collection, Step, StepList } from '../model/documents.js'
 import { writeIfUnchanged, type EditOutcome } from './writeFile.js'
 
 export type { EditOutcome }
 
-/** One change to a collection file, applied in order with the others in its batch. */
+/**
+ * One change to a collection file, applied in order with the others in its
+ * batch. A step edit is to `steps` unless `list` names `setup` or `teardown`.
+ */
 export type CollectionEdit =
-  | { type: 'editStep'; index: number; step: Step }
-  | { type: 'insertStep'; index: number; step: Step }
-  | { type: 'removeStep'; index: number }
-  | { type: 'moveStep'; from: number; to: number }
+  | { type: 'editStep'; index: number; step: Step; list?: StepList }
+  | { type: 'insertStep'; index: number; step: Step; list?: StepList }
+  | { type: 'removeStep'; index: number; list?: StepList }
+  | { type: 'moveStep'; from: number; to: number; list?: StepList }
   /** Set (or, with `undefined`, remove) a collection-level field. */
   | { type: 'editCollection'; key: CollectionField; value: unknown }
 
@@ -75,16 +78,16 @@ export function editSource(source: string, edits: CollectionEdit[], name?: strin
   for (const edit of edits) {
     switch (edit.type) {
       case 'editStep':
-        parsed = applyStepEdits(parsed, edit.index, edit.step)
+        parsed = applyStepEdits(parsed, edit.index, edit.step, edit.list)
         break
       case 'insertStep':
-        parsed = insertStep(parsed, edit.index, edit.step)
+        parsed = insertStep(parsed, edit.index, edit.step, edit.list)
         break
       case 'removeStep':
-        parsed = removeStep(parsed, edit.index)
+        parsed = removeStep(parsed, edit.index, edit.list)
         break
       case 'moveStep':
-        parsed = moveStep(parsed, edit.from, edit.to)
+        parsed = moveStep(parsed, edit.from, edit.to, edit.list)
         break
       case 'editCollection':
         if (!same(parsed.data[edit.key], edit.value)) {

@@ -4,10 +4,14 @@ import {
   readRequestLine,
   stepLabel,
   type Collection,
+  type Stage,
   type Step,
   type VarValue
 } from '../model/documents.js'
+import { show } from '../assert/evaluate.js'
 import { checkFlags, UnknownFlagError } from '../flags/flags.js'
+import { newStepControl } from '../runtime/gta.js'
+import { interpolate } from '../vars/interpolate.js'
 import type { CollectionRunSummary, RunError, RunResult } from '../model/run.js'
 import { loadLibrary } from '../workspace/library.js'
 import { planSteps, resolveParams, type PlannedSet } from './plan.js'
@@ -24,8 +28,9 @@ export interface CollectionRunOptions {
   signal?: AbortSignal
   /**
    * Called as each request finishes, so a UI can fill in results as they land.
-   * `index` is the collection step it belongs to — for a use step, each of its
-   * set's requests reports under it, with `result.use` saying which.
+   * `index` is the step it belongs to in the list being run — for a use step,
+   * each of its set's requests reports under it, with `result.use` saying
+   * which, and a `forEach` step reports once per item.
    */
   onResult?: (index: number, result: RunResult) => void
   /**
@@ -35,6 +40,13 @@ export interface CollectionRunOptions {
    * wrong, not just the first thing.
    */
   bail?: boolean
+  /**
+   * Which of the collection's lists to run: `steps`, the default, or `setup`
+   * or `teardown` (SPEC.md §2.10), whose results say so.
+   */
+  stage?: 'steps' | Stage
+  /** What lasts the whole collection run, across data rows (`ScopeContext.run`). */
+  run?: ScopeContext['run']
 }
 
 /**
@@ -48,12 +60,17 @@ export interface CollectionRunOptions {
  */
 export async function runCollection(options: CollectionRunOptions): Promise<CollectionRunSummary> {
   const { collection, collectionPath = null, context, signal, onResult, bail = false } = options
+  const stage = options.stage ?? 'steps'
   const startedHr = performance.now()
 
   // The collection as given says what it extends, saved or not.
   const scope = context
-    ? await buildScope({ collectionExtends: collection.extends ?? null, ...context })
-    : new VariableScope()
+    ? await buildScope({
+        collectionExtends: collection.extends ?? null,
+        ...context,
+        ...(options.run ? { run: options.run } : {})
+      })
+    : withRun(new VariableScope(), options.run)
   const library = collectionPath ? await loadLibrary(collectionPath) : null
   const checks = library?.checks ?? []
   const endpoints = library?.endpoints ?? []
@@ -69,101 +86,174 @@ export async function runCollection(options: CollectionRunOptions): Promise<Coll
       baseError = { phase: 'use', message: (cause as Error).message }
     }
   }
+  // The list being run, as the collection's steps: its layers apply to all three.
+  const running = stage === 'steps' ? collection : { ...collection, steps: collection[stage] ?? [] }
   // A collection that is itself a request set runs on its params' defaults.
   const own = collection.params ? selfAsSet(collection, collectionPath) : undefined
-  const plan = await planSteps(collection, collectionPath)
+  const plan = await planSteps(running, collectionPath)
   const results: RunResult[] = []
   /** Params of the use running now, resolved when its first step starts. */
   let params: Record<string, VarValue> = {}
   /** Why the use running now could not start: each of its steps reports it. */
   let unstarted: RunError | null = null
+  /** Why the steps still to come are skipped: `gta.skipRest` in one before them. */
+  let rest: string | null = null
+  /** Planned steps begun, so those never begun count as not run. */
+  let attempted = 0
 
-  for (const planned of plan) {
+  const emit = (index: number, result: RunResult) => {
+    const marked = stage === 'steps' ? result : { ...result, stage }
+    results.push(marked)
+    onResult?.(index, marked)
+  }
+  const failing = (result: RunResult) => result.status === 'fail' || result.status === 'error'
+
+  planning: for (const planned of plan) {
     if (signal?.aborted) break
+    attempted++
 
-    let result: RunResult
     if (baseError) {
-      result = brokenUse(planned.step, baseError, collectionPath)
-    } else if (planned.kind === 'broken') {
-      result = brokenUse(planned.step, planned.error, collectionPath)
-    } else {
-      const set = planned.set ? positionOf(planned.set, planned.child ?? 0) : undefined
-      if (set || own) {
-        const using = set?.planned ?? own!
-        const starting = set ? set.child === 0 : planned.index === 0
-        if (starting) {
-          try {
-            params = resolveParams(using.doc.params, using.with, scope)
-            unstarted = null
-          } catch (cause) {
-            params = {}
-            unstarted = {
-              phase: 'use',
-              message: `use: ${using.name} — ${(cause as Error).message}`
-            }
-          }
+      emit(planned.index, brokenUse(planned.step, baseError, collectionPath))
+      if (bail) break
+      continue
+    }
+    if (planned.kind === 'broken') {
+      emit(planned.index, brokenUse(planned.step, planned.error, collectionPath))
+      if (bail) break
+      continue
+    }
+    const set = planned.set ? positionOf(planned.set, planned.child ?? 0) : undefined
+    const inSet = set ? { use: useOf(set) } : {}
+    if (rest !== null) {
+      emit(planned.index, { ...skipped(planned.step, rest, collectionPath), ...inSet })
+      continue
+    }
+    if (set || own) {
+      const using = set?.planned ?? own!
+      const starting = set ? set.child === 0 : planned.index === 0
+      if (starting) {
+        try {
+          params = resolveParams(using.doc.params, using.with, scope)
+          unstarted = null
+        } catch (cause) {
+          params = {}
+          unstarted = { phase: 'use', message: `use: ${using.name} — ${(cause as Error).message}` }
         }
-      }
-      const gate = flagGate(collection, planned.index, planned.step, scope)
-      if (gate) {
-        result = gate(collectionPath)
-        results.push(result)
-        onResult?.(planned.index, result)
-        if (bail && result.status === 'error') break
-        continue
-      }
-      // After the flags: a use they skip is skipped, whatever its params.
-      if (unstarted && (set || own)) {
-        result = {
-          ...brokenUse(planned.step, unstarted, collectionPath),
-          ...(set ? { use: useOf(set) } : {})
-        }
-      } else {
-        result = await runRequest({
-          step: planned.step,
-          collection,
-          itemPath: collectionPath,
-          scope,
-          checks,
-          endpoints,
-          base,
-          ...(library ? { tls: library.tls } : {}),
-          ...(set
-            ? {
-                set: {
-                  name: set.planned.name,
-                  ...(set.planned.useName ? { useName: set.planned.useName } : {}),
-                  path: set.planned.path,
-                  doc: set.planned.doc,
-                  params,
-                  child: set.child,
-                  of: set.of,
-                  useTests: set.planned.useTests
-                }
-              }
-            : own
-              ? { params }
-              : {}),
-          ...(signal ? { signal } : {})
-        })
       }
     }
-    results.push(result)
-    onResult?.(planned.index, result)
+    const gate = flagGate(running, planned.index, planned.step, scope)
+    if (gate) {
+      const result = gate(collectionPath)
+      emit(planned.index, result)
+      if (bail && result.status === 'error') break
+      continue
+    }
+    // After the flags: a use they skip is skipped, whatever its params.
+    if (unstarted && (set || own)) {
+      emit(planned.index, { ...brokenUse(planned.step, unstarted, collectionPath), ...inSet })
+      if (bail) break
+      continue
+    }
 
-    if (bail && result.status !== 'pass') break
+    // Once, or once for each item of a forEach list, resolved now so earlier steps' values count.
+    let items: Array<{ value: unknown } | null> = [null]
+    if (planned.step.forEach !== undefined) {
+      try {
+        items = forEachItems(planned.step.forEach, scope).map((value) => ({ value }))
+      } catch (cause) {
+        const error: RunError = { phase: 'forEach', message: (cause as Error).message }
+        emit(planned.index, { ...brokenUse(planned.step, error, collectionPath), ...inSet })
+        if (bail) break
+        continue
+      }
+      if (items.length === 0) {
+        const reason = `forEach: ${planned.step.forEach} is an empty list`
+        emit(planned.index, { ...skipped(planned.step, reason, collectionPath), ...inSet })
+        continue
+      }
+    }
+    for (const [index, each] of items.entries()) {
+      if (signal?.aborted) break planning
+      if (rest !== null) {
+        emit(planned.index, { ...skipped(planned.step, rest, collectionPath), ...inSet })
+        continue
+      }
+      const control = newStepControl()
+      const result = await runRequest({
+        step: planned.step,
+        collection,
+        itemPath: collectionPath,
+        scope,
+        checks,
+        endpoints,
+        base,
+        control,
+        ...(library ? { tls: library.tls } : {}),
+        ...(each ? { item: { value: each.value, index, of: items.length } } : {}),
+        ...(set
+          ? {
+              set: {
+                name: set.planned.name,
+                ...(set.planned.useName ? { useName: set.planned.useName } : {}),
+                path: set.planned.path,
+                doc: set.planned.doc,
+                params,
+                child: set.child,
+                of: set.of,
+                useTests: set.planned.useTests
+              }
+            }
+          : own
+            ? { params }
+            : {}),
+        ...(signal ? { signal } : {})
+      })
+      emit(planned.index, result)
+      rest ??= control.rest
+      if (bail && failing(result)) break planning
+    }
   }
 
+  const notBegun = plan.length - attempted
   return {
-    total: plan.length,
+    total: results.length + notBegun,
     passed: results.filter((r) => r.status === 'pass').length,
     failed: results.filter((r) => r.status === 'fail').length,
     errored: results.filter((r) => r.status === 'error').length,
-    // A step a feature flag skipped, and one never attempted, are both not run.
-    skipped: plan.length - results.length + results.filter((r) => r.status === 'skipped').length,
+    // A step a feature flag or a script skipped, and one never begun, are all not run.
+    skipped: notBegun + results.filter((r) => r.status === 'skipped').length,
     durationMs: performance.now() - startedHr,
     results
   }
+}
+
+/** A scope that keeps the run's lasting values, for a collection with no file to read. */
+function withRun(scope: VariableScope, run: CollectionRunOptions['run']): VariableScope {
+  if (!run) return scope
+  const built = new VariableScope([{ source: 'run', vars: Object.fromEntries(run.values) }])
+  built.runValues = run.values
+  built.runWide = run.wide === true
+  return built
+}
+
+/**
+ * The items a step's `forEach` names (SPEC.md §2.1): its `{{variables}}`
+ * resolved, then read as a JSON array — `["a", "b"]` written in place, or a
+ * variable holding one, such as a list `gta.set` stored.
+ */
+export function forEachItems(expression: string, scope: VariableScope): unknown[] {
+  const value = interpolate(expression, scope)
+  if (typeof value === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(value)
+      if (Array.isArray(parsed)) return parsed
+    } catch {
+      // Not JSON: said below.
+    }
+  }
+  throw new Error(
+    `forEach: ${expression} is ${show(value)}, not a list; it needs a JSON array, such as ["a", "b"]`
+  )
 }
 
 /**
@@ -243,6 +333,12 @@ function flagGate(
       brokenUse(step, { phase: 'flags', message: cause.message }, collectionPath)
   }
 }
+
+/** A step skipped for a reason: `gta.skipRest` before it, or an empty `forEach` list. */
+const skipped = (step: Step, reason: string, collectionPath: string | null): RunResult => ({
+  ...notRun(step, collectionPath),
+  skipped: { reason }
+})
 
 /** A step that was not run, as a result: nothing sent, nothing received. */
 const notRun = (step: Step, collectionPath: string | null): RunResult => ({

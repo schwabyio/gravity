@@ -289,6 +289,59 @@ describe('gta', () => {
     ])
   })
 
+  it('runs setup once, the steps once per data row, then teardown, each reported by its list', async () => {
+    const root = await project({
+      'collections/seed.yml': [
+        'id: seed',
+        'setup:',
+        '  - name: grant',
+        "    POST: '{{baseUrl}}/ok/grant'",
+        '    tests: |',
+        "      gta.set('roots', ['r1', 'r2'], { scope: 'run' })",
+        'steps:',
+        '  - name: write',
+        "    PUT: '{{baseUrl}}/ok/{{who}}'",
+        '    before:',
+        '      script: |',
+        "        if (gta.get('who') === 'none') gta.skip('nothing for this row')",
+        'teardown:',
+        '  - name: revoke',
+        "    DELETE: '{{baseUrl}}/ok/{{item}}'",
+        "    forEach: '{{roots}}'",
+        ''
+      ].join('\n'),
+      'collections/seed.csv': 'who\na\nnone\n',
+      'collections/broken.yml': 'id: broken\nsetup:\n  - use: nope\nsteps:\n  - GET: /x\n'
+    })
+    const ran = await gta(root, 'seed')
+    expect(ran.code).toBe(EXIT.passed)
+    expect(ran.out).toContain('Steps:        5 total, 4 passed, 0 failed, 0 errored, 1 skipped')
+
+    const json = JSON.parse((await gta(root, 'seed', '--json')).out)
+    const steps = json.collections[0].steps as Array<{
+      stage?: string
+      step: { index: number; line: number }
+      iteration: { index: number } | null
+      status: string
+      forEach?: { item: string }
+    }>
+    expect(
+      steps.map((s) => [s.stage ?? 'steps', s.step.line, s.iteration?.index ?? null, s.status])
+    ).toEqual([
+      ['setup', 3, null, 'pass'],
+      ['steps', 8, 1, 'pass'],
+      ['steps', 8, 2, 'skipped'],
+      ['teardown', 14, null, 'pass'],
+      ['teardown', 14, null, 'pass']
+    ])
+    expect(steps.map((s) => s.forEach?.item ?? null).slice(3)).toEqual(['r1', 'r2'])
+
+    const listed = await gta(root, 'get')
+    expect(listed.out).toContain(
+      'broken broken, setup step 1: use: nope — there is no nope.yml in requests/'
+    )
+  })
+
   it('names a failing request by the named use step that ran it', async () => {
     const root = await project({
       'requests/check.yml': [

@@ -90,7 +90,22 @@ export const GTA_API: ApiEntry[] = [
     signature: '(min, max)',
     info: 'A whole number from min to max, both included.'
   },
-  { name: 'set', signature: '(name, value)', info: 'Set a variable for the rest of this run.' },
+  {
+    name: 'set',
+    signature: "(name, value, { scope: 'run' }?)",
+    info: "Set a variable for the rest of this run. With { scope: 'run' } it lasts past this data row, into every row after it and teardown."
+  },
+  {
+    name: 'skip',
+    signature: '(reason?)',
+    info: 'Send nothing for this step, and report it skipped with the reason.',
+    only: 'pre-request'
+  },
+  {
+    name: 'skipRest',
+    signature: '(reason?)',
+    info: 'Run none of the steps after this one in this row (in before.script, this one either). The next row, and teardown, still run.'
+  },
   {
     name: 'flag',
     signature: '(name)',

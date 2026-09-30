@@ -2,8 +2,10 @@ import path from 'node:path'
 import {
   isUseStep,
   readParam,
+  STEP_LISTS,
   type Collection,
   type ParamSpec,
+  type Stage,
   type Step,
   type VarValue
 } from '../model/documents.js'
@@ -164,8 +166,10 @@ const PARAM_REFERENCE = /\{\{\s*params\.([^{}\s]+)\s*\}\}/g
 
 /** Something that stops a collection's `extends:` or one of its use steps (SPEC.md Appendix A). */
 export interface ReferenceProblem {
-  /** The use step's index in `steps`; null for `extends:`. */
+  /** The use step's index in its list; null for `extends:`. */
   step: number | null
+  /** The list, when it is `setup` or `teardown` rather than `steps`. */
+  stage?: Stage
   message: string
 }
 
@@ -187,9 +191,14 @@ export async function referenceProblems(
       problems.push({ step: null, message: (cause as Error).message })
     }
   }
-  for (const planned of await planSteps(collection, collectionPath)) {
-    if (planned.kind === 'broken')
-      problems.push({ step: planned.index, message: planned.error.message })
+  for (const list of STEP_LISTS) {
+    const steps = collection[list]
+    if (!steps) continue
+    for (const planned of await planSteps({ ...collection, steps }, collectionPath)) {
+      if (planned.kind !== 'broken') continue
+      const stage = list === 'steps' ? {} : { stage: list }
+      problems.push({ step: planned.index, ...stage, message: planned.error.message })
+    }
   }
   return problems
 }

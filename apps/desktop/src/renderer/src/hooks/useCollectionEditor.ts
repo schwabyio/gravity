@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type {
-  Collection,
-  Headers,
-  Settings,
-  Vars,
-  CollectionSummary,
-  EnvironmentRef,
-  Step
+import {
+  STEP_LISTS,
+  type Collection,
+  type Headers,
+  type Settings,
+  type Vars,
+  type CollectionSummary,
+  type EnvironmentRef,
+  type Stage,
+  type Step,
+  type StepList
 } from '@schwabyio/gravity-core/model'
 import type { CollectionEdit, CollectionField, ProjectView } from '@shared/ipc.js'
 import { fromStep, mergeIntoStep, type EditorState } from '../requestState.js'
@@ -38,6 +41,8 @@ export interface Session {
   environmentsPath: string | null
   /** A stable id per step, parallel to `doc.steps`. */
   ids: string[]
+  /** The same for `doc.setup` and `doc.teardown` (SPEC.md §2.10). */
+  stageIds: Record<Stage, string[]>
   /** Editor state per step id, for steps touched since they were last saved. */
   drafts: Record<string, EditorState>
   /** Collection-level fields edited since they were last saved. */
@@ -86,6 +91,46 @@ const emptyToUndefined = <T>(value: T): T | undefined =>
 let idCounter = 0
 const newId = () => `step-${++idCounter}`
 const freshIds = (count: number) => Array.from({ length: count }, newId)
+
+/** A collection's steps in one of its lists: `steps`, or `setup` or `teardown`. */
+export const stepsOf = (doc: Collection, list: StepList): Step[] =>
+  list === 'steps' ? doc.steps : (doc[list] ?? [])
+
+/** A session's step ids for one list, parallel to `stepsOf` its document. */
+export const idsOf = (session: Session, list: StepList): string[] =>
+  list === 'steps' ? session.ids : session.stageIds[list]
+
+/** Setup and teardown ids for a document: the ones given while each list keeps its length. */
+const stageIdsFor = (doc: Collection, keep?: Record<Stage, string[]>): Record<Stage, string[]> => ({
+  setup:
+    keep && keep.setup.length === (doc.setup?.length ?? 0)
+      ? keep.setup
+      : freshIds(doc.setup?.length ?? 0),
+  teardown:
+    keep && keep.teardown.length === (doc.teardown?.length ?? 0)
+      ? keep.teardown
+      : freshIds(doc.teardown?.length ?? 0)
+})
+
+/** Whether a document's lists are as long as a session's ids, so the ids still fit. */
+const sameShape = (session: Session, doc: Collection): boolean =>
+  STEP_LISTS.every((list) => idsOf(session, list).length === stepsOf(doc, list).length)
+
+/** Where a step id is: its list, its place there, and the step as on disk. */
+export function locate(
+  session: Session,
+  id: string
+): { list: StepList; index: number; step: Step } | null {
+  for (const list of STEP_LISTS) {
+    const index = idsOf(session, list).indexOf(id)
+    const step = index >= 0 ? stepsOf(session.doc, list)[index] : undefined
+    if (step) return { list, index, step }
+  }
+  return null
+}
+
+/** A step edit's `list`, written only when it is not `steps`. */
+const listOf = (list: StepList) => (list === 'steps' ? {} : { list })
 /**
  * Structural equality that ignores key order: re-merging an edit moves the
  * method key, and that alone must not count as a change.
@@ -145,7 +190,7 @@ export function useCollectionEditor({
   /** Whether this step's editor state differs from what is on disk. */
   const isDirty = useCallback((session: Session, id: string): boolean => {
     const draft = session.drafts[id]
-    const step = session.doc.steps[session.ids.indexOf(id)]
+    const step = locate(session, id)?.step
     return !!draft && !!step && !same(mergeIntoStep(step, draft), step)
   }, [])
 
@@ -173,14 +218,19 @@ export function useCollectionEditor({
   // Select the first step once a session is on screen with nothing selected.
   useEffect(() => {
     if (!session) return
-    if (selectedId && session.ids.includes(selectedId)) return
-    setSelectedId(session.ids[0] ?? null)
+    if (selectedId && locate(session, selectedId)) return
+    setSelectedId(
+      session.ids[0] ?? session.stageIds.setup[0] ?? session.stageIds.teardown[0] ?? null
+    )
   }, [session, selectedId])
 
   /* ------------------------------------------------------------ editing -- */
 
-  const selectedIndex = session && selectedId ? session.ids.indexOf(selectedId) : -1
-  const selectedStep = session && selectedIndex >= 0 ? session.doc.steps[selectedIndex] : undefined
+  const selected = session && selectedId ? locate(session, selectedId) : null
+  /** The selected step's list, and its place in that list. */
+  const selectedList: StepList = selected?.list ?? 'steps'
+  const selectedIndex = selected?.index ?? -1
+  const selectedStep = selected?.step
 
   const request: EditorState | null = useMemo(() => {
     if (!session || !selectedId || !selectedStep) return null
@@ -192,8 +242,7 @@ export function useCollectionEditor({
     (changes: Partial<EditorState>) => {
       if (!openPath || !selectedId) return
       update(openPath, (current) => {
-        const index = current.ids.indexOf(selectedId)
-        const step = current.doc.steps[index]
+        const step = locate(current, selectedId)?.step
         if (!step) return current
         const base = current.drafts[selectedId] ?? baselineFor(selectedId, step)
         return { ...current, drafts: { ...current.drafts, [selectedId]: { ...base, ...changes } } }
@@ -208,7 +257,7 @@ export function useCollectionEditor({
     (id: string, name: string) => {
       if (!openPath) return
       update(openPath, (current) => {
-        const step = current.doc.steps[current.ids.indexOf(id)]
+        const step = locate(current, id)?.step
         if (!step) return current
         const base = current.drafts[id] ?? baselineFor(id, step)
         return { ...current, drafts: { ...current.drafts, [id]: { ...base, name } } }
@@ -221,11 +270,20 @@ export function useCollectionEditor({
   /** The document as it will be once saved: what the list and a run should show. */
   const displayDoc: Collection | null = useMemo(() => {
     if (!session) return null
-    const steps = session.doc.steps.map((step, index) => {
-      const draft = session.drafts[session.ids[index]!]
-      return draft ? mergeIntoStep(step, draft) : step
-    })
-    return withCollectionFields({ ...session.doc, steps }, session.collectionDraft ?? {})
+    const merged = (list: StepList) =>
+      stepsOf(session.doc, list).map((step, index) => {
+        const draft = session.drafts[idsOf(session, list)[index]!]
+        return draft ? mergeIntoStep(step, draft) : step
+      })
+    return withCollectionFields(
+      {
+        ...session.doc,
+        steps: merged('steps'),
+        ...(session.doc.setup ? { setup: merged('setup') } : {}),
+        ...(session.doc.teardown ? { teardown: merged('teardown') } : {})
+      },
+      session.collectionDraft ?? {}
+    )
   }, [session])
 
   /** Change a collection-level field. An empty list or object removes it. */
@@ -295,8 +353,8 @@ export function useCollectionEditor({
 
         const snapshot = Object.fromEntries(ids.map((id) => [id, start.drafts[id]!]))
         const merged = ids.map((id) => {
-          const index = start.ids.indexOf(id)
-          return { id, index, step: mergeIntoStep(start.doc.steps[index]!, snapshot[id]!) }
+          const { list, index, step } = locate(start, id)!
+          return { id, list, index, step: mergeIntoStep(step, snapshot[id]!) }
         })
         const edits: CollectionEdit[] = [
           // Every edit is checked as it is applied, so order matters: allowing step
@@ -305,7 +363,12 @@ export function useCollectionEditor({
           ...fieldChanges
             .filter(([key, value]) => key === 'stepTags' && value === true)
             .map(([key, value]) => ({ type: 'editCollection' as const, key, value })),
-          ...merged.map(({ index, step }) => ({ type: 'editStep' as const, index, step })),
+          ...merged.map(({ list, index, step }) => ({
+            type: 'editStep' as const,
+            index,
+            step,
+            ...listOf(list)
+          })),
           ...fieldChanges
             .filter(([key, value]) => !(key === 'stepTags' && value === true))
             .map(([key, value]) => ({ type: 'editCollection' as const, key, value })),
@@ -333,17 +396,27 @@ export function useCollectionEditor({
         }
 
         update(path, (current) => {
-          const steps = [...current.doc.steps]
+          const lists = {
+            setup: current.doc.setup ? [...current.doc.setup] : undefined,
+            steps: [...current.doc.steps],
+            teardown: current.doc.teardown ? [...current.doc.teardown] : undefined
+          }
           const drafts = { ...current.drafts }
-          for (const { id, index, step } of merged) {
-            steps[index] = step
+          for (const { id, list, index, step } of merged) {
+            const steps = lists[list]
+            if (steps) steps[index] = step
             // The saved state becomes the baseline, keeping the editor's row ids
             // stable while someone is still typing in it.
             baselines.current.set(id, { step, state: snapshot[id]! })
             if (drafts[id] === snapshot[id]) delete drafts[id]
           }
           const doc = withCollectionFields(
-            { ...current.doc, steps },
+            {
+              ...current.doc,
+              steps: lists.steps,
+              ...(lists.setup ? { setup: lists.setup } : {}),
+              ...(lists.teardown ? { teardown: lists.teardown } : {})
+            },
             Object.fromEntries(fieldChanges) as CollectionDraft
           )
           return {
@@ -416,6 +489,7 @@ export function useCollectionEditor({
         environments: read.environments,
         environmentsPath: read.environmentsPath,
         ids: freshIds(read.doc.steps.length),
+        stageIds: stageIdsFor(read.doc),
         drafts: {},
         collectionDraft: null,
         conflict: null,
@@ -448,9 +522,15 @@ export function useCollectionEditor({
   /**
    * Add, duplicate, delete or move a step: written at once, with the file's
    * other pending edits, and re-read so the document matches disk exactly.
+   * `nextIds` gives the ids of the list the edit is to.
    */
   const structural = useCallback(
-    async (edit: CollectionEdit, nextIds: (ids: string[]) => string[], select?: string) => {
+    async (
+      edit: CollectionEdit,
+      list: StepList,
+      nextIds: (ids: string[]) => string[],
+      select?: string
+    ) => {
       if (!openPath) return false
       const before = latest.current[openPath]?.source
       const ok = await flush(openPath, [edit])
@@ -458,26 +538,38 @@ export function useCollectionEditor({
       if (latest.current[openPath]?.source === before) return false
       const read = await load(openPath).catch(() => null)
       if (!read) return false
-      update(openPath, (current) => ({
-        ...current,
-        doc: read.doc,
-        source: read.source,
-        ids: nextIds(current.ids)
-      }))
+      update(openPath, (current) => {
+        const ids = nextIds(idsOf(current, list))
+        return {
+          ...current,
+          doc: read.doc,
+          source: read.source,
+          ...(list === 'steps' ? { ids } : { stageIds: { ...current.stageIds, [list]: ids } })
+        }
+      })
       if (select) setSelectedId(select)
       return ok
     },
     [openPath, flush, load, update]
   )
 
-  /** Add a step after `afterId` (or at the end): a new request, or `template`. */
+  /**
+   * Add a step to a list — after `afterId` when that step is in it, else at
+   * its end: a new request, or `template`.
+   */
   const addStep = useCallback(
-    (afterId: string | null, template: Step = { name: 'New step', GET: '' }) => {
+    (
+      afterId: string | null,
+      template: Step = { name: 'New step', GET: '' },
+      list: StepList = 'steps'
+    ) => {
       if (!session) return
-      const at = afterId ? session.ids.indexOf(afterId) + 1 : session.ids.length
+      const after = afterId ? locate(session, afterId) : null
+      const at = after && after.list === list ? after.index + 1 : idsOf(session, list).length
       const id = newId()
       void structural(
-        { type: 'insertStep', index: at, step: template },
+        { type: 'insertStep', index: at, step: template, ...listOf(list) },
+        list,
         (ids) => [...ids.slice(0, at), id, ...ids.slice(at)],
         id
       )
@@ -489,16 +581,20 @@ export function useCollectionEditor({
   const duplicateStep = useCallback(
     (id: string) => {
       if (!session || !displayDoc) return
-      const index = session.ids.indexOf(id)
-      const step = displayDoc.steps[index]
+      const found = locate(session, id)
+      if (!found) return
+      const { list, index } = found
+      const step = stepsOf(displayDoc, list)[index]
       if (!step) return
       const copy = newId()
       void structural(
         {
           type: 'insertStep',
           index: index + 1,
-          step: { ...step, name: `${step.name ?? 'Step'} copy` }
+          step: { ...step, name: `${step.name ?? 'Step'} copy` },
+          ...listOf(list)
         },
+        list,
         (ids) => [...ids.slice(0, index + 1), copy, ...ids.slice(index + 1)],
         copy
       )
@@ -509,30 +605,35 @@ export function useCollectionEditor({
   const removeStep = useCallback(
     (id: string) => {
       if (!session) return
-      const index = session.ids.indexOf(id)
-      if (index < 0) return
+      const found = locate(session, id)
+      if (!found) return
+      const { list, index } = found
       // Its unsaved edit goes with it, rather than being written first.
       update(session.summary.path, (current) => {
         const drafts = { ...current.drafts }
         delete drafts[id]
         return { ...current, drafts }
       })
-      const neighbour = session.ids[index + 1] ?? session.ids[index - 1] ?? undefined
+      const ids = idsOf(session, list)
+      const neighbour = ids[index + 1] ?? ids[index - 1] ?? session.ids[0] ?? undefined
       void structural(
-        { type: 'removeStep', index },
-        (ids) => ids.filter((candidate) => candidate !== id),
+        { type: 'removeStep', index, ...listOf(list) },
+        list,
+        (current) => current.filter((candidate) => candidate !== id),
         neighbour
       )
     },
     [session, structural, update]
   )
 
+  /** Move a step to another place in its own list. */
   const moveStep = useCallback(
     (id: string, to: number) => {
       if (!session) return
-      const from = session.ids.indexOf(id)
-      if (from < 0 || from === to) return
-      void structural({ type: 'moveStep', from, to }, (ids) => {
+      const found = locate(session, id)
+      if (!found || found.index === to) return
+      const { list, index: from } = found
+      void structural({ type: 'moveStep', from, to, ...listOf(list) }, list, (ids) => {
         const next = ids.filter((candidate) => candidate !== id)
         next.splice(to, 0, id)
         return next
@@ -574,6 +675,7 @@ export function useCollectionEditor({
           doc: read.doc,
           source: read.source,
           ids: s.ids.length === read.doc.steps.length ? s.ids : freshIds(read.doc.steps.length),
+          stageIds: stageIdsFor(read.doc, s.stageIds),
           drafts: {},
           environments: read.environments,
           environmentsPath: read.environmentsPath
@@ -595,6 +697,7 @@ export function useCollectionEditor({
               s.ids.length === s.conflict.doc.steps.length
                 ? s.ids
                 : freshIds(s.conflict.doc.steps.length),
+            stageIds: stageIdsFor(s.conflict.doc, s.stageIds),
             drafts: {},
             collectionDraft: null,
             conflict: null
@@ -611,13 +714,14 @@ export function useCollectionEditor({
     if (!openPath) return
     update(openPath, (s) => {
       if (!s.conflict) return s
-      const sameShape = s.ids.length === s.conflict.doc.steps.length
+      const fits = sameShape(s, s.conflict.doc)
       return {
         ...s,
         doc: s.conflict.doc,
         source: s.conflict.source,
-        ids: sameShape ? s.ids : freshIds(s.conflict.doc.steps.length),
-        drafts: sameShape ? s.drafts : {},
+        ids: fits ? s.ids : freshIds(s.conflict.doc.steps.length),
+        stageIds: fits ? s.stageIds : stageIdsFor(s.conflict.doc),
+        drafts: fits ? s.drafts : {},
         conflict: null
       }
     })
@@ -638,10 +742,18 @@ export function useCollectionEditor({
     return count > 0 ? { kind: 'unsaved', count } : { kind: 'saved' }
   }, [session, pendingCount])
 
+  /** Places with unsaved edits, per list. */
   const dirtyIndexes = useMemo(() => {
-    const indexes = new Set<number>()
+    const indexes: Record<StepList, Set<number>> = {
+      setup: new Set(),
+      steps: new Set(),
+      teardown: new Set()
+    }
     if (!session) return indexes
-    for (const id of dirtyIds(session)) indexes.add(session.ids.indexOf(id))
+    for (const id of dirtyIds(session)) {
+      const found = locate(session, id)
+      if (found) indexes[found.list].add(found.index)
+    }
     return indexes
   }, [session, dirtyIds])
 
@@ -649,6 +761,7 @@ export function useCollectionEditor({
     session,
     displayDoc,
     selectedId,
+    selectedList,
     selectedIndex,
     select: (id: string) => setSelectedId(id),
     request,

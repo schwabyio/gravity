@@ -190,7 +190,27 @@ export interface TestsApi {
   pending: Promise<unknown>[]
   /** A warning for the step's console, for a call that did nothing. */
   warn?: (message: string) => void
+  /** Where `gta.skipRest` records its reason. */
+  control?: StepControl
 }
+
+/**
+ * What a step's scripts decided about running, beyond its checks (SPEC.md §5):
+ * `gta.skip` not to send this request, `gta.skipRest` not to run the steps
+ * after it. Each holds the reason, and the first reason given stands.
+ */
+export interface StepControl {
+  skip: string | null
+  rest: string | null
+}
+
+export const newStepControl = (): StepControl => ({ skip: null, rest: null })
+
+/** A reason as given, or what to say when none was. */
+const reasonOf = (reason: unknown, fallback: string): string =>
+  reason === undefined || reason === null || String(reason).trim() === ''
+    ? fallback
+    : String(reason)
 
 /**
  * Wrap a function so a mistake in how it was called becomes a failed
@@ -213,10 +233,27 @@ function guarded<A extends unknown[]>(
 }
 
 /** The `gta` object for a step's `tests`. */
-export function testsGta({ session, scope, pending, warn = () => {} }: TestsApi) {
+export function testsGta({
+  session,
+  scope,
+  pending,
+  warn = () => {},
+  control = newStepControl()
+}: TestsApi) {
   const shared = sharedGta(scope)
   return {
     ...shared,
+
+    skip(): never {
+      throw new Error(
+        'gta.skip() stops a request before it is sent, so it belongs in before.script; gta.skipRest() skips the steps after this one'
+      )
+    },
+
+    /** Run none of the steps after this one in this row; the next row, and teardown, still run. */
+    skipRest(reason?: string): void {
+      control.rest ??= reasonOf(reason, 'gta.skipRest() in an earlier step')
+    },
 
     expectResponseStatusCodeToBe: guarded(
       session,
@@ -362,12 +399,25 @@ export function testsGta({ session, scope, pending, warn = () => {} }: TestsApi)
 }
 
 /** The `gta` object for `before.script`: variables and helpers, no assertions. */
-export function preRequestGta(scope: VariableScope) {
+export function preRequestGta(scope: VariableScope, control: StepControl = newStepControl()) {
   const notHere = (name: string) => () => {
     throw new Error(`gta.${name}() checks a response, so it belongs in tests, not before.script`)
   }
   return {
     ...sharedGta(scope),
+    /**
+     * Send nothing for this step, and report it skipped with the reason. The
+     * script runs to its end; no later `before.script` does.
+     */
+    skip(reason?: string): void {
+      control.skip ??= reasonOf(reason, 'gta.skip() in before.script')
+    },
+    /** `skip`, and run none of the steps after this one in this row either. */
+    skipRest(reason?: string): void {
+      const given = reasonOf(reason, 'gta.skipRest() in before.script')
+      control.skip ??= given
+      control.rest ??= given
+    },
     expectResponseStatusCodeToBe: notHere('expectResponseStatusCodeToBe'),
     expectResponseToHaveHeader: notHere('expectResponseToHaveHeader'),
     expectResponseBodyToHaveProperty: notHere('expectResponseBodyToHaveProperty'),
@@ -381,9 +431,18 @@ function sharedGta(scope: VariableScope) {
     get(name: string): unknown {
       return scope.get(name)
     },
-    /** Set a variable for the rest of this run, like a capture. */
-    set(name: string, value: unknown): void {
-      scope.set(String(name), toVarValue(value), 'script')
+    /**
+     * Set a variable for the rest of this run, like a capture. With
+     * `{ scope: 'run' }` it lasts past this data row too, into every row after
+     * it and teardown (SPEC.md §2.10).
+     */
+    set(name: string, value: unknown, options?: { scope?: string }): void {
+      const lasting = options?.scope
+      if (lasting !== undefined && lasting !== 'run') {
+        throw new Error(`gta.set(): scope is 'run' or left out, got ${show(lasting)}`)
+      }
+      if (lasting === 'run') scope.setForRun(String(name), toVarValue(value), 'script')
+      else scope.set(String(name), toVarValue(value), 'script')
     },
     /**
      * A feature flag's value in this run (SPEC.md §2.9) — to check something

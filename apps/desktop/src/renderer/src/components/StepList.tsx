@@ -3,35 +3,52 @@ import {
   isUseStep,
   readRequestLine,
   stepLabel,
-  type Collection,
-  type RunResult
+  type RunResult,
+  type Step,
+  type StepList as ListName
 } from '@schwabyio/gravity-core/model'
 import type { RequestSetView } from '@shared/ipc.js'
 import { resolveSet } from '../reuse.js'
 import type { FlagState } from '../flagState.js'
 import Tooltip from './Tooltip.js'
 
+/** A button under the list that adds a step. */
+export interface AddAction {
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  /** What it does, or why it is off. */
+  tooltip?: string
+}
+
 interface Props {
-  collection: Collection
+  /** Which of the collection's lists this is: `steps`, or `setup` or `teardown`. */
+  list: ListName
+  steps: Step[]
   /** Step indexes to show; the rest are filtered out, but keep their numbers. */
   visible: Set<number>
   /** Show each step's tags: the collection has step tags on. */
   showTags: boolean
+  /** The selected step's index when it is in this list; -1 when it is not. */
   selectedIndex: number
   /** Last result per step index, filled in as a run proceeds. */
   results: Record<number, RunResult>
-  /** The step currently executing, during a run. */
+  /** The step currently executing, during a run, if it is in this list. */
   runningIndex: number | null
+  /** A run is in flight, whichever list it is in: nothing else may start. */
+  busy: boolean
   /** Step indexes with unsaved edits. */
   draftIndexes: Set<number>
   onSelect: (index: number) => void
   onRun: (index: number) => void
-  onAdd: () => void
-  /** Request sets a use step can run; none means "+ Use a request set" is off. */
+  /** The buttons under the list that add steps. */
+  adds: AddAction[]
+  /** Request sets a use step can run. */
   sets: RequestSetView[]
-  onAddUse: () => void
   /** For each use step, by index: its set's results, one per request. */
   childResults: Record<number, Array<RunResult | undefined>>
+  /** For each `forEach` step, by index: one result per item, in order. */
+  itemResults: Record<number, RunResult[]>
   /** Which request of a use step is shown, and a way to show another. */
   selectedChild: number
   onSelectChild: (index: number, child: number) => void
@@ -70,7 +87,7 @@ export default function StepList(props: Props) {
   const [menu, setMenu] = useState<number | null>(null)
   const [dragging, setDragging] = useState<number | null>(null)
   const [dropAt, setDropAt] = useState<number | null>(null)
-  const count = props.collection.steps.length
+  const count = props.steps.length
 
   // A click anywhere else closes an open step menu.
   useEffect(() => {
@@ -81,7 +98,7 @@ export default function StepList(props: Props) {
   }, [menu])
 
   const confirmDelete = (index: number) => {
-    const step = props.collection.steps[index]
+    const step = props.steps[index]
     if (step && window.confirm(`Delete “${stepLabel(step)}”? This removes it from the file.`)) {
       props.onDelete(index)
     }
@@ -89,8 +106,11 @@ export default function StepList(props: Props) {
 
   return (
     <div className="step-list-wrap">
-      <ol className="step-list">
-        {props.collection.steps.map((step, index) => {
+      <ol
+        className="step-list"
+        aria-label={props.list === 'steps' ? 'Steps' : `${props.list} steps`}
+      >
+        {props.steps.map((step, index) => {
           const use = isUseStep(step) ? step : null
           const set = use ? resolveSet(props.sets, use.use) : null
           const { method, url } = use
@@ -98,6 +118,9 @@ export default function StepList(props: Props) {
             : readRequestLine(step)
           const children = use ? (props.childResults[index] ?? []) : []
           const ran = children.filter((child): child is RunResult => child !== undefined)
+          // A forEach step reports once per item: counted like a use step's requests.
+          const items = props.itemResults[index] ?? []
+          const itemCount = items[0]?.forEach?.of ?? 0
           // A use step's own result is only ever a reason it could not run.
           const result = use
             ? ran.length > 0
@@ -205,7 +228,7 @@ export default function StepList(props: Props) {
                   <button
                     className="step-run"
                     onClick={() => props.onRun(index)}
-                    disabled={props.runningIndex !== null}
+                    disabled={props.busy}
                     aria-label={`Run ${stepLabel(step)}`}
                   >
                     ▶
@@ -217,6 +240,13 @@ export default function StepList(props: Props) {
                 ) : ran.length > 0 ? (
                   <span className={`step-status ${setStatusClass(ran, children.length)}`}>
                     {`${ran.filter((child) => child.status === 'pass').length} of ${children.length} passed`}
+                  </span>
+                ) : items.length > 0 ? (
+                  <span
+                    className={`step-status ${setStatusClass(items, itemCount)}`}
+                    title={`One request for each of ${itemCount} item${itemCount === 1 ? '' : 's'}`}
+                  >
+                    {`${items.filter((item) => item.status === 'pass').length} of ${itemCount} passed`}
                   </span>
                 ) : result ? (
                   <span
@@ -304,25 +334,26 @@ export default function StepList(props: Props) {
         })}
       </ol>
       <div className="add-steps">
-        <button type="button" className="add-step" onClick={props.onAdd}>
-          + Add step
-        </button>
-        <Tooltip
-          text={
-            props.sets.length > 0
-              ? 'Run a request set here, with values of your own'
-              : 'No request sets yet: make one from the project’s ⋯ menu'
-          }
-        >
-          <button
-            type="button"
-            className="add-step"
-            onClick={props.onAddUse}
-            disabled={props.sets.length === 0}
-          >
-            + Use a request set
-          </button>
-        </Tooltip>
+        {props.adds.map((add) => {
+          const button = (
+            <button
+              key={add.label}
+              type="button"
+              className="add-step"
+              onClick={add.onClick}
+              disabled={add.disabled}
+            >
+              {add.label}
+            </button>
+          )
+          return add.tooltip ? (
+            <Tooltip key={add.label} text={add.tooltip}>
+              {button}
+            </Tooltip>
+          ) : (
+            button
+          )
+        })}
       </div>
     </div>
   )

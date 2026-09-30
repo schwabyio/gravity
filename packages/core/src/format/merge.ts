@@ -1,5 +1,11 @@
 import YAML from 'yaml'
-import { CollectionSchema, HTTP_METHODS, type Collection, type Step } from '../model/documents.js'
+import {
+  CollectionSchema,
+  HTTP_METHODS,
+  type Collection,
+  type Step,
+  type StepList
+} from '../model/documents.js'
 import { describeValidation, FormatError } from './errors.js'
 import type { ParsedFile } from './index.js'
 import { patchIn } from './patch.js'
@@ -9,8 +15,8 @@ import { patchIn } from './patch.js'
  *
  * The editor works with whole steps, but writing the whole step back would
  * re-emit it and discard every comment inside. So the change set is computed here
- * and applied key by key, at `steps[index].<key>`, leaving the rest of the file —
- * every other step included — exactly as it was.
+ * and applied key by key, at `steps[index].<key>` (or `setup`, `teardown`),
+ * leaving the rest of the file — every other step included — exactly as it was.
  *
  * The edits are applied together and validated once at the end: a step is only
  * valid with exactly one method key, so changing GET to POST passes through a
@@ -20,14 +26,15 @@ import { patchIn } from './patch.js'
 export function applyStepEdits(
   file: ParsedFile<Collection>,
   index: number,
-  next: Step
+  next: Step,
+  list: StepList = 'steps'
 ): ParsedFile<Collection> {
-  const before = file.data.steps[index] ?? {}
+  const before = file.data[list]?.[index] ?? {}
   const edits = diff(before, next)
   if (edits.length === 0) return file
 
   const document = file.document
-  const step = document.getIn(['steps', index], true)
+  const step = document.getIn([list, index], true)
   const removed = edits.filter(([key, value]) => isMethod(key) && value === undefined)
   const added = edits.filter(
     ([key, value]) => isMethod(key) && value !== undefined && !(key in before)
@@ -47,19 +54,19 @@ export function applyStepEdits(
   }
 
   for (const [key, value] of remaining) {
-    if (value === undefined) document.deleteIn(['steps', index, key])
+    if (value === undefined) document.deleteIn([list, index, key])
     else {
       if (YAML.isMap(step)) insertInOrder(document, step, key, value, STEP_KEY_ORDER)
-      patchIn(document, ['steps', index, key], value)
-      compactList(document, ['steps', index, key])
-      codeAsBlock(document, ['steps', index], key)
+      patchIn(document, [list, index, key], value)
+      compactList(document, [list, index, key])
+      codeAsBlock(document, [list, index], key)
     }
   }
 
   const result = CollectionSchema.safeParse(document.toJS() ?? {})
   if (!result.success) {
     throw new FormatError(
-      `edit to step ${index + 1} is invalid — ${describeValidation(result.error)}`,
+      `edit to ${list === 'steps' ? '' : `${list} `}step ${index + 1} is invalid — ${describeValidation(result.error)}`,
       undefined,
       result.error
     )
@@ -92,7 +99,8 @@ const same = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) =
 /* ------------------------------------------------------ step structure -- */
 
 /**
- * Insert, remove and move steps by splicing the `steps` sequence node itself.
+ * Insert, remove and move steps by splicing the `steps` sequence node itself
+ * (or `setup`'s, or `teardown`'s).
  *
  * Each step is one item node carrying its own comments, so moving the node
  * moves them with it, and every step not moved is emitted exactly as before.
@@ -101,18 +109,23 @@ const same = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) =
 export function insertStep(
   file: ParsedFile<Collection>,
   index: number,
-  step: Step
+  step: Step,
+  list: StepList = 'steps'
 ): ParsedFile<Collection> {
-  return withSteps(file, (items, document) => {
+  return withSteps(file, list, (items, document) => {
     const at = Math.max(0, Math.min(index, items.length))
     items.splice(at, 0, document.createNode(step))
   })
 }
 
-export function removeStep(file: ParsedFile<Collection>, index: number): ParsedFile<Collection> {
-  return withSteps(file, (items) => {
+export function removeStep(
+  file: ParsedFile<Collection>,
+  index: number,
+  list: StepList = 'steps'
+): ParsedFile<Collection> {
+  return withSteps(file, list, (items) => {
     if (index < 0 || index >= items.length)
-      throw new FormatError(`no step at index ${index}`, undefined)
+      throw new FormatError(`no ${list} step at index ${index}`, undefined)
     items.splice(index, 1)
   })
 }
@@ -120,11 +133,12 @@ export function removeStep(file: ParsedFile<Collection>, index: number): ParsedF
 export function moveStep(
   file: ParsedFile<Collection>,
   from: number,
-  to: number
+  to: number,
+  list: StepList = 'steps'
 ): ParsedFile<Collection> {
-  return withSteps(file, (items) => {
+  return withSteps(file, list, (items) => {
     if (from < 0 || from >= items.length)
-      throw new FormatError(`no step at index ${from}`, undefined)
+      throw new FormatError(`no ${list} step at index ${from}`, undefined)
     const [item] = items.splice(from, 1)
     items.splice(Math.max(0, Math.min(to, items.length)), 0, item)
   })
@@ -132,17 +146,26 @@ export function moveStep(
 
 function withSteps(
   file: ParsedFile<Collection>,
+  list: StepList,
   change: (items: unknown[], document: YAML.Document.Parsed) => void
 ): ParsedFile<Collection> {
-  let steps = file.document.get('steps', true)
+  const document = file.document
+  let steps = document.get(list, true)
   if (!YAML.isSeq(steps)) {
-    // `steps: []` written flow-style, or absent: make it a block sequence we own.
+    // `steps: []` written flow-style, or absent: make it a block sequence we own,
+    // where a person would put it — setup before steps, teardown after.
     steps = new YAML.YAMLSeq()
-    file.document.set('steps', steps)
+    const root = document.contents
+    if (YAML.isMap(root) && !root.has(list)) {
+      insertInOrder(document, root, list, [], COLLECTION_KEY_ORDER)
+    }
+    document.set(list, steps)
   }
-  change((steps as YAML.YAMLSeq).items, file.document)
+  change((steps as YAML.YAMLSeq).items, document)
   // An empty flow `[]` that gained items reads better as a block list.
   if ((steps as YAML.YAMLSeq).items.length > 0) (steps as YAML.YAMLSeq).flow = false
+  // A setup or teardown with nothing left in it is no list at all.
+  else if (list !== 'steps') document.delete(list)
 
   const result = CollectionSchema.safeParse(file.document.toJS() ?? {})
   if (!result.success) {
@@ -189,6 +212,7 @@ export const STEP_KEY_ORDER = [
   'use',
   'with',
   ...HTTP_METHODS,
+  'forEach',
   'tags',
   'flags',
   'base',
@@ -215,7 +239,9 @@ export const COLLECTION_KEY_ORDER = [
   'vars',
   'before',
   'tests',
-  'steps'
+  'setup',
+  'steps',
+  'teardown'
 ]
 
 /**

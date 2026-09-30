@@ -37,6 +37,20 @@ export function childResultsOf(
   return Array.from({ length: count }, (_, child) => results[childKey(stepId, child)])
 }
 
+/** Where a `forEach` step's results live: one per item of its list. */
+export const itemKey = (stepId: string, item: number) => `${stepId}@${item}`
+
+/** A `forEach` step's results, one per item, in order; empty when it has none. */
+export function itemResultsOf(results: Record<string, RunResult>, stepId: string): RunResult[] {
+  const items: RunResult[] = []
+  for (let item = 0; results[itemKey(stepId, item)]; item++)
+    items.push(results[itemKey(stepId, item)]!)
+  return items
+}
+
+/** The step a result key belongs to: a use step's request and a forEach item are under it. */
+export const stepOfKey = (key: string): string => key.split(/[#@]/)[0]!
+
 /** A request set as the sidebar opens it: like any collection file. */
 export const summaryOfSet = (set: RequestSetView): CollectionSummary =>
   summaryOfFile({ ...set, stepCount: set.steps.length }, 'requests')

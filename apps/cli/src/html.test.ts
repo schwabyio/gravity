@@ -207,6 +207,29 @@ describe('htmlReport', () => {
     )
   })
 
+  it('shows a skipped step’s reason, whatever skipped it, and names setup and forEach steps', () => {
+    const page = pages(
+      run(
+        collection('seed', [
+          result('grant', { stage: 'setup' }),
+          result('approve', {
+            status: 'skipped',
+            response: null,
+            assertions: [],
+            skipped: { reason: 'no domains to add for this row' }
+          }),
+          result('revoke', { stage: 'teardown', forEach: { index: 1, of: 2, item: 'r2' } })
+        ])
+      )
+    ).get('seed.html')!
+    expect(page).toContain('Test 1: setup › grant</span>')
+    expect(page).toContain(
+      '<span class="c-skipped">no domains to add for this row — this test was not run</span>'
+    )
+    expect(page).not.toContain('Feature Flag<')
+    expect(page).toContain('Test 3: teardown › revoke (item 2 of 2)</span>')
+  })
+
   it('shows a test’s error in its own card, errored tests counting as failed for Hide Failed', () => {
     const page = pages(
       run(

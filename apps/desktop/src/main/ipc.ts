@@ -14,6 +14,7 @@ import {
   buildScope,
   checkScriptSyntax,
   COLLECTION_FIELDS,
+  STEP_LISTS,
   FLAG_NAME_PATTERN,
   FlagValueSchema,
   GitCommandError,
@@ -55,14 +56,16 @@ import { flagService } from './flagService.js'
 import type { ProjectService } from './projectService.js'
 
 const index = z.number().int().nonnegative()
+/** Which of the collection's step lists a step edit is to; absent, `steps`. */
+const list = z.enum(STEP_LISTS).optional()
 
 /** Edits arrive from the renderer, so each is validated before any file is touched. */
 const EditsSchema = z.array(
   z.discriminatedUnion('type', [
-    z.object({ type: z.literal('editStep'), index, step: StepSchema }),
-    z.object({ type: z.literal('insertStep'), index, step: StepSchema }),
-    z.object({ type: z.literal('removeStep'), index }),
-    z.object({ type: z.literal('moveStep'), from: index, to: index }),
+    z.object({ type: z.literal('editStep'), index, step: StepSchema, list }),
+    z.object({ type: z.literal('insertStep'), index, step: StepSchema, list }),
+    z.object({ type: z.literal('removeStep'), index, list }),
+    z.object({ type: z.literal('moveStep'), from: index, to: index, list }),
     z.object({
       type: z.literal('editCollection'),
       key: z.enum(COLLECTION_FIELDS),

@@ -74,3 +74,21 @@ describe('file bodies in the editor', () => {
     expect(mergeIntoStep(original, edited).body).toBeUndefined()
   })
 })
+
+describe('forEach in the editor', () => {
+  it('reads a step’s list, writes a change, and removes an emptied one', () => {
+    const original = StepSchema.parse({ DELETE: 'http://x/root/{{item}}', forEach: '{{roots}}' })
+    const state = fromStep(original)
+    expect(state.forEach).toBe('{{roots}}')
+    expect(mergeIntoStep(original, state)).toEqual(original)
+    expect(mergeIntoStep(original, { ...state, forEach: '["a", "b"]' }).forEach).toBe('["a", "b"]')
+    expect(mergeIntoStep(original, { ...state, forEach: '  ' })).not.toHaveProperty('forEach')
+  })
+
+  it('never gives a use step one', () => {
+    const use = StepSchema.parse({ use: 'login' })
+    const state = { ...fromStep(use), forEach: '{{roots}}' }
+    expect(fromStep(use).forEach).toBe('')
+    expect(mergeIntoStep(use, state)).not.toHaveProperty('forEach')
+  })
+})

@@ -41,8 +41,10 @@ export interface ListingProblem {
   id: string
   /** Why `gta all` leaves the collection out, or null when it runs it. */
   leftOut: 'excluded' | 'tags' | null
-  /** The use step's index in `steps`; null for `extends:`. */
+  /** The use step's index in its list; null for `extends:`. */
   step: number | null
+  /** The list, when it is `setup` or `teardown` rather than `steps`. */
+  stage?: 'setup' | 'teardown'
   message: string
 }
 

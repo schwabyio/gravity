@@ -272,6 +272,7 @@ export async function loadEndpoints(
 
 /** What is wrong with an endpoints file's steps as endpoints, if anything. */
 export function endpointProblem(doc: Collection): string | undefined {
+  if (doc.setup || doc.teardown) return 'an endpoints file has no setup or teardown'
   for (const step of doc.steps) {
     if (isUseStep(step)) return 'an endpoint is a method and a path, not a use: step'
     const { method, url } = readRequestLine(step)
@@ -297,6 +298,7 @@ export async function listBases(
 /** What is wrong with a file as a base collection, if anything. */
 export function baseProblem(doc: Collection): string | undefined {
   if (doc.steps.length > 0) return 'a base collection has no steps of its own'
+  if (doc.setup || doc.teardown) return 'a base collection has no setup or teardown'
   if (doc.params) return 'a base collection has no params'
   if (doc.extends) return 'a base collection cannot extend another (SPEC.md §2.7)'
   return undefined

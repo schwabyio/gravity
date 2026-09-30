@@ -19,14 +19,21 @@ import {
   type RunResult,
   type SentRequest
 } from '../model/run.js'
-import { preRequestGta, requestView, responseView, testsGta } from '../runtime/gta.js'
+import {
+  newStepControl,
+  preRequestGta,
+  requestView,
+  responseView,
+  testsGta,
+  type StepControl
+} from '../runtime/gta.js'
 import { runScript, type Adopt } from '../runtime/sandbox.js'
 import { loadLibrary, type CheckFile, type EndpointBase } from '../workspace/library.js'
 import { projectRootOf } from '../workspace/project.js'
 import type { ProjectTrust } from '../workspace/projectTls.js'
 import { findEndpoint, placeholdersOf } from '../model/endpoints.js'
 import { buildScope, type ScopeContext } from '../vars/resolve.js'
-import { InterpolationError, ParamsScope, VariableScope } from '../vars/scope.js'
+import { InterpolationError, OverlayScope, ParamsScope, VariableScope } from '../vars/scope.js'
 import { interpolateToString } from '../vars/interpolate.js'
 import { resolveSettings, toSentRequest } from './buildRequest.js'
 import { resolveParams } from './plan.js'
@@ -63,7 +70,25 @@ export interface RunStepInput {
   base?: Collection | null
   /** The certificates the project trusts (SPEC.md §1.1); absent, read from its project. */
   tls?: ProjectTrust
+  /** For a step with `forEach`: the item this request is for, and where it is in the list. */
+  item?: ForEachItem
+  /** Where the step's scripts record `gta.skip` and `gta.skipRest`; absent, the step's own. */
+  control?: StepControl
 }
+
+/** One item of a step's `forEach` list (SPEC.md §2.1). */
+export interface ForEachItem {
+  /** As the list held it: `item` in code. */
+  value: unknown
+  index: number
+  of: number
+}
+
+/** An item as a variable holds it: `{{item}}`. An object or a list is its JSON. */
+export const itemText = (value: unknown): VarValue =>
+  value === null || ['string', 'number', 'boolean'].includes(typeof value)
+    ? (value as VarValue)
+    : (JSON.stringify(value) ?? String(value))
 
 /** One layer of what a request is made of, outermost first (SPEC.md §2.6–2.7). */
 interface Layer {
@@ -168,7 +193,8 @@ function endpointValues(endpoint: EndpointBase, step: Step, scope: VariableScope
  * validation once everything that could account for a property has run.
  */
 export async function runRequest(input: RunStepInput): Promise<RunResult> {
-  const { step, itemPath = null, signal, context, scope: provided, set } = input
+  const { step, itemPath = null, signal, context, scope: provided, set, item: each } = input
+  const control = input.control ?? newStepControl()
   if (isUseStep(step)) {
     // A use step is a list of requests; the collection runner expands it.
     return {
@@ -227,6 +253,9 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   const logs: LogEntry[] = []
   const withLogs = () => ({
     ...(logs.length > 0 ? { logs } : {}),
+    ...(each
+      ? { forEach: { index: each.index, of: each.of, item: String(itemText(each.value)) } }
+      : {}),
     ...(set
       ? {
           use: {
@@ -277,7 +306,8 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       set?.params ??
       input.params ??
       (input.collection?.params ? resolveParams(input.collection.params, {}, run) : undefined)
-    scope = params ? new ParamsScope(run, params) : run
+    const own = params ? new ParamsScope(run, params) : run
+    scope = each ? new OverlayScope(own, new Map([['item', itemText(each.value)]]), 'forEach') : own
   } catch (cause) {
     return failed(interpolateError(cause))
   }
@@ -285,6 +315,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   const shared = (adopt: Adopt) => ({
     assert,
     ...(params ? { params: adopt(params) } : {}),
+    ...(each ? { item: adopt(each.value) } : {}),
     ...(endpoint ? { endpoint: adopt(endpointValues(endpoint, step, scope)) } : {})
   })
   const filenameOf = (layer: Layer, kind: 'before.script' | 'tests') =>
@@ -302,11 +333,25 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
         ...(checks ? { checks } : {}),
         globals: (adopt) => ({
           ...shared(adopt),
-          gta: preRequestGta(scope),
+          gta: preRequestGta(scope, control),
           req: requestView(toSentRequestSafely(step, collection), adopt)
         })
       })
       if (error) return failed({ ...error, script })
+      // `gta.skip`: nothing is sent, and no later script runs.
+      if (control.skip !== null) {
+        return {
+          item,
+          request: toSentRequestSafely(step, collection),
+          response: null,
+          assertions: [],
+          ...withLogs(),
+          error: null,
+          status: 'skipped',
+          skipped: { reason: control.skip },
+          durationMs: performance.now() - startedHr
+        }
+      }
     }
   }
 
@@ -372,6 +417,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
               session,
               scope,
               pending,
+              control,
               warn: (message) => logs.push({ level: 'warn', phase: 'tests', message })
             }),
             req: requestView(outcome.request, adopt),

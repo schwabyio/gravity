@@ -3,6 +3,7 @@ import {
   isUseStep,
   readRequestLine,
   stepLabel,
+  STEP_LISTS,
   type Collection,
   type FlagConditions,
   type FlagValue,
@@ -11,10 +12,12 @@ import {
   type LoadProblem,
   type RunResult,
   type Settings,
+  type StepList as ListName,
   type VariablePreviews,
   type Vars
 } from '@schwabyio/gravity-core/model'
 import type { LibraryFileView, RequestSetView } from '@shared/ipc.js'
+import { stepsOf } from '../hooks/useCollectionEditor.js'
 import { usePaneWidth } from '../hooks/usePaneWidth.js'
 import { filterSteps, stepTagsIn } from '../tagFilter.js'
 import { conditionsState, showFlagValue, stepFlagState, type FlagState } from '../flagState.js'
@@ -24,9 +27,10 @@ import CollectionSettings, { type SettingsSection } from './CollectionSettings.j
 import DocsPanel from './DocsPanel.js'
 import GearIcon from './GearIcon.js'
 import Resizer from './Resizer.js'
-import StepList from './StepList.js'
+import StepList, { type AddAction } from './StepList.js'
 import TagEditor from './TagEditor.js'
 import Tooltip from './Tooltip.js'
+import VariableInput from './VariableInput.js'
 
 interface Props {
   name: string
@@ -48,30 +52,41 @@ interface Props {
   /** Each row's results from the last run over the data file; null before one. */
   iterations: IterationCounts[] | null
   collection: Collection
+  /** The selected step's list — `steps`, or `setup` or `teardown` — and its place there. */
+  selectedList: ListName
   selectedIndex: number
-  results: Record<number, RunResult>
-  runningIndex: number | null
+  /** Each list's last result per step index. */
+  results: Record<ListName, Record<number, RunResult>>
+  /** The step executing now, during a run. */
+  runningAt: { list: ListName; index: number } | null
+  /** A run is in flight: nothing else may start. */
+  busy: boolean
   runningAll: boolean
   summary: CollectionRunSummary | null
-  draftIndexes: Set<number>
-  onSelect: (index: number) => void
-  onRunStep: (index: number) => void
+  draftIndexes: Record<ListName, Set<number>>
+  onSelect: (list: ListName, index: number) => void
+  onRunStep: (list: ListName, index: number) => void
   onRunAll: () => void
   onCancel: () => void
-  onAddStep: () => void
+  onAddStep: (list: ListName) => void
   /** Request sets a use step can run. */
   sets: RequestSetView[]
-  onAddUse: () => void
-  childResults: Record<number, Array<RunResult | undefined>>
+  onAddUse: (list: ListName) => void
+  childResults: Record<ListName, Record<number, Array<RunResult | undefined>>>
+  /** Each list's `forEach` steps' results, one per item. */
+  itemResults: Record<ListName, Record<number, RunResult[]>>
   selectedChild: number
-  onSelectChild: (index: number, child: number) => void
-  onRenameStep: (index: number, name: string) => void
-  onDuplicateStep: (index: number) => void
-  onDeleteStep: (index: number) => void
-  onMoveStep: (index: number, to: number) => void
+  onSelectChild: (list: ListName, index: number, child: number) => void
+  onRenameStep: (list: ListName, index: number, name: string) => void
+  onDuplicateStep: (list: ListName, index: number) => void
+  onDeleteStep: (list: ListName, index: number) => void
+  onMoveStep: (list: ListName, index: number, to: number) => void
   /** The selected step's own tags, as the editor holds them. */
   stepTags: string[]
   onStepTags: (tags: string[]) => void
+  /** The selected step's `forEach`, as the editor holds it (SPEC.md §2.1). */
+  stepForEach: string
+  onStepForEach: (forEach: string) => void
   onCollectionTags: (tags: string[]) => void
   onStepTagsEnabled: (enabled: boolean) => void
   onCollectionExcluded: (excluded: boolean) => void
@@ -116,7 +131,12 @@ interface Props {
 export default function CollectionView(props: Props) {
   const { summary } = props
   const steps = usePaneWidth('pane.steps', 260, 180, 560)
-  const stepCount = props.collection.steps.length
+  const setupSteps = stepsOf(props.collection, 'setup')
+  const teardownSteps = stepsOf(props.collection, 'teardown')
+  const hasStages = setupSteps.length > 0 || teardownSteps.length > 0
+  const anySteps = STEP_LISTS.some((list) => stepsOf(props.collection, list).length > 0)
+  // Only a collection has setup and teardown: not a request set, a base or endpoints.
+  const canHaveStages = props.library === null && !props.collection.params
   const collectionTags = props.collection.tags ?? []
   const stepTagsOn = props.collection.stepTags === true
   const { onSettingsOpen } = props
@@ -126,7 +146,9 @@ export default function CollectionView(props: Props) {
   const allTags = stepTagsIn(props.collection)
   const { active: filter, indexes } = filterSteps(props.collection, props.tagFilter)
   const visible = new Set(indexes)
-  const selectedStep = props.collection.steps[props.selectedIndex]
+  const selectedSteps = stepsOf(props.collection, props.selectedList)
+  const stepCount = selectedSteps.length
+  const selectedStep = selectedSteps[props.selectedIndex]
   const selectedMethod = selectedStep
     ? isUseStep(selectedStep)
       ? 'USE'
@@ -141,12 +163,96 @@ export default function CollectionView(props: Props) {
   const idWrong = props.collection.id !== fileId
 
   // What each step's feature flags mean with the current values: skipped, or a flag nobody declared.
-  const flagStates: Record<number, FlagState> = Object.fromEntries(
-    props.collection.steps.map((_, index) => [
-      index,
-      stepFlagState(props.collection, index, props.flagValues)
-    ])
-  )
+  const flagStatesOf = (list: ListName): Record<number, FlagState> => {
+    const listSteps = stepsOf(props.collection, list)
+    return Object.fromEntries(
+      listSteps.map((_, index) => [
+        index,
+        stepFlagState({ flags: props.collection.flags, steps: listSteps }, index, props.flagValues)
+      ])
+    )
+  }
+  const flagStates = flagStatesOf(props.selectedList)
+
+  const useSetTooltip = (where: string) =>
+    props.sets.length > 0
+      ? `Run a request set here${where}, with values of your own`
+      : 'No request sets yet: make one from the project’s ⋯ menu'
+  /** The buttons under each list that add to it. */
+  const addsFor = (list: ListName): AddAction[] => {
+    if (list !== 'steps') {
+      return [
+        { label: `+ Add ${list} step`, onClick: () => props.onAddStep(list) },
+        {
+          label: `+ Use a request set in ${list}`,
+          onClick: () => props.onAddUse(list),
+          disabled: props.sets.length === 0,
+          tooltip: useSetTooltip(` in ${list}`)
+        }
+      ]
+    }
+    return [
+      { label: '+ Add step', onClick: () => props.onAddStep('steps') },
+      {
+        label: '+ Use a request set',
+        onClick: () => props.onAddUse('steps'),
+        disabled: props.sets.length === 0,
+        tooltip: useSetTooltip('')
+      },
+      // A list with steps has its own add buttons, above or below.
+      ...(canHaveStages && setupSteps.length === 0
+        ? [
+            {
+              label: '+ Add setup step',
+              onClick: () => props.onAddStep('setup'),
+              tooltip:
+                'Setup runs once before the steps, and before every row of a data file; what it sets lasts the whole run'
+            }
+          ]
+        : []),
+      ...(canHaveStages && teardownSteps.length === 0
+        ? [
+            {
+              label: '+ Add teardown step',
+              onClick: () => props.onAddStep('teardown'),
+              tooltip: 'Teardown runs once after the steps, even when one of them failed'
+            }
+          ]
+        : [])
+    ]
+  }
+
+  const listOf = (list: ListName) => {
+    const listSteps = stepsOf(props.collection, list)
+    return (
+      <StepList
+        list={list}
+        steps={listSteps}
+        visible={list === 'steps' ? visible : new Set(listSteps.map((_, index) => index))}
+        showTags={stepTagsOn && list === 'steps'}
+        selectedIndex={props.selectedList === list ? props.selectedIndex : -1}
+        results={props.results[list]}
+        runningIndex={props.runningAt?.list === list ? props.runningAt.index : null}
+        busy={props.busy}
+        draftIndexes={props.draftIndexes[list]}
+        onSelect={(index) => props.onSelect(list, index)}
+        onRun={(index) => props.onRunStep(list, index)}
+        adds={addsFor(list)}
+        sets={props.sets}
+        childResults={props.childResults[list]}
+        itemResults={props.itemResults[list]}
+        selectedChild={props.selectedChild}
+        onSelectChild={(index, child) => props.onSelectChild(list, index, child)}
+        onRename={(index, name) => props.onRenameStep(list, index, name)}
+        onDuplicate={(index) => props.onDuplicateStep(list, index)}
+        onDelete={(index) => props.onDeleteStep(list, index)}
+        onMove={(index, to) => props.onMoveStep(list, index, to)}
+        flagStates={flagStatesOf(list)}
+      />
+    )
+  }
+  // Run all with a tag filter runs the steps it shows; setup and teardown come along.
+  const nothingToRun = visible.size === 0 && (filter.length > 0 || !hasStages)
   const collectionFlags = Object.entries(props.collection.flags ?? {})
 
   return (
@@ -265,11 +371,16 @@ export default function CollectionView(props: Props) {
           {selectedStep && (
             <p className="collection-step">
               <span className="collection-step-seq">
-                Step {props.selectedIndex + 1} of {stepCount}
+                {props.selectedList === 'setup'
+                  ? 'Setup step'
+                  : props.selectedList === 'teardown'
+                    ? 'Teardown step'
+                    : 'Step'}{' '}
+                {props.selectedIndex + 1} of {stepCount}
               </span>
               <span className={`method m-${selectedMethod.toLowerCase()}`}>{selectedMethod}</span>
               <span className="collection-step-name">{stepLabel(selectedStep)}</span>
-              {stepTagsOn && (
+              {stepTagsOn && props.selectedList === 'steps' && (
                 <TagEditor
                   owner="step"
                   tags={props.stepTags}
@@ -303,6 +414,15 @@ export default function CollectionView(props: Props) {
               />
             </details>
           )}
+          {selectedStep && !isUseStep(selectedStep) && props.library === null && (
+            <ForEachEditor
+              key={`${props.selectedList}:${props.selectedIndex}`}
+              value={props.stepForEach}
+              onChange={props.onStepForEach}
+              previews={props.previews}
+              onCopyVariable={props.onCopyVariable}
+            />
+          )}
         </div>
 
         {summary && !props.runningAll && (
@@ -323,7 +443,7 @@ export default function CollectionView(props: Props) {
             type="button"
             className="send run-all"
             onClick={props.onRunAll}
-            disabled={visible.size === 0 || props.runningIndex !== null}
+            disabled={nothingToRun || props.busy}
           >
             {filter.length > 0
               ? `▶ Run ${visible.size} step${visible.size === 1 ? '' : 's'}`
@@ -367,7 +487,7 @@ export default function CollectionView(props: Props) {
 
       {props.collection.docs && <DocsPanel source={props.collection.docs} />}
 
-      {stepCount === 0 ? (
+      {!anySteps ? (
         <div className="hint empty">
           {props.library === 'bases' ? (
             <p>
@@ -381,7 +501,7 @@ export default function CollectionView(props: Props) {
                   ? 'No endpoints yet. Each step here is one: a method and a path like /users/{id}, with the headers and checks every request to it gets.'
                   : 'This collection has no steps yet.'}
               </p>
-              <button type="button" className="add-step" onClick={props.onAddStep}>
+              <button type="button" className="add-step" onClick={() => props.onAddStep('steps')}>
                 {props.library === 'endpoints' ? '+ Add endpoint' : '+ Add step'}
               </button>
             </>
@@ -414,7 +534,7 @@ export default function CollectionView(props: Props) {
                 {filter.length > 0 && (
                   <>
                     <span className="tag-filter-count">
-                      {visible.size} of {stepCount}
+                      {visible.size} of {props.collection.steps.length}
                     </span>
                     <button
                       type="button"
@@ -435,33 +555,82 @@ export default function CollectionView(props: Props) {
                 onSelect={props.onDataRow}
               />
             )}
-            <StepList
-              visible={visible}
-              collection={props.collection}
-              showTags={stepTagsOn}
-              selectedIndex={props.selectedIndex}
-              results={props.results}
-              runningIndex={props.runningIndex}
-              draftIndexes={props.draftIndexes}
-              onSelect={props.onSelect}
-              onRun={props.onRunStep}
-              onAdd={props.onAddStep}
-              sets={props.sets}
-              onAddUse={props.onAddUse}
-              childResults={props.childResults}
-              selectedChild={props.selectedChild}
-              onSelectChild={props.onSelectChild}
-              onRename={props.onRenameStep}
-              onDuplicate={props.onDuplicateStep}
-              onDelete={props.onDeleteStep}
-              onMove={props.onMoveStep}
-              flagStates={flagStates}
-            />
+            {setupSteps.length > 0 && (
+              <section className="step-section setup" aria-label="Setup">
+                <h2 className="step-section-title">Setup</h2>
+                <p className="step-section-note">
+                  Runs once before the steps{props.dataFile ? ', not once per row' : ''}. What it
+                  sets lasts the whole run.
+                </p>
+                {listOf('setup')}
+              </section>
+            )}
+            {hasStages ? (
+              <section className="step-section steps" aria-label="Steps">
+                <h2 className="step-section-title">Steps</h2>
+                {listOf('steps')}
+              </section>
+            ) : (
+              listOf('steps')
+            )}
+            {teardownSteps.length > 0 && (
+              <section className="step-section teardown" aria-label="Teardown">
+                <h2 className="step-section-title">Teardown</h2>
+                <p className="step-section-note">
+                  Runs once after the steps, even when one of them failed.
+                </p>
+                {listOf('teardown')}
+              </section>
+            )}
           </aside>
           <section className="step-detail">{props.children}</section>
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * A step's `forEach` (SPEC.md §2.1): the list it sends its request once per
+ * item of. Open while it has one, and while it is being edited.
+ */
+function ForEachEditor(props: {
+  value: string
+  onChange: (value: string) => void
+  previews: VariablePreviews
+  onCopyVariable: (name: string) => Promise<boolean>
+}) {
+  const [open, setOpen] = useState(props.value.trim() !== '')
+  return (
+    <details
+      className="step-foreach"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>
+        {props.value.trim() !== '' ? (
+          <>
+            for each <code>{props.value}</code>
+          </>
+        ) : (
+          '+ Repeat for each item of a list'
+        )}
+      </summary>
+      <div className="foreach-field">
+        <VariableInput
+          value={props.value}
+          onChange={props.onChange}
+          previews={props.previews}
+          onCopy={props.onCopyVariable}
+          placeholder="{{items}}, a variable holding a JSON array, or one written here"
+          ariaLabel="Repeat for each item of"
+        />
+        <p className="hint">
+          The request is sent once per item, read as <code>{'{{item}}'}</code> and as{' '}
+          <code>item</code> in code. Empty: once.
+        </p>
+      </div>
+    </details>
   )
 }
 

@@ -42,7 +42,7 @@ export interface CollectionTally {
   durationMs: number
   steps: { total: number; passed: number; failed: number; errored: number; skipped: number }
   assertions: { total: number; passed: number; failed: number }
-  /** Every step was skipped by a feature flag: it neither passed nor failed. */
+  /** Every step was skipped, by a feature flag or a script: it neither passed nor failed. */
   skipped: boolean
   /** Why the collection could not run at all. */
   error: string | null

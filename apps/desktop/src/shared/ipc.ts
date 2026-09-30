@@ -12,6 +12,7 @@ import type {
   ProjectDoc,
   RunResult,
   Step,
+  StepList,
   VariablePreviews,
   VarValue,
   Vars
@@ -459,6 +460,7 @@ export interface FlagsView {
 
 export interface RunProgress {
   runId: string
+  /** The step's place in its list: `steps` as sent, or `setup`/`teardown` when `result.stage` says. */
   index: number
   result: RunResult
   /** For a run over a data file: the row this result ran with. */
@@ -742,11 +744,12 @@ export interface EnvironmentOverride {
   doc: EnvironmentDoc
 }
 
+/** A step edit is to `steps` unless `list` names `setup` or `teardown`. */
 export type CollectionEdit =
-  | { type: 'editStep'; index: number; step: Step }
-  | { type: 'insertStep'; index: number; step: Step }
-  | { type: 'removeStep'; index: number }
-  | { type: 'moveStep'; from: number; to: number }
+  | { type: 'editStep'; index: number; step: Step; list?: StepList }
+  | { type: 'insertStep'; index: number; step: Step; list?: StepList }
+  | { type: 'removeStep'; index: number; list?: StepList }
+  | { type: 'moveStep'; from: number; to: number; list?: StepList }
   | { type: 'editCollection'; key: CollectionField; value: unknown }
 
 /** The renderer's answer to "may the window close?". */

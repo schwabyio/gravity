@@ -341,7 +341,10 @@ function list(
   }
   const leftOut = { excluded: ' (excluded)', tags: ' (left out by tags)' }
   for (const problem of problems) {
-    const step = problem.step === null ? '' : `, step ${problem.step + 1}`
+    const step =
+      problem.step === null
+        ? ''
+        : `, ${problem.stage ? `${problem.stage} ` : ''}step ${problem.step + 1}`
     const where = `${problem.id}${problem.leftOut ? leftOut[problem.leftOut] : ''}${step}`
     ctx.out(`${p.red('broken')} ${where}: ${problem.message}`)
   }

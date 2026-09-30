@@ -85,6 +85,53 @@ describe('editSource: step structure', () => {
   })
 })
 
+describe('editSource: setup and teardown', () => {
+  it('adds each list where a person would put it, around steps, leaving steps as they were', () => {
+    const next = editSource(SOURCE, [
+      {
+        type: 'insertStep',
+        index: 0,
+        list: 'teardown',
+        step: { name: 'revoke', DELETE: 'http://x/g' }
+      },
+      { type: 'insertStep', index: 0, list: 'setup', step: { name: 'grant', POST: 'http://x/g' } }
+    ])
+    expect(next.indexOf('setup:')).toBeGreaterThan(next.indexOf('id: checkout'))
+    expect(next.indexOf('setup:')).toBeLessThan(next.indexOf('steps:'))
+    expect(next.indexOf('teardown:')).toBeGreaterThan(next.indexOf('name: three'))
+    for (const name of ['one', 'two', 'three']) expect(block(next, name)).toBe(block(SOURCE, name))
+    const doc = parseCollection(next).data
+    expect(doc.setup).toEqual([{ name: 'grant', POST: 'http://x/g' }])
+    expect(doc.teardown).toEqual([{ name: 'revoke', DELETE: 'http://x/g' }])
+  })
+
+  it('edits, moves and removes a setup step by its place in setup, and drops an emptied list', () => {
+    const start = editSource(SOURCE, [
+      { type: 'insertStep', index: 0, list: 'setup', step: { name: 'a', GET: 'http://x/a' } },
+      { type: 'insertStep', index: 1, list: 'setup', step: { name: 'b', GET: 'http://x/b' } }
+    ])
+    const moved = editSource(start, [
+      { type: 'moveStep', from: 1, to: 0, list: 'setup' },
+      {
+        type: 'editStep',
+        index: 0,
+        list: 'setup',
+        step: { name: 'b', GET: 'http://x/b', forEach: '{{roots}}' }
+      }
+    ])
+    const doc = parseCollection(moved).data
+    expect(doc.setup?.map((s) => s.name)).toEqual(['b', 'a'])
+    expect(moved).toContain('    GET: http://x/b\n    forEach: "{{roots}}"')
+    expect(names(moved)).toEqual(['one', 'two', 'three'])
+    const emptied = editSource(moved, [
+      { type: 'removeStep', index: 0, list: 'setup' },
+      { type: 'removeStep', index: 0, list: 'setup' }
+    ])
+    expect(emptied).not.toContain('setup')
+    expect(emptied).toBe(SOURCE)
+  })
+})
+
 describe('applyCollectionEdits', () => {
   let dir: string
   let file: string

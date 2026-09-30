@@ -252,12 +252,12 @@ function testSection(r: RunResult, index: number, ref: StepRef | undefined): str
   const name = r.use
     ? `${named} <span class="dim">(${escape(r.use.set)} ${r.use.child + 1}/${r.use.of})</span>`
     : named
-  // A step a feature flag skipped sent nothing: the reason is all there is to show.
+  // A skipped step sent nothing: the reason — a feature flag, gta.skip — is all there is to show.
   if (r.skipped) {
     return `<details class="acc skipped skipped" data-search="${escape(iterationName(resultName(r), ref).toLowerCase())}">
 <summary><span>Test ${index + 1}: ${name}</span>${icon('skipped')}</summary>
 <div class="acc-body">
-${card('Skipped', field('Feature Flag', `<span class="c-skipped">${escape(r.skipped.reason)} — this test was not run</span>`, 'wide'))}
+${card('Skipped', field('Reason', `<span class="c-skipped">${escape(r.skipped.reason)} — this test was not run</span>`, 'wide'))}
 </div>
 </details>`
   }

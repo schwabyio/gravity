@@ -232,6 +232,11 @@ export const StepSchema = z
     tags: TagsSchema.optional(),
     /** Feature flags this step needs; unmet, it is skipped (SPEC.md §2.9). */
     flags: FlagConditionsSchema.optional(),
+    /**
+     * Send the request once for each item of a list, read as `{{item}}` and
+     * `item` in code: `'{{roots}}'`, a variable holding a JSON array (SPEC.md §2.1).
+     */
+    forEach: z.string().min(1).optional(),
     docs: z.string().optional(),
     headers: HeadersSchema.optional(),
     body: BodySchema.optional(),
@@ -259,6 +264,13 @@ export const StepSchema = z
     }
     const methods = HTTP_METHODS.filter((m) => m in step)
     if ('use' in step) {
+      if ('forEach' in step) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['forEach'],
+          message: 'forEach repeats one request, so a use: step cannot have it (SPEC.md §2.1)'
+        })
+      }
       // A use step runs the set's requests, so it has none of its own.
       const own = [...methods, ...USE_FORBIDDEN.filter((key) => key in step)]
       for (const key of own) {
@@ -312,6 +324,7 @@ const STEP_KEYS: ReadonlySet<string> = new Set([
   'tests',
   'tags',
   'flags',
+  'forEach',
   'base',
   'docs'
 ])
@@ -451,9 +464,35 @@ export const CollectionSchema = z
      * and as `params.name` in code.
      */
     params: z.record(z.string(), ParamSpecSchema).optional(),
-    steps: z.array(StepSchema).default([])
+    /**
+     * Steps run once before `steps`, and before every row of a data file:
+     * what they set lasts the whole run (SPEC.md §2.10).
+     */
+    setup: z.array(StepSchema).optional(),
+    steps: z.array(StepSchema).default([]),
+    /** Steps run once after the rest, even when they failed (SPEC.md §2.10). */
+    teardown: z.array(StepSchema).optional()
   })
   .superRefine((collection, ctx) => {
+    for (const stage of STAGES) {
+      if (!collection[stage]) continue
+      if (collection.params) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [stage],
+          message: `a request set runs inside another collection, so it has no ${stage} (SPEC.md §2.10)`
+        })
+      }
+      collection[stage].forEach((step, index) => {
+        if (step.tags) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [stage, index, 'tags'],
+            message: `a ${stage} step runs whenever its collection does, so it has no tags (SPEC.md §2.10)`
+          })
+        }
+      })
+    }
     if (collection.params) {
       // A set is used, never uses: no chains, no loops. Its inputs are params.
       collection.steps.forEach((step, index) => {
@@ -485,6 +524,14 @@ export const CollectionSchema = z
     })
   })
 export type Collection = z.infer<typeof CollectionSchema>
+
+/** The step lists a collection may hold besides `steps`, run once around them (SPEC.md §2.10). */
+export const STAGES = ['setup', 'teardown'] as const
+export type Stage = (typeof STAGES)[number]
+
+/** A collection's lists of steps, in run order. */
+export const STEP_LISTS = ['setup', 'steps', 'teardown'] as const
+export type StepList = (typeof STEP_LISTS)[number]
 
 /** An `environments/<name>.yml` file. */
 export const EnvironmentVarSchema = z.union([

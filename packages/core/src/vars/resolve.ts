@@ -47,6 +47,13 @@ export interface ScopeContext {
    */
   dataRow?: { source: string; vars: Record<string, VarValue> } | null
   /**
+   * What lasts the whole collection run (SPEC.md §2.10): setup's values and
+   * `gta.set(…, { scope: 'run' })`'s, a layer over the environment and under
+   * the data row, and where such values are written. `wide`: every value set
+   * lasts, as in setup and teardown.
+   */
+  run?: { values: Map<string, VarValue>; wide?: boolean }
+  /**
    * The run's feature flag values (SPEC.md §2.9), as gta and the app resolve
    * them — command output and overrides included. Absent: the environment
    * file's fixed `flags.values`; null: none known.
@@ -58,7 +65,8 @@ export interface ScopeContext {
  * Build the variable scope for a run, lowest precedence first (SPEC.md §4):
  *
  *     global project -> project -> collection -> environment (global's, then
- *     the project's) -> [before.script] -> [captures] -> process env
+ *     the project's) -> run -> data row -> [before.script] -> [captures] ->
+ *     process env
  *
  * What `before.script` sets and what checks capture are applied later, by the
  * runner, because they depend on the run itself.
@@ -103,11 +111,16 @@ export async function buildScope(context: ScopeContext): Promise<VariableScope> 
     layers.push(...(await environmentLayers(context, context.environmentName)))
   }
 
+  if (context.run) layers.push({ source: 'run', vars: Object.fromEntries(context.run.values) })
   const row =
     context.dataRow !== undefined ? context.dataRow : await firstRow(context.collectionPath)
   if (row) layers.push(row)
 
   const scope = new VariableScope(layers, context.env ?? process.env)
+  if (context.run) {
+    scope.runValues = context.run.values
+    scope.runWide = context.run.wide === true
+  }
   scope.flags =
     context.flags !== undefined
       ? context.flags

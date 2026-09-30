@@ -4,11 +4,14 @@ import {
   readParam,
   rowLabel,
   stepLabel,
+  STEP_LISTS,
   type VariablePreview,
+  type Collection,
   type CollectionRunSummary,
   type CollectionSummary,
   type RunResult,
   type Settings,
+  type StepList,
   type VariablePreviews
 } from '@schwabyio/gravity-core/model'
 import type { EndpointView, ProjectView, RequestSetView } from '@shared/ipc.js'
@@ -36,7 +39,7 @@ import Tooltip from './components/Tooltip.js'
 import ProjectSettingsDrawer from './components/ProjectSettingsDrawer.js'
 import ChangesDrawer from './components/ChangesDrawer.js'
 import ProjectSidebar from './components/ProjectSidebar.js'
-import { useCollectionEditor } from './hooks/useCollectionEditor.js'
+import { idsOf, stepsOf, useCollectionEditor } from './hooks/useCollectionEditor.js'
 import { useEnvironmentEditor } from './hooks/useEnvironmentEditor.js'
 import { usePaneWidth } from './hooks/usePaneWidth.js'
 import { useSettings } from './hooks/useSettings.js'
@@ -44,8 +47,11 @@ import { useProjects } from './hooks/useProjects.js'
 import {
   childKey,
   childResultsOf,
+  itemKey,
+  itemResultsOf,
   referenceFor,
   resolveSet,
+  stepOfKey,
   summaryOfFile,
   summaryOfSet
 } from './reuse.js'
@@ -65,6 +71,21 @@ let runCounter = 0
 const nextRunId = (): string => `run-${Date.now()}-${++runCounter}`
 
 const NO_RESULTS: Record<string, RunResult> = {}
+
+/** The step ids a run covers, per list, and the list a result with no `stage` is from. */
+interface RunPlan {
+  ids: Record<StepList, string[]>
+  /** `steps` for a run of the collection; the list of the step run on its own, otherwise. */
+  list: StepList
+}
+
+/** The collection without setup or teardown: running some of its steps runs neither. */
+function withoutStages(doc: Collection): Collection {
+  const copy = { ...doc }
+  delete copy.setup
+  delete copy.teardown
+  return copy
+}
 
 export default function App() {
   const ws = useProjects()
@@ -106,22 +127,29 @@ export default function App() {
    * set per data file row (SPEC.md §2.8); a collection without one uses row 0.
    */
   const [rowResults, setRowResults] = useState<Record<number, Record<string, RunResult>>>({})
+  /** Setup and teardown steps' results: they run once, not per row (SPEC.md §2.10). */
+  const [stageResults, setStageResults] = useState<Record<string, RunResult>>({})
   /** The row the run in flight started with, for the results it brings back. */
   const runRow = useRef(0)
-  const [runningIndex, setRunningIndex] = useState<number | null>(null)
+  /** The step running now; '' while a run is in flight with no step to mark; null when idle. */
+  const [runningId, setRunningId] = useState<string | null>(null)
   const [runningAll, setRunningAll] = useState(false)
   const [summary, setSummary] = useState<CollectionRunSummary | null>(null)
   const activeRunId = useRef<string | null>(null)
-  /** Step ids in run order, captured when a collection run starts. */
-  const runIds = useRef<string[]>([])
-  /** Their positions in the collection, so progress marks the right row. */
-  const runIndexes = useRef<number[]>([])
+  /**
+   * The run results belong to: the one in flight, or the last one to finish,
+   * whose final results can arrive after its answer does.
+   */
+  const resultsRunId = useRef<string | null>(null)
+  /** Step ids per list, captured when a collection run starts, so progress marks the right row. */
+  const runPlan = useRef<RunPlan>({ ids: { setup: [], steps: [], teardown: [] }, list: 'steps' })
   /** Tags the step list is filtered to, per collection file. */
   const [tagFilters, setTagFilters] = useState<Record<string, string[]>>({})
   /** The collection settings drawer: closed, or open at a section. */
   const [collectionSettingsOpen, setCollectionSettingsOpen] = useState<SettingsSection | null>(null)
 
   const stepIndex = editor.selectedIndex
+  const stepList = editor.selectedList
   const tagFilter = (open && tagFilters[open.summary.path]) || NO_TAGS
   const tagSuggestions = useMemo(() => {
     const all = new Set<string>()
@@ -177,11 +205,23 @@ export default function App() {
     [data.table, data.fileName, dataRow]
   )
 
-  /** The shown row's results: the step list and panes show one iteration at a time. */
-  const results = useMemo(() => rowResults[dataRow] ?? NO_RESULTS, [rowResults, dataRow])
-  const setResults = useCallback(
-    (change: (current: Record<string, RunResult>) => Record<string, RunResult>) =>
-      setRowResults((all) => ({ ...all, [runRow.current]: change(all[runRow.current] ?? {}) })),
+  /**
+   * The shown row's results: the step list and panes show one iteration at a
+   * time. Setup and teardown ran once, so theirs show whatever the row.
+   */
+  const results = useMemo(
+    () => ({ ...stageResults, ...(rowResults[dataRow] ?? NO_RESULTS) }),
+    [stageResults, rowResults, dataRow]
+  )
+  /** Change one list's results: the run's row for steps, the one set for setup and teardown. */
+  const changeResults = useCallback(
+    (list: StepList, change: (current: Record<string, RunResult>) => Record<string, RunResult>) =>
+      list === 'steps'
+        ? setRowResults((all) => ({
+            ...all,
+            [runRow.current]: change(all[runRow.current] ?? {})
+          }))
+        : setStageResults(change),
     []
   )
   const rowNames = useMemo(
@@ -302,6 +342,7 @@ export default function App() {
         return
       }
       setRowResults({})
+      setStageResults({})
       setSummary(null)
       setError(null)
     },
@@ -309,8 +350,8 @@ export default function App() {
   )
 
   const selectStep = useCallback(
-    (index: number) => {
-      const id = open?.ids[index]
+    (list: StepList, index: number) => {
+      const id = open ? idsOf(open, list)[index] : undefined
       if (!id) return
       editor.select(id)
       setError(null)
@@ -354,7 +395,7 @@ export default function App() {
     // in the step, and re-resolving the environment that often is waste.
   }, [
     collectionPath,
-    stepIndex,
+    editor.selectedId,
     selectedEnvironment,
     request?.url,
     JSON.stringify(request?.headers),
@@ -367,8 +408,13 @@ export default function App() {
   ])
 
   // A request set's own requests read `{{params.name}}`: known, valued by default.
-  const shownPreviews = useMemo(() => {
-    if (!doc?.params) return previews
+  // A forEach step's read `{{item}}`: known, valued only as it runs.
+  const repeats = (request?.forEach ?? '').trim() !== ''
+  const shownPreviews = useMemo((): VariablePreviews => {
+    const item: VariablePreviews = repeats
+      ? { item: { value: null, origin: 'forEach', kind: 'dynamic' } }
+      : {}
+    if (!doc?.params) return { ...previews, ...item }
     const params = Object.entries(doc.params).map(([name, spec]) => {
       const fallback = readParam(spec).default
       return [
@@ -380,8 +426,8 @@ export default function App() {
         } satisfies VariablePreview
       ] as const
     })
-    return { ...previews, ...Object.fromEntries(params) }
-  }, [previews, doc?.params])
+    return { ...previews, ...Object.fromEntries(params), ...item }
+  }, [previews, doc?.params, repeats])
 
   const copyVariable = useCallback(
     (name: string) => window.desktop.variables.copy(previewRequest, name),
@@ -449,10 +495,19 @@ export default function App() {
   useEffect(
     () =>
       window.desktop.onRunProgress(({ runId, index, result, iteration }) => {
-        if (runId !== activeRunId.current) return
-        const id = runIds.current[index]
-        // A use step reports once per request of its set, each under its own key.
-        const key = id && result.use ? childKey(id, result.use.child) : id
+        if (runId !== resultsRunId.current) return
+        const plan = runPlan.current
+        // Setup and teardown say so; anything else is a step of the list the run was of.
+        const from: StepList = result.stage ?? 'steps'
+        const id = plan.ids[from][index]
+        // A use step reports once per request of its set, a forEach step once
+        // per item, each under its own key.
+        const key =
+          id && result.use
+            ? childKey(id, result.use.child)
+            : id && result.forEach
+              ? itemKey(id, result.forEach.index)
+              : id
         // A run over a data file reports which row; the list follows the row running.
         const row = iteration ? iteration.index - 1 : runRow.current
         if (iteration && row !== followedRow.current) {
@@ -460,13 +515,28 @@ export default function App() {
           chooseRowRef.current(row)
         }
         if (key) {
-          setRowResults((all) => ({ ...all, [row]: { ...(all[row] ?? {}), [key]: result } }))
+          if (result.stage || plan.list !== 'steps') {
+            setStageResults((all) => ({ ...all, [key]: result }))
+          } else {
+            setRowResults((all) => ({ ...all, [row]: { ...(all[row] ?? {}), [key]: result } }))
+          }
         }
-        if (!result.use || result.use.child === result.use.of - 1) {
-          const next = runIndexes.current[index + 1]
-          // At a row's last step, the next row starts again at the first.
-          const again = iteration && iteration.index < iteration.of ? runIndexes.current[0] : -1
-          setRunningIndex(next ?? again ?? -1)
+        const more =
+          (result.use && result.use.child < result.use.of - 1) ||
+          (result.forEach && result.forEach.index < result.forEach.of - 1)
+        // A result after the run's answer only fills in its row: nothing is running.
+        if (!more && runId === activeRunId.current) {
+          // Setup, then the steps — again from the first for each row — then teardown.
+          const next =
+            plan.ids[from][index + 1] ??
+            (from === 'setup'
+              ? (plan.ids.steps[0] ?? plan.ids.teardown[0])
+              : from === 'steps'
+                ? iteration && iteration.index < iteration.of
+                  ? plan.ids.steps[0]
+                  : plan.ids.teardown[0]
+                : undefined)
+          setRunningId(next ?? '')
         }
       }),
     []
@@ -474,13 +544,17 @@ export default function App() {
 
   const send = useCallback(async () => {
     const id = editor.selectedId
-    if (!request || !id || runningIndex !== null || stepIndex < 0) return
-    // A use step is its set's requests: it runs as a collection of one step.
-    if (request.use !== null) return void runIndexesOf([stepIndex], false)
+    if (!request || !id || runningId !== null || stepIndex < 0) return
+    // A use step is its set's requests, and a forEach step one request per
+    // item: each runs as a collection of one step.
+    if (request.use !== null || request.forEach.trim() !== '') {
+      return void runIndexesOf(stepList, [stepIndex], false)
+    }
     if (request.url.trim() === '') return
     const runId = nextRunId()
     activeRunId.current = runId
-    setRunningIndex(stepIndex)
+    resultsRunId.current = runId
+    setRunningId(id)
     setError(null)
 
     if (!pendingStep || !doc) return
@@ -497,14 +571,15 @@ export default function App() {
 
     if (activeRunId.current !== runId) return
     activeRunId.current = null
-    setRunningIndex(null)
-    if (response.ok) setResults((current) => ({ ...current, [id]: response.result }))
+    setRunningId(null)
+    if (response.ok) changeResults(stepList, (current) => ({ ...current, [id]: response.result }))
     else setError(response.message)
   }, [
     editor.selectedId,
     request,
-    runningIndex,
+    runningId,
     stepIndex,
+    stepList,
     pendingStep,
     doc,
     collectionPath,
@@ -515,17 +590,18 @@ export default function App() {
 
   /** Run one step on its own, selecting it first so its response is visible. */
   const runStep = useCallback(
-    (index: number) => {
-      selectStep(index)
+    (list: StepList, index: number) => {
+      selectStep(list, index)
       // Selecting is state; the send below reads the step from the document
       // rather than the editor, so it does not have to wait for that state.
-      const step = doc?.steps[index]
-      const id = open?.ids[index]
+      const step = doc ? stepsOf(doc, list)[index] : undefined
+      const id = open ? idsOf(open, list)[index] : undefined
       if (!step || !doc || !id) return
-      if (isUseStep(step)) return void runIndexesOf([index], false)
+      if (isUseStep(step) || step.forEach) return void runIndexesOf(list, [index], false)
       const runId = nextRunId()
       activeRunId.current = runId
-      setRunningIndex(index)
+      resultsRunId.current = runId
+      setRunningId(id)
       setError(null)
       runRow.current = dataRow
       void window.desktop
@@ -541,8 +617,8 @@ export default function App() {
         .then((response) => {
           if (activeRunId.current !== runId) return
           activeRunId.current = null
-          setRunningIndex(null)
-          if (response.ok) setResults((current) => ({ ...current, [id]: response.result }))
+          setRunningId(null)
+          if (response.ok) changeResults(list, (current) => ({ ...current, [id]: response.result }))
           else setError(response.message)
         })
     },
@@ -550,15 +626,23 @@ export default function App() {
   )
 
   /**
-   * Run some steps in order, sharing one scope as a full run does: every step
-   * for Run all, or one use step, whose set's requests run as a collection.
+   * Run some steps of one list in order, sharing one scope as a full run does:
+   * every step for Run all, with setup and teardown around them, or one use
+   * or forEach step, which runs as a collection of one step — without them.
    */
-  async function runIndexesOf(indexes: number[], all: boolean) {
-    if (!open || !doc || indexes.length === 0) return
+  async function runIndexesOf(list: StepList, indexes: number[], all: boolean) {
+    if (!open || !doc || (indexes.length === 0 && !all)) return
     const runId = nextRunId()
     activeRunId.current = runId
-    runIds.current = indexes.map((index) => open.ids[index]!)
-    runIndexes.current = indexes
+    resultsRunId.current = runId
+    const listIds = idsOf(open, list)
+    const chosen = indexes.map((index) => listIds[index]!)
+    runPlan.current = all
+      ? {
+          ids: { setup: open.stageIds.setup, steps: chosen, teardown: open.stageIds.teardown },
+          list: 'steps'
+        }
+      : { ids: { setup: [], steps: chosen, teardown: [] }, list }
     runRow.current = dataRow
     followedRow.current = null
     // Run all with a data file runs every row, as gta does (SPEC.md §2.8).
@@ -571,23 +655,29 @@ export default function App() {
       setError(`The data file cannot run: ${data.problem ?? data.problems[0]}`)
       return
     }
-    if (all) setRowResults({})
-    else {
+    if (all) {
+      setRowResults({})
+      setStageResults({})
+    } else {
       // Only these steps' old results go: the rest of the list keeps its own.
-      const ids = new Set(runIds.current)
-      setResults((current) =>
-        Object.fromEntries(Object.entries(current).filter(([key]) => !ids.has(key.split('#')[0]!)))
+      const ids = new Set(chosen)
+      changeResults(list, (current) =>
+        Object.fromEntries(Object.entries(current).filter(([key]) => !ids.has(stepOfKey(key))))
       )
     }
     setSummary(null)
     setError(null)
     if (all) setRunningAll(true)
-    setRunningIndex(indexes[0]!)
+    const plan = runPlan.current.ids
+    setRunningId(plan.setup[0] ?? plan.steps[0] ?? plan.teardown[0] ?? '')
 
+    const steps = stepsOf(doc, list)
     const response = await window.desktop.runCollection({
       runId,
       // Only the chosen steps, in order, sharing one scope as a full run would.
-      collection: { ...doc, steps: indexes.map((index) => doc.steps[index]!) },
+      collection: all
+        ? { ...doc, steps: indexes.map((index) => steps[index]!) }
+        : { ...withoutStages(doc), steps: indexes.map((index) => steps[index]!) },
       collectionPath,
       environment: selectedEnvironment,
       environmentOverrides,
@@ -597,7 +687,7 @@ export default function App() {
     if (activeRunId.current !== runId) return
     activeRunId.current = null
     setRunningAll(false)
-    setRunningIndex(null)
+    setRunningId(null)
     if (response.ok) {
       if (all) setSummary(response.summary)
     } else setError(response.message)
@@ -605,12 +695,12 @@ export default function App() {
 
   /** Run every step, or with a tag filter on, just the steps it shows. */
   const runAll = useCallback(async () => {
-    if (!open || !doc || runningIndex !== null) return
-    await runIndexesOf(filterSteps(doc, tagFilter).indexes, true)
+    if (!open || !doc || runningId !== null) return
+    await runIndexesOf('steps', filterSteps(doc, tagFilter).indexes, true)
   }, [
     open,
     doc,
-    runningIndex,
+    runningId,
     collectionPath,
     selectedEnvironment,
     tagFilter,
@@ -642,14 +732,20 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [send, save])
 
-  /** Results by position, for the list: they are kept by step id. */
+  /** Results by list and position, for the lists: they are kept by step id. */
   const resultsByIndex = useMemo(() => {
-    const byIndex: Record<number, RunResult> = {}
-    open?.ids.forEach((id, index) => {
-      const result = results[id]
-      if (result) byIndex[index] = result
-    })
-    return byIndex
+    const byList = { setup: {}, steps: {}, teardown: {} } as Record<
+      StepList,
+      Record<number, RunResult>
+    >
+    if (!open) return byList
+    for (const list of STEP_LISTS) {
+      idsOf(open, list).forEach((id, index) => {
+        const result = results[id]
+        if (result) byList[list][index] = result
+      })
+    }
+    return byList
   }, [open, results])
 
   /** Request sets a use step can run: the open project's, and its global project's. */
@@ -657,15 +753,37 @@ export default function App() {
 
   /** For each use step, its set's results, one per request, in order. */
   const childResults = useMemo(() => {
-    const byIndex: Record<number, Array<RunResult | undefined>> = {}
-    doc?.steps.forEach((step, index) => {
-      const id = open?.ids[index]
-      if (!id || !isUseStep(step)) return
-      const set = resolveSet(sets, step.use)
-      byIndex[index] = childResultsOf(results, id, set?.steps.length ?? 0)
-    })
-    return byIndex
+    const byList = { setup: {}, steps: {}, teardown: {} } as Record<
+      StepList,
+      Record<number, Array<RunResult | undefined>>
+    >
+    if (!open || !doc) return byList
+    for (const list of STEP_LISTS) {
+      stepsOf(doc, list).forEach((step, index) => {
+        const id = idsOf(open, list)[index]
+        if (!id || !isUseStep(step)) return
+        const set = resolveSet(sets, step.use)
+        byList[list][index] = childResultsOf(results, id, set?.steps.length ?? 0)
+      })
+    }
+    return byList
   }, [doc, open, results, sets])
+
+  /** For each forEach step, its results, one per item, in order. */
+  const itemResults = useMemo(() => {
+    const byList = { setup: {}, steps: {}, teardown: {} } as Record<
+      StepList,
+      Record<number, RunResult[]>
+    >
+    if (!open) return byList
+    for (const list of STEP_LISTS) {
+      idsOf(open, list).forEach((id, index) => {
+        const items = itemResultsOf(results, id)
+        if (items.length > 0) byList[list][index] = items
+      })
+    }
+    return byList
+  }, [open, results])
 
   // Which request of a use step the panes show; back to its first on another step.
   const [shownChild, setShownChild] = useState(0)
@@ -676,13 +794,27 @@ export default function App() {
     askedChild.current = null
   }, [editor.selectedId])
 
-  /** The response shown beside the step list belongs to the selected step. */
+  /**
+   * The response shown beside the step list belongs to the selected step: for
+   * a use step, the request of its set chosen; for a forEach step, the last item.
+   */
   const selectedResult =
     (editor.selectedId &&
       (request?.use !== null && request?.use !== undefined
         ? (results[childKey(editor.selectedId, shownChild)] ?? results[editor.selectedId])
-        : results[editor.selectedId])) ||
+        : (itemResultsOf(results, editor.selectedId).at(-1) ?? results[editor.selectedId]))) ||
     null
+  const selectedDocStep = doc ? stepsOf(doc, stepList)[stepIndex] : undefined
+
+  /** Where the step running now is, for its list to mark it. */
+  const runningAt = useMemo(() => {
+    if (!open || !runningId) return null
+    for (const list of STEP_LISTS) {
+      const index = idsOf(open, list).indexOf(runningId)
+      if (index >= 0) return { list, index }
+    }
+    return null
+  }, [open, runningId])
 
   /** Whether the open file is one of the project's endpoints files, or bases. */
   const isLibraryOf = (home: 'endpoints' | 'bases') =>
@@ -901,9 +1033,11 @@ export default function App() {
               iterations={iterations}
               onFixId={editor.setCollectionId}
               collection={doc}
+              selectedList={stepList}
               selectedIndex={stepIndex}
               results={resultsByIndex}
-              runningIndex={runningIndex}
+              runningAt={runningAt}
+              busy={runningId !== null}
               runningAll={runningAll}
               summary={summary}
               draftIndexes={editor.dirtyIndexes}
@@ -911,47 +1045,53 @@ export default function App() {
               onRunStep={runStep}
               onRunAll={() => void runAll()}
               onCancel={cancel}
-              onAddStep={() =>
+              onAddStep={(list) =>
                 editor.addStep(
                   editor.selectedId,
-                  isLibraryOf('endpoints') ? { GET: '/path/{id}' } : undefined
+                  isLibraryOf('endpoints') ? { GET: '/path/{id}' } : undefined,
+                  list
                 )
               }
               library={
                 isLibraryOf('endpoints') ? 'endpoints' : isLibraryOf('bases') ? 'bases' : null
               }
               sets={sets}
-              onAddUse={() => {
+              onAddUse={(list) => {
                 const first = sets.find((set) => !set.problem) ?? sets[0]
-                if (first) editor.addStep(editor.selectedId, { use: referenceFor(sets, first) })
-              }}
-              childResults={childResults}
-              selectedChild={shownChild}
-              onSelectChild={(index, child) => {
-                if (open.ids[index] === editor.selectedId) setShownChild(child)
-                else {
-                  askedChild.current = child
-                  selectStep(index)
+                if (first) {
+                  editor.addStep(editor.selectedId, { use: referenceFor(sets, first) }, list)
                 }
               }}
-              onRenameStep={(index, name) => {
-                const id = open.ids[index]
+              childResults={childResults}
+              itemResults={itemResults}
+              selectedChild={shownChild}
+              onSelectChild={(list, index, child) => {
+                if (idsOf(open, list)[index] === editor.selectedId) setShownChild(child)
+                else {
+                  askedChild.current = child
+                  selectStep(list, index)
+                }
+              }}
+              onRenameStep={(list, index, name) => {
+                const id = idsOf(open, list)[index]
                 if (id) editor.rename(id, name)
               }}
-              onDuplicateStep={(index) => {
-                const id = open.ids[index]
+              onDuplicateStep={(list, index) => {
+                const id = idsOf(open, list)[index]
                 if (id) editor.duplicateStep(id)
               }}
-              onDeleteStep={(index) => {
-                const id = open.ids[index]
+              onDeleteStep={(list, index) => {
+                const id = idsOf(open, list)[index]
                 if (id) editor.removeStep(id)
               }}
-              onMoveStep={(index, to) => {
-                const id = open.ids[index]
+              onMoveStep={(list, index, to) => {
+                const id = idsOf(open, list)[index]
                 if (id) editor.moveStep(id, to)
               }}
               stepTags={request?.tags ?? NO_TAGS}
               onStepTags={(tags) => editor.patch({ tags })}
+              stepForEach={request?.forEach ?? ''}
+              onStepForEach={(forEach) => editor.patch({ forEach })}
               onCollectionTags={editor.setCollectionTags}
               onStepTagsEnabled={editor.setStepTagsEnabled}
               onCollectionExcluded={editor.setCollectionExcluded}
@@ -995,22 +1135,23 @@ export default function App() {
                   }}
                   onEditCollectionScript={setCollectionSettingsOpen}
                   onChange={editor.patch}
-                  docs={doc.steps[stepIndex]?.docs}
+                  docs={selectedDocStep?.docs}
                   previews={shownPreviews}
                   onCopyVariable={copyVariable}
                   onPickFile={pickUpload}
                   result={selectedResult}
                   resultCaption={
-                    rowNames && doc.steps[stepIndex]
+                    // Setup and teardown run once, not with a row.
+                    rowNames && selectedDocStep && stepList === 'steps'
                       ? iterationName(
-                          stepLabel(doc.steps[stepIndex]!),
+                          stepLabel(selectedDocStep),
                           dataRow,
                           data.table ? rowLabel(data.table.rows[dataRow] ?? {}) : null
                         )
                       : null
                   }
                   error={error}
-                  running={runningIndex === stepIndex}
+                  running={runningId !== null && runningId === editor.selectedId}
                   onSend={() => void send()}
                   onCancel={cancel}
                   conflict={open.conflict !== null}

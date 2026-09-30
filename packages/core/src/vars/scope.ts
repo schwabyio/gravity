@@ -49,6 +49,14 @@ export class VariableScope {
    * `gta.flag`; null when none are known, so any flag named is unknown.
    */
   flags: Record<string, FlagValue> | null = null
+  /**
+   * Values that last the whole collection run, across its data rows and into
+   * teardown (SPEC.md §2.10): where `gta.set(…, { scope: 'run' })` writes.
+   * Null outside a collection run, where there is nothing to outlast.
+   */
+  runValues: Map<string, VarValue> | null = null
+  /** In setup and teardown, every value set lasts the run. */
+  runWide = false
   private readonly values = new Map<string, VarValue>()
   private readonly origins = new Map<string, string>()
   private readonly secrets = new Set<string>()
@@ -98,6 +106,13 @@ export class VariableScope {
   set(name: string, value: VarValue, source = 'runtime'): void {
     this.values.set(name, value)
     this.origins.set(name, source)
+    if (this.runWide) this.runValues?.set(name, value)
+  }
+
+  /** `set`, and keep the value for every row after this one and for teardown. */
+  setForRun(name: string, value: VarValue, source = 'runtime'): void {
+    this.set(name, value, source)
+    this.runValues?.set(name, value)
   }
 
   names(): string[] {
@@ -111,51 +126,67 @@ export class VariableScope {
 }
 
 /**
- * A request set's `params` over a run's scope, while the set's requests run.
- *
- * Params read as `params.<name>` — in a request `{{params.username}}` — and
- * shadow nothing else: that prefix is theirs alone. Everything a set's request
- * sets (`gta.set`, captures) goes to the run's scope underneath, so the step
- * after the set sees it.
+ * Names a step has of its own over a run's scope, while it runs: a request
+ * set's `params`, a `forEach` item. They shadow nothing else and are read only:
+ * everything the step sets (`gta.set`, captures) goes to the run's scope
+ * underneath, so the steps after it see it.
  */
-export class ParamsScope extends VariableScope {
-  private readonly params: Map<string, VarValue>
-
+export class OverlayScope extends VariableScope {
   constructor(
     private readonly run: VariableScope,
-    params: Record<string, VarValue>
+    private readonly own: Map<string, VarValue>,
+    /** Where these names come from, for diagnostics. */
+    private readonly origin: string
   ) {
     super()
-    this.params = new Map(Object.entries(params).map(([name, value]) => [`params.${name}`, value]))
     this.flags = run.flags
   }
 
   override has(name: string): boolean {
-    return this.params.has(name) || this.run.has(name)
+    return this.own.has(name) || this.run.has(name)
   }
 
   override get(name: string): VarValue | undefined {
-    return this.params.has(name) ? this.params.get(name) : this.run.get(name)
+    return this.own.has(name) ? this.own.get(name) : this.run.get(name)
   }
 
   override isSecret(name: string): boolean {
-    return !this.params.has(name) && this.run.isSecret(name)
+    return !this.own.has(name) && this.run.isSecret(name)
   }
 
   override originOf(name: string): string | undefined {
-    return this.params.has(name) ? 'params' : this.run.originOf(name)
+    return this.own.has(name) ? this.origin : this.run.originOf(name)
   }
 
   override set(name: string, value: VarValue, source = 'runtime'): void {
     this.run.set(name, value, source)
   }
 
+  override setForRun(name: string, value: VarValue, source = 'runtime'): void {
+    this.run.setForRun(name, value, source)
+  }
+
   override names(): string[] {
-    return [...new Set([...this.params.keys(), ...this.run.names()])].sort()
+    return [...new Set([...this.own.keys(), ...this.run.names()])].sort()
   }
 
   override all(): Record<string, VarValue> {
-    return { ...this.run.all(), ...Object.fromEntries(this.params) }
+    return { ...this.run.all(), ...Object.fromEntries(this.own) }
+  }
+}
+
+/**
+ * A request set's `params` over a run's scope, while the set's requests run.
+ * Params read as `params.<name>` — in a request `{{params.username}}` — and
+ * that prefix is theirs alone.
+ */
+export class ParamsScope extends OverlayScope {
+  constructor(run: VariableScope, params: Record<string, VarValue>) {
+    super(
+      run,
+      new Map(Object.entries(params).map(([name, value]) => [`params.${name}`, value])),
+      'params'
+    )
   }
 }
 

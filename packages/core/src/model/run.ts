@@ -86,7 +86,7 @@ export const RunErrorSchema = z.object({
    * Which stage failed, so the UI can say where without guessing. `body` is a
    * file the body names that could not be read (SPEC.md §2.2).
    */
-  phase: z.enum(['use', 'flags', 'interpolate', 'body', 'pre-request', 'http', 'tests']),
+  phase: z.enum(['use', 'flags', 'forEach', 'interpolate', 'body', 'pre-request', 'http', 'tests']),
   message: z.string(),
   code: z.string().optional(),
   stack: z.string().optional(),
@@ -122,7 +122,10 @@ export const RunResultSchema = z.object({
   logs: z.array(LogEntrySchema).optional(),
   error: RunErrorSchema.nullable(),
   status: RunStatusSchema,
-  /** Why a `skipped` step did not run: a feature flag it needs (SPEC.md §2.9). */
+  /**
+   * Why a `skipped` step did not run: a feature flag it needs (SPEC.md §2.9),
+   * `gta.skip` or `gta.skipRest` (§5), or an empty `forEach` list.
+   */
   skipped: z.object({ reason: z.string() }).optional(),
   /** Wall-clock milliseconds for the whole item, scripts included. */
   durationMs: z.number(),
@@ -133,19 +136,30 @@ export const RunResultSchema = z.object({
    */
   use: z
     .object({ set: z.string(), name: z.string().optional(), child: z.number(), of: z.number() })
-    .optional()
+    .optional(),
+  /** For a `setup` or `teardown` step: which list it is in (SPEC.md §2.10). Absent for `steps`. */
+  stage: z.enum(['setup', 'teardown']).optional(),
+  /** For a step with `forEach`: which item this request was for, from 0, of how many. */
+  forEach: z.object({ index: z.number(), of: z.number(), item: z.string() }).optional()
 })
 export type RunResult = z.infer<typeof RunResultSchema>
 
 /**
  * What a report calls a result (SPEC.md §2.5): its step's name, or for a
  * request run by a named use step, the use step's name, followed by the set's
- * step when the set has more than one: `create user › get profile`.
+ * step when the set has more than one: `create user › get profile`. A setup or
+ * teardown step says so first, and one of a `forEach` says which item after:
+ * `teardown › remove grant (item 2 of 3)`.
  */
 export function resultName(result: RunResult): string {
   const use = result.use
-  if (!use?.name) return result.item.name
-  return use.of === 1 ? use.name : `${use.name} › ${result.item.name}`
+  const name = !use?.name
+    ? result.item.name
+    : use.of === 1
+      ? use.name
+      : `${use.name} › ${result.item.name}`
+  const each = result.forEach ? ` (item ${result.forEach.index + 1} of ${result.forEach.of})` : ''
+  return `${result.stage ? `${result.stage} › ` : ''}${name}${each}`
 }
 
 /** Totals for a whole-collection run. */

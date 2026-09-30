@@ -57,6 +57,11 @@ export interface EditorState {
   tags: string[]
   /** Feature flags the step needs to run (SPEC.md §2.9); empty for none. */
   flags: FlagConditions
+  /**
+   * A list to send the request once per item of, as `{{item}}` (SPEC.md §2.1):
+   * `{{roots}}`, or a JSON array. Empty for none; a use step never has one.
+   */
+  forEach: string
   /** The step's own settings; anything absent is inherited from the collection. */
   settings: Settings
   /**
@@ -110,6 +115,7 @@ export const emptyRequest = (): EditorState => ({
   tests: '',
   tags: [],
   flags: {},
+  forEach: '',
   settings: {},
   use: null,
   with: {},
@@ -300,6 +306,7 @@ export function fromStep(step: Step): EditorState {
     tests: step.tests ?? '',
     tags: step.tags ?? [],
     flags: step.flags ?? {},
+    forEach: step.forEach ?? '',
     settings: step.settings ?? {},
     use: null,
     with: {},
@@ -371,6 +378,9 @@ export function mergeIntoStep(original: Step, edited: EditorState): Step {
 
   if (Object.keys(edited.flags).length === 0) delete next['flags']
   else next['flags'] = edited.flags
+
+  if (edited.forEach.trim() === '') delete next['forEach']
+  else next['forEach'] = edited.forEach
 
   const settings = Object.fromEntries(
     Object.entries(edited.settings).filter(([, value]) => value !== undefined)
