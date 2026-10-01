@@ -70,6 +70,19 @@ export function useProjects() {
     clearTimeout(noticeTimer.current)
     noticeTimer.current = setTimeout(() => setNotice(null), 6000)
   }
+  /**
+   * Say what is being done until it is: adding a project can take a while on
+   * a slow disk. A message that replaced this one in the meantime stays.
+   */
+  const whileDoing = async <T>(message: string, work: () => Promise<T>): Promise<T> => {
+    clearTimeout(noticeTimer.current)
+    setNotice(message)
+    try {
+      return await work()
+    } finally {
+      setNotice((current) => (current === message ? null : current))
+    }
+  }
 
   const addProject = useCallback(async () => {
     setError(null)
@@ -77,10 +90,13 @@ export function useProjects() {
     if (!workspaceId) return
     const folder = await window.desktop.projects.pick()
     if (!folder) return
-    let result = await window.desktop.projects.add(workspaceId, folder)
+    const adding = `Adding ${folderName(folder)}…`
+    let result = await whileDoing(adding, () => window.desktop.projects.add(workspaceId, folder))
     if (!result.ok && result.projectsInside) {
       if (!window.confirm(`${result.message} Add them all?`)) return
-      const all = await window.desktop.projects.addAll(workspaceId, folder)
+      const all = await whileDoing(adding, () =>
+        window.desktop.projects.addAll(workspaceId, folder)
+      )
       if (!all.ok) return fail(all.message)
       return tell(addedMessage(folder, all.added, all.already))
     }
@@ -88,9 +104,9 @@ export function useProjects() {
       if (!window.confirm(`${result.message} Create collections/ in it and add it as a project?`)) {
         return
       }
-      result = await window.desktop.projects.add(workspaceId, folder, {
-        createCollections: true
-      })
+      result = await whileDoing(adding, () =>
+        window.desktop.projects.add(workspaceId, folder, { createCollections: true })
+      )
     }
     if (!result.ok) fail(result.message)
   }, [state.activeWorkspaceId])
@@ -102,7 +118,9 @@ export function useProjects() {
     if (!workspaceId) return
     const folder = await window.desktop.projects.pick('all')
     if (!folder) return
-    const result = await window.desktop.projects.addAll(workspaceId, folder)
+    const result = await whileDoing(`Searching ${folderName(folder)} for projects…`, () =>
+      window.desktop.projects.addAll(workspaceId, folder)
+    )
     if (!result.ok) return fail(result.message)
     tell(addedMessage(folder, result.added, result.already))
   }, [state.activeWorkspaceId])
@@ -186,6 +204,9 @@ export function addedMessage(folder: string, added: string[], already: string[])
   const rest = already.length > 0 ? ` ${already.length} more ${were} here already.` : ''
   return `Added ${count(added.length)} from ${name}: ${added.join(', ')}.${rest}`
 }
+
+/** A folder's own name, from its path on any platform. */
+const folderName = (folder: string): string => folder.split(/[\\/]/).filter(Boolean).pop() ?? folder
 
 /** What a clone added, in a sentence: `Cloned platform and added 3 projects: …`. */
 export function clonedMessage(folder: string, added: string[]): string {

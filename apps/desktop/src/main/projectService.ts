@@ -266,9 +266,20 @@ export class ProjectService {
     }
 
     const entry = await this.registry.addProject(workspaceId, root)
-    const view = (await this.refresh(entry.id)) ?? placeholder(entry, workspaceId)
+    const view = (await this.listed(entry.id)) ?? placeholder(entry, workspaceId)
     this.emitState()
     return { ok: true, project: view }
+  }
+
+  /**
+   * Refresh a project, and resolve as soon as it can be listed: its files read,
+   * whether or not git has answered yet. git, slow to start on Windows, fills
+   * in what it says when it does.
+   */
+  private listed(id: string): Promise<ProjectView | null> {
+    return new Promise((resolve, reject) => {
+      this.refresh(id, resolve).then(resolve, reject)
+    })
   }
 
   /**
@@ -292,7 +303,7 @@ export class ProjectService {
     for (const root of roots) {
       const known = workspace.projects.some((project) => samePath(project.path, root))
       const entry = await this.registry.addProject(workspaceId, root)
-      const view = (await this.refresh(entry.id)) ?? placeholder(entry, workspaceId)
+      const view = (await this.listed(entry.id)) ?? placeholder(entry, workspaceId)
       ;(known ? already : added).push(view.name)
     }
     this.emitState()
@@ -426,7 +437,11 @@ export class ProjectService {
    * This is what a watcher event, an explicit refresh and a completed pull all
    * funnel into, so there is exactly one path that produces a project view.
    */
-  async refresh(id: string): Promise<ProjectView | null> {
+  async refresh(
+    id: string,
+    /** Called with the project's first view: from its files, if git is slow to answer. */
+    listed?: (view: ProjectView) => void
+  ): Promise<ProjectView | null> {
     const found = this.registry.project(id)
     if (!found) return null
     const { workspaceId, entry } = found
@@ -438,8 +453,11 @@ export class ProjectService {
       return view
     }
 
-    const repo = this.gitAvailable === false ? null : await GitRepo.open(entry.path)
-    const { git, gitNote } = await this.readGit(repo, entry.path)
+    // git is read alongside the files rather than before them: on Windows it
+    // can be slow to start, and the files need not wait for it.
+    const reading = this.readRepo(entry.path)
+    // Its failure is met below; until then it must not count as unhandled.
+    reading.catch(() => undefined)
     const layout = await discoverProject(entry.path)
     const info = await readProject(entry.path)
     // Ids checked against each other, as gta checks them: a shared id is a problem on both.
@@ -463,16 +481,12 @@ export class ProjectService {
       problem: file.problem ?? (file.doc ? problemOf(file.doc) : undefined)
     })
 
-    const view: ProjectView = {
+    const files: Omit<ProjectView, RepoFields> = {
       id,
       workspaceId,
       path: entry.path,
       name: info.doc?.name ?? path.basename(entry.path),
       available: true,
-      isRepo: repo !== null,
-      repoRoot: repo?.root ?? null,
-      git,
-      gitNote,
       hasCollections: await isDirectory(layout.collectionsDir),
       collections,
       directories: layout.directories,
@@ -533,7 +547,33 @@ export class ProjectService {
       // Kept even when no environment has that name any more: the renderer
       // follows a renamed file to its new name, and shows a lost one as unset.
       selectedEnvironment: entry.selectedEnvironment,
-      autoFetchSeconds: entry.autoFetchSeconds,
+      autoFetchSeconds: entry.autoFetchSeconds
+    }
+
+    const answered = await within(reading, GIT_PATIENCE)
+    if (!answered) {
+      // Listed from its files, with what git said last, until it answers.
+      const before = this.views.get(id)
+      const shown: ProjectView = {
+        ...files,
+        isRepo: before?.isRepo ?? false,
+        repoRoot: before?.repoRoot ?? null,
+        git: before?.git ?? null,
+        gitNote: before?.gitNote ?? null,
+        busy: before?.busy ?? false
+      }
+      this.views.set(id, shown)
+      this.watcher.watch(id, this.watchTargets(shown, null))
+      this.emitProject(shown)
+      listed?.(shown)
+    }
+    const { repo, git, gitNote } = answered ?? (await reading)
+    const view: ProjectView = {
+      ...files,
+      isRepo: repo !== null,
+      repoRoot: repo?.root ?? null,
+      git,
+      gitNote,
       busy: repo !== null && this.isBusy(repo.root)
     }
 
@@ -542,6 +582,14 @@ export class ProjectService {
     this.scheduleAutoFetch(entry)
     this.emitProject(view)
     return view
+  }
+
+  /** The repository a project is in, if any, and its state as the renderer shows it. */
+  private async readRepo(
+    projectPath: string
+  ): Promise<{ repo: GitRepo | null; git: GitStatusView | null; gitNote: string | null }> {
+    const repo = this.gitAvailable === false ? null : await GitRepo.open(projectPath)
+    return { repo, ...(await this.readGit(repo, projectPath)) }
   }
 
   /**
@@ -972,6 +1020,21 @@ const isDirectory = (target: string) =>
     .catch(() => false)
 
 /** A project we know about but have not been able to read yet. */
+/** What a project view takes from git rather than from the project's files. */
+type RepoFields = 'isRepo' | 'repoRoot' | 'git' | 'gitNote' | 'busy'
+
+/** How long a project's files wait for git before they are shown without it. */
+const GIT_PATIENCE = 1000
+
+/** What `promise` resolves to, if it does within `ms`; else null, and it is left to finish. */
+function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: NodeJS.Timeout | undefined
+  const waited = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms)
+  })
+  return Promise.race([promise, waited]).finally(() => clearTimeout(timer))
+}
+
 const placeholder = (entry: ProjectEntry, workspaceId: string): ProjectView => ({
   id: entry.id,
   workspaceId,
