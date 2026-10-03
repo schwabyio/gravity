@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ProjectView } from '@shared/ipc.js'
 import { pullState, pushState } from '../gitActions.js'
 import Tooltip from './Tooltip.js'
+import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
 interface Props {
   project: ProjectView
@@ -20,6 +21,8 @@ interface Props {
   onNewBase: () => void
   onSettings: () => void
   onReveal: () => void
+  /** Rename a scratch pad; an ordinary project's name is its folder's, or its project.yml's. */
+  onRename: () => void
 }
 
 /**
@@ -30,6 +33,7 @@ interface Props {
  * Pull and Push are quiet icon buttons, so the collections below stay the thing
  * the eye lands on. The branch and the dirty dot open the Changes drawer, where
  * commits are made. Creating things and the project's settings are in its ⋯ menu.
+ * A scratch pad says so beside its name.
  */
 export default function ProjectHeading(props: Props) {
   const { project, open } = props
@@ -40,13 +44,8 @@ export default function ProjectHeading(props: Props) {
   const push = git ? pushState(git, busy, null) : null
   const [menu, setMenu] = useState(false)
 
-  // A click anywhere else closes the menu.
-  useEffect(() => {
-    if (!menu) return
-    const close = () => setMenu(false)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
-  }, [menu])
+  // A click anywhere else, or another menu opening, closes the menu.
+  const menus = useMenuDismiss(menu, () => setMenu(false))
 
   const item = (label: string, action: () => void) => (
     <button
@@ -73,6 +72,12 @@ export default function ProjectHeading(props: Props) {
         <span className="chevron">{open ? '▾' : '▸'}</span>
         <span className="repo-name">{project.name}</span>
       </button>
+
+      {project.scratch && (
+        <Tooltip text="A scratch pad: kept in the app’s own data folder, with no git">
+          <span className="scratch-tag">scratch</span>
+        </Tooltip>
+      )}
 
       {project.global && (
         <Tooltip
@@ -178,6 +183,7 @@ export default function ProjectHeading(props: Props) {
             aria-expanded={menu}
             onClick={(event) => {
               event.stopPropagation()
+              if (!menu) menus.opened()
               setMenu(!menu)
             }}
           >
@@ -186,19 +192,30 @@ export default function ProjectHeading(props: Props) {
           {menu && (
             <div className="project-menu" role="menu">
               {item('New collection', props.onNewCollection)}
-              {item('New directory', props.onNewDirectory)}
+              {item('New folder', props.onNewDirectory)}
               {item('New request set', props.onNewSet)}
               {item('New endpoints file', props.onNewEndpoints)}
               {item('New base collection', props.onNewBase)}
               {git && item('Changes and commit', () => props.onChanges('changes'))}
               {git && item('History', () => props.onChanges('history'))}
+              {project.scratch && item('Rename', props.onRename)}
               {item('Project settings', props.onSettings)}
               {item('Show in folder', props.onReveal)}
             </div>
           )}
         </span>
-        <Tooltip text="Remove from the workspace. The files are left alone.">
-          <button type="button" onClick={props.onRemove} aria-label={`Remove ${project.name}`}>
+        <Tooltip
+          text={
+            project.scratch
+              ? 'Delete this scratch pad. Its folder goes to the Trash.'
+              : 'Remove from the workspace. The files are left alone.'
+          }
+        >
+          <button
+            type="button"
+            onClick={props.onRemove}
+            aria-label={`${project.scratch ? 'Delete' : 'Remove'} ${project.name}`}
+          >
             ×
           </button>
         </Tooltip>

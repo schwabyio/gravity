@@ -138,7 +138,11 @@ export class WorkspaceRegistry {
   }
 
   /** Adding a folder a workspace already has returns the existing project. */
-  async addProject(workspaceId: string, directory: string): Promise<ProjectEntry> {
+  async addProject(
+    workspaceId: string,
+    directory: string,
+    options: { scratch?: boolean } = {}
+  ): Promise<ProjectEntry> {
     const workspace = this.workspace(workspaceId)
     if (!workspace) throw new Error('Unknown workspace')
     const existing = workspace.projects.find((project) => samePath(project.path, directory))
@@ -149,7 +153,8 @@ export class WorkspaceRegistry {
       path: directory,
       autoFetchSeconds: null,
       selectedEnvironment: null,
-      lineEndingsNoticeDismissed: false
+      lineEndingsNoticeDismissed: false,
+      scratch: options.scratch === true
     }
     workspace.projects.push(entry)
     await this.save()
@@ -167,6 +172,14 @@ export class WorkspaceRegistry {
     const found = this.project(id)
     if (!found) return
     found.entry.selectedEnvironment = environment
+    await this.save()
+  }
+
+  /** A project's folder moved, as a scratch pad's does when renamed: every entry for it follows. */
+  async moveProjects(from: string, to: string): Promise<void> {
+    for (const { entry } of this.projects()) {
+      if (samePath(entry.path, from)) entry.path = to
+    }
     await this.save()
   }
 

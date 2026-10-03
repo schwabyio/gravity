@@ -15,7 +15,7 @@ import { sizeWindow } from './window'
 import { addProject } from './addProject'
 
 /**
- * A project's own things: new directories and collections, `project.yml` and
+ * A project's own things: new folders and collections, `project.yml` and
  * the global project it uses — whose variables and environments a send uses.
  */
 
@@ -81,12 +81,12 @@ const send = async () => {
   await expect(page.locator('.status-pill')).toContainText('200')
 }
 
-test('a new directory shows at once, empty', async () => {
-  await projectMenu('New directory')
-  await page.getByLabel('New directory name').fill('a:b')
+test('a new folder shows at once, empty', async () => {
+  await projectMenu('New folder')
+  await page.getByLabel('New folder name').fill('a:b')
   await page.keyboard.press('Enter')
   await expect(page.getByRole('alert')).toContainText('cannot contain')
-  await page.getByLabel('New directory name').fill('Orders')
+  await page.getByLabel('New folder name').fill('Orders')
   await page.keyboard.press('Enter')
 
   await expect(project().locator('.group-row .label')).toHaveText(['Orders'])
@@ -94,9 +94,9 @@ test('a new directory shows at once, empty', async () => {
   expect(fs.statSync(path.join(shop, 'collections', 'Orders')).isDirectory()).toBe(true)
 })
 
-test('a new collection is written in its directory and opened', async () => {
+test('a new collection is written in its folder and opened', async () => {
   await projectMenu('New collection')
-  await page.getByLabel('Directory').selectOption('Orders')
+  await page.getByLabel('Folder', { exact: true }).selectOption('Orders')
   // An id is its file name, so it cannot have a space.
   await page.getByLabel('New collection id').fill('Place order')
   await page.keyboard.press('Enter')

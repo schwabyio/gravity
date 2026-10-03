@@ -13,6 +13,7 @@ import { resolveSet } from '../reuse.js'
 import type { FlagState } from '../flagState.js'
 import { formatMs } from '../format.js'
 import Tooltip from './Tooltip.js'
+import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
 /** A button under the list that adds a step. */
 export interface AddAction {
@@ -88,13 +89,8 @@ export default function StepList(props: Props) {
   const [dropAt, setDropAt] = useState<number | null>(null)
   const count = props.steps.length
 
-  // A click anywhere else closes an open step menu.
-  useEffect(() => {
-    if (menu === null) return
-    const close = () => setMenu(null)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
-  }, [menu])
+  // A click anywhere else, or another menu opening, closes an open step menu.
+  const menus = useMenuDismiss(menu !== null, () => setMenu(null))
 
   const confirmDelete = (index: number) => {
     const step = props.steps[index]
@@ -272,6 +268,7 @@ export default function StepList(props: Props) {
                   aria-expanded={menu === index}
                   onClick={(event) => {
                     event.stopPropagation()
+                    if (menu !== index) menus.opened()
                     setMenu(menu === index ? null : index)
                   }}
                 >

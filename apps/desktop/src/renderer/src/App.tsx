@@ -10,6 +10,7 @@ import {
   type CollectionRunSummary,
   type CollectionSummary,
   type RunResult,
+  type Step,
   type StepList,
   type VariablePreviews
 } from '@schwabyio/gravity-core/model'
@@ -469,6 +470,184 @@ export default function App() {
     // Leaving the drawer is a natural moment to save what was edited in it.
     if (autoSave.enabled) void saveEnvironments()
   }, [autoSave.enabled, saveEnvironments])
+
+  /* ----------------------------------------------------- collection files */
+
+  /** What a new scratch pad is called unless renamed: the first name no scratch pad's folder has. */
+  const scratchPadName = useMemo(() => {
+    const taken = new Set(
+      ws.state.projects
+        .filter((project) => project.scratch)
+        .map((project) => (project.path.split(/[\\/]/).pop() ?? '').toLowerCase())
+    )
+    for (let n = 1; ; n++) {
+      const name = n === 1 ? 'Scratch pad' : `Scratch pad ${n}`
+      if (!taken.has(name.toLowerCase())) return name
+    }
+  }, [ws.state.projects])
+
+  /** Before a collection's file is renamed, copied or moved: its edits saved, so they go with it. */
+  const savedFirst = async (collection: CollectionSummary): Promise<string | null> => {
+    const saved = await editor.flush(collection.path)
+    if (collection.path === collectionPath) await data.flush()
+    return saved
+      ? null
+      : `${collection.name} has edits that could not be saved: save it, or reload it from disk, first`
+  }
+
+  /** A collection's file went elsewhere, or away: let go of it, and follow it if it was open. */
+  const followFile = (from: string, to: string | null) => {
+    const wasOpen = collectionPath === from
+    editor.forget(from)
+    if (wasOpen && to) setOpenWhenListed(to)
+  }
+
+  /** The project a collection of the sidebar is in. */
+  const projectOf = (collection: CollectionSummary) =>
+    ws.state.projects.find((project) =>
+      project.collections.some((candidate) => candidate.path === collection.path)
+    ) ?? null
+
+  /**
+   * A step a collection's menu asked for, added once that collection is open:
+   * adding goes through the editor of the open file, and opening takes a moment.
+   */
+  const [toAdd, setToAdd] = useState<{ path: string; step?: Step } | null>(null)
+  useEffect(() => {
+    if (!toAdd || !open || collectionPath !== toAdd.path) return
+    setToAdd(null)
+    // At the end of its steps, and selected, ready to edit.
+    editor.addStep(null, toAdd.step)
+  }, [toAdd, open, collectionPath, editor])
+
+  /** Open a collection for a step to be added to it, unless it is open already. */
+  const addTo = async (collection: CollectionSummary, step?: Step) => {
+    const project = projectOf(collection)
+    if (!project) return
+    if (collectionPath !== collection.path) await openCollection(project, collection)
+    setToAdd({ path: collection.path, ...(step ? { step } : {}) })
+  }
+
+  const collectionActions = {
+    onRename: async (collection: CollectionSummary, id: string) => {
+      const unsaved = await savedFirst(collection)
+      if (unsaved) return unsaved
+      const result = await window.desktop.collection.rename(collection.path, id)
+      if (!result.ok) return result.message
+      if (result.path !== collection.path) followFile(collection.path, result.path)
+      return null
+    },
+    onTransfer: async (
+      collection: CollectionSummary,
+      projectId: string,
+      directory: string | null,
+      move: boolean
+    ) => {
+      const unsaved = await savedFirst(collection)
+      if (unsaved) return unsaved
+      const result = await window.desktop.collection.copy(
+        collection.path,
+        projectId,
+        directory,
+        move
+      )
+      if (!result.ok) return result.message
+      if (move) followFile(collection.path, result.path)
+      ws.notify(
+        `${move ? 'Moved' : 'Copied'} ${collection.name} to ${ws.project(projectId)?.name ?? 'the project'}.`
+      )
+      return null
+    },
+    onMoveToFolder: async (collection: CollectionSummary, folder: string | null) => {
+      const unsaved = await savedFirst(collection)
+      if (unsaved) return unsaved
+      const result = await window.desktop.collection.moveToFolder(collection.path, folder)
+      if (!result.ok) return result.message
+      followFile(collection.path, result.path)
+      return null
+    },
+    onNewRequest: (collection: CollectionSummary) => void addTo(collection),
+    onNewRequestSet: async (collection: CollectionSummary, id: string) => {
+      const project = projectOf(collection)
+      if (!project) return 'That collection is not in a project here any more'
+      const created = await ws.createCollection(project.id, null, id, 'set')
+      if (!created.ok) return created.message
+      // Used by the id it was made with: its file name.
+      const set = created.path
+        .split(/[\\/]/)
+        .pop()!
+        .replace(/\.yml$/, '')
+      await addTo(collection, { use: set })
+      return null
+    },
+    onDelete: async (collection: CollectionSummary) => {
+      const what = collection.dataFile ? ' and its data file' : ''
+      if (
+        !window.confirm(`Delete the collection “${collection.name}”${what}? It goes to the Trash.`)
+      ) {
+        return
+      }
+      const result = await window.desktop.collection.remove(collection.path)
+      if (!result.ok) return ws.showError(result.message)
+      followFile(collection.path, null)
+    }
+  }
+
+  /** Rename a scratch pad: what is open of it saved first, and followed to its new folder. */
+  const renameScratchPad = async (projectId: string, name: string) => {
+    const before = ws.project(projectId)
+    if (!before) return 'That scratch pad is not here any more'
+    for (const collection of before.collections) {
+      const unsaved = await savedFirst(collection)
+      if (unsaved) return unsaved
+    }
+    const result = await window.desktop.projects.renameScratchPad(projectId, name)
+    if (!result.ok) return result.message
+    const shown = collectionPath?.startsWith(before.path) ? collectionPath : null
+    editor.forgetProject(projectId)
+    if (shown) setOpenWhenListed(result.path + shown.slice(before.path.length))
+    return null
+  }
+
+  /** A project's collections in one folder of its `collections/`, all of them, filtered or not. */
+  const inFolder = (projectId: string, folder: string) =>
+    ws.project(projectId)?.collections.filter((collection) => collection.directory === folder) ?? []
+
+  /** Rename a folder: what is in it saved first, and an open collection followed into it. */
+  const renameFolder = async (projectId: string, folder: string, name: string) => {
+    const inside = inFolder(projectId, folder)
+    for (const collection of inside) {
+      const unsaved = await savedFirst(collection)
+      if (unsaved) return unsaved
+    }
+    const result = await window.desktop.projects.renameFolder(projectId, folder, name)
+    if (!result.ok) return result.message
+    const shown = inside.find((collection) => collection.path === collectionPath)
+    for (const collection of inside) editor.forget(collection.path)
+    if (shown) {
+      // The same file, in the folder under its new name.
+      const file = Math.max(shown.path.lastIndexOf('/'), shown.path.lastIndexOf('\\'))
+      setOpenWhenListed(result.path + shown.path.slice(file))
+    }
+    return null
+  }
+
+  /** Delete a folder and everything in it, once confirmed; what was open of it closes. */
+  const deleteFolder = async (projectId: string, folder: string) => {
+    const inside = inFolder(projectId, folder)
+    const what =
+      inside.length === 0
+        ? ''
+        : ` and its ${inside.length} collection${inside.length === 1 ? '' : 's'}`
+    if (
+      !window.confirm(`Delete the folder “${folder}”${what}? Everything in it goes to the Trash.`)
+    ) {
+      return
+    }
+    const result = await window.desktop.projects.deleteFolder(projectId, folder)
+    if (!result.ok) return ws.showError(result.message)
+    for (const collection of inside) editor.forget(collection.path)
+  }
 
   /* ----------------------------------------------------------------- save */
 
@@ -1044,11 +1223,26 @@ export default function App() {
           onSetActive={(id) => void ws.setActive(id)}
           onCreateWorkspace={async (name) => messageOf(await ws.createWorkspace(name))}
           onRenameWorkspace={async (id, name) => messageOf(await ws.renameWorkspace(id, name))}
-          onRemoveWorkspace={(id) => void ws.removeWorkspace(id)}
+          onRemoveWorkspace={async (id) => {
+            const scratch = ws.projects.filter((project) => project.scratch)
+            await ws.removeWorkspace(id)
+            for (const project of scratch) editor.forgetProject(project.id)
+          }}
           onAddProject={() => void ws.addProject()}
-          onAddProjectsIn={() => void ws.addProjectsIn()}
+          onCreateScratchPad={ws.createScratchPad}
+          scratchPadName={scratchPadName}
+          collectionActions={collectionActions}
+          onRenameFolder={renameFolder}
+          onDropRefused={ws.showError}
+          onRenameScratchPad={renameScratchPad}
+          onDeleteFolder={(projectId, folder) => void deleteFolder(projectId, folder)}
           onClone={(url) => void ws.cloneUrl(url)}
-          onRemoveProject={(id) => void ws.removeProject(id)}
+          onRemoveProject={async (id) => {
+            const scratch = ws.project(id)?.scratch ?? false
+            const result = await ws.removeProject(id)
+            // A scratch pad's files went with it: nothing of it stays open.
+            if (result.ok && scratch) editor.forgetProject(id)
+          }}
           onFetch={ws.fetch}
           onPull={ws.pull}
           onPush={ws.push}

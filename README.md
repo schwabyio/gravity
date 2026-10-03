@@ -17,7 +17,7 @@ Both run on macOS, Windows and Linux.
 
 ## What a test looks like
 
-A project is a folder holding a `collections/` directory and, usually, an
+A project is a folder holding a `collections/` folder and, usually, an
 `environments/` one. A collection is a list of requests, called steps. They run in order,
 and a later step can use a value an earlier one saved, like `sessionId` here:
 

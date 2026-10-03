@@ -319,14 +319,14 @@ function list(
   ctx.out('')
 
   const width = nameWidthFor(selection.targets.map((t) => t.id))
-  // The directory only here, where it helps pick a group; a run names collections by id alone.
+  // The folder only here, where it helps pick a group; a run names collections by id alone.
   const dirWidth = Math.max(
-    'Directory'.length,
+    'Folder'.length,
     ...selection.targets.map((t) => (t.collection.directory ?? '').length)
   )
   ctx.out(
     p.bold(
-      `${'#'.padStart(4)}  ${'Collection'.padEnd(width)} ${'Steps'.padStart(7)} ${'Rows'.padStart(5)}  ${'Directory'.padEnd(dirWidth)}  Tags`
+      `${'#'.padStart(4)}  ${'Collection'.padEnd(width)} ${'Steps'.padStart(7)} ${'Rows'.padStart(5)}  ${'Folder'.padEnd(dirWidth)}  Tags`
     )
   )
   selection.targets.forEach((target, i) => {
@@ -619,9 +619,9 @@ export function usage(p: Paint): string {
     '                    Exits 1 on a broken collection, or a use:, extends: or body',
     '                    file that would stop a run, in any collection.',
     '    a, all          Run every collection, less those with exclude: true.',
-    '    <list>          Run the collections and directories named, comma separated,',
+    '    <list>          Run the collections and folders named, comma separated,',
     '                    in that order: smoke,checkout/sessions,payments',
-    '                    A directory leaves out its excluded collections;',
+    '                    A folder leaves out its excluded collections;',
     '                    one named on its own runs.',
     '                    A collection called all or get: give it as all.yml.',
     '',

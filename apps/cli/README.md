@@ -23,7 +23,7 @@ The package has no dependencies to install: everything `gta` uses is bundled int
 
 ## A first project
 
-A project is a folder holding a `collections/` directory, an `environments/` one and a
+A project is a folder holding a `collections/` folder, an `environments/` one and a
 `settings.yml`. The smallest project `gta` runs is three files:
 
 ```yaml

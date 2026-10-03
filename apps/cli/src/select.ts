@@ -100,7 +100,7 @@ export function selectCollections(
     }
     if (unknown.length > 0) {
       throw new UsageError(
-        `No collection or directory is called ${unknown.map((u) => `"${u}"`).join(', ')}. ` +
+        `No collection or folder is called ${unknown.map((u) => `"${u}"`).join(', ')}. ` +
           'List them with: gta get'
       )
     }

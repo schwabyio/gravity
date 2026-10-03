@@ -70,7 +70,8 @@ describe('gta', () => {
     const { code, out } = await gta(root, 'get')
     expect(code).toBe(EXIT.passed)
     expect(out).toMatch(/1 {2}sessions +2 {8}checkout/)
-    expect(out).toMatch(/2 {2}smoke +1 {19}smoke/)
+    // The Folder column is as wide as checkout, its longest entry.
+    expect(out).toMatch(/2 {2}smoke +1 {18}smoke/)
     expect(out).toContain('2 collections, 3 steps')
   })
 

@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { CollectionSummary } from '@schwabyio/gravity-core/model'
 import type { GitProgress, LibraryKind, ProjectView, WorkspaceSummary } from '@shared/ipc.js'
 import { summaryOfFile } from '../reuse.js'
 import { filterCollections, filtering, keepsFile } from '../sidebarFilter.js'
-import CollectionList from './CollectionList.js'
+import CollapseIcon from './CollapseIcon.js'
+import CollectionList, { type CollectionActions, type FolderDrag } from './CollectionList.js'
 import NameForm from './NameForm.js'
 import ProjectHeading from './ProjectHeading.js'
 import Tooltip from './Tooltip.js'
+import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
 interface Props {
   /** The divider between this pane and the main one. */
@@ -29,9 +31,14 @@ interface Props {
   onCreateWorkspace: (name: string) => Promise<string | null>
   onRenameWorkspace: (id: string, name: string) => Promise<string | null>
   onRemoveWorkspace: (id: string) => void
+  /** Add a project folder — or, picking a monorepo's root, the projects in it. */
   onAddProject: () => void
-  /** Search a folder, a monorepo's say, and add every project in it. */
-  onAddProjectsIn: () => void
+  /** Make a scratch pad in the active workspace; resolves to a refusal to show, or null. */
+  onCreateScratchPad: (name: string) => Promise<string | null>
+  /** What a new scratch pad is called unless renamed: one no scratch pad has. */
+  scratchPadName: string
+  /** Rename a scratch pad; resolves to a refusal to show, or null. */
+  onRenameScratchPad: (projectId: string, name: string) => Promise<string | null>
   onClone: (url: string) => void
   onRemoveProject: (id: string) => void
   onFetch: (id: string) => void
@@ -47,14 +54,27 @@ interface Props {
   ) => Promise<string | null>
   onProjectSettings: (projectId: string) => void
   onReveal: (path: string) => void
+  /** Rename, copy, move and delete a project's collections. */
+  collectionActions: Omit<
+    CollectionActions,
+    'targets' | 'onRenameFolder' | 'onDeleteFolder' | 'onNewCollectionIn'
+  >
+  /** Rename or delete a folder of a project's `collections/`. */
+  onRenameFolder: (projectId: string, folder: string, name: string) => Promise<string | null>
+  /** A collection dropped on a folder could not move there: why. */
+  onDropRefused: (message: string) => void
+  onDeleteFolder: (projectId: string, folder: string) => void
 }
 
 /** What is being named in the sidebar, if anything. */
 type Naming =
   | { kind: 'workspace' }
+  | { kind: 'scratch' }
+  | { kind: 'rename-scratch'; projectId: string }
   | { kind: 'rename-workspace' }
   | { kind: 'directory'; projectId: string }
-  | { kind: 'collection'; projectId: string }
+  /** In `folder` of `collections/`, picked to begin with; at its root without one. */
+  | { kind: 'collection'; projectId: string; folder?: string }
   | { kind: 'set' | 'endpoints' | 'base'; projectId: string }
   | null
 
@@ -73,15 +93,56 @@ export default function ProjectSidebar(props: Props) {
   const [filters, setFilters] = useState<Record<string, string>>({})
   const [naming, setNaming] = useState<Naming>(null)
   const [workspaceMenu, setWorkspaceMenu] = useState(false)
+  /** A collection being dragged to another folder, and the project it is in. */
+  const [dragging, setDragging] = useState<{
+    projectId: string
+    collection: CollectionSummary
+  } | null>(null)
+  /** Where a dragged collection would land now: a folder, null for the root, undefined for nowhere. */
+  const [over, setOver] = useState<string | null | undefined>(undefined)
 
-  useEffect(() => {
-    if (!workspaceMenu) return
-    const close = () => setWorkspaceMenu(false)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
-  }, [workspaceMenu])
+  /** Dragging in one project: its collections move between its own folders only. */
+  const dragFor = (project: ProjectView): FolderDrag => {
+    const here = dragging?.projectId === project.id ? dragging.collection : null
+    const takes = (folder: string | null) => here !== null && here.directory !== folder
+    return {
+      over: here ? over : undefined,
+      onStart: (collection) => setDragging({ projectId: project.id, collection }),
+      onEnd: () => {
+        setDragging(null)
+        setOver(undefined)
+      },
+      zone: (folder) => ({
+        onDragOver: (event) => {
+          if (!takes(folder)) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          if (over !== folder) setOver(folder)
+        },
+        onDrop: (event) => {
+          if (!here || !takes(folder)) return
+          event.preventDefault()
+          setDragging(null)
+          setOver(undefined)
+          void props.collectionActions
+            .onMoveToFolder(here, folder)
+            .then((refused) => refused && props.onDropRefused(refused))
+        }
+      })
+    }
+  }
+
+  const workspaceMenus = useMenuDismiss(workspaceMenu, () => setWorkspaceMenu(false))
 
   const toggle = (id: string) => setCollapsed((current) => ({ ...current, [id]: !current[id] }))
+  /** Every project of the workspace collapsed: the button then opens them all again. */
+  const allCollapsed =
+    props.projects.length > 0 && props.projects.every((project) => collapsed[project.id])
+  const collapseAll = () =>
+    setCollapsed((current) => ({
+      ...current,
+      ...Object.fromEntries(props.projects.map((project) => [project.id, !allCollapsed]))
+    }))
   const done = (message: string | null) => {
     if (message === null) setNaming(null)
     return message
@@ -136,6 +197,17 @@ export default function ProjectSidebar(props: Props) {
                 </option>
               ))}
             </select>
+            <Tooltip text={allCollapsed ? 'Expand all projects' : 'Collapse all projects'}>
+              <button
+                type="button"
+                className="collapse-all-button"
+                aria-label={allCollapsed ? 'Expand all projects' : 'Collapse all projects'}
+                onClick={collapseAll}
+                disabled={props.projects.length === 0}
+              >
+                <CollapseIcon expand={allCollapsed} />
+              </button>
+            </Tooltip>
             <span className="project-menu-wrap">
               <button
                 type="button"
@@ -145,6 +217,7 @@ export default function ProjectSidebar(props: Props) {
                 aria-expanded={workspaceMenu}
                 onClick={(event) => {
                   event.stopPropagation()
+                  if (!workspaceMenu) workspaceMenus.opened()
                   setWorkspaceMenu(!workspaceMenu)
                 }}
               >
@@ -161,10 +234,17 @@ export default function ProjectSidebar(props: Props) {
                         const active = props.active
                         if (!active) return
                         const count = active.projectIds.length
+                        const scratch = props.projects.filter((project) => project.scratch).length
+                        const files =
+                          scratch === 0
+                            ? 'Their files are left alone.'
+                            : scratch === count
+                              ? 'Their folders go to the Trash.'
+                              : `Their files are left alone, except the scratch pads’, whose folders go to the Trash.`
                         const question =
                           count === 0
                             ? `Delete the workspace “${active.name}”?`
-                            : `Delete the workspace “${active.name}” and its ${count} project${count === 1 ? '' : 's'}? Their files are left alone.`
+                            : `Delete the workspace “${active.name}” and its ${count} project${count === 1 ? '' : 's'}? ${files}`
                         if (window.confirm(question)) props.onRemoveWorkspace(active.id)
                       },
                       true
@@ -177,17 +257,12 @@ export default function ProjectSidebar(props: Props) {
       </div>
 
       <div className="sidebar-actions">
-        <Tooltip wide text={<AddTip {...ADD_TIPS.project} />}>
+        <Tooltip text={ADD_TIPS.project}>
           <button type="button" onClick={props.onAddProject}>
             + Project
           </button>
         </Tooltip>
-        <Tooltip wide text={<AddTip {...ADD_TIPS.monorepo} />}>
-          <button type="button" onClick={props.onAddProjectsIn}>
-            + Monorepo
-          </button>
-        </Tooltip>
-        <Tooltip wide text={<AddTip {...ADD_TIPS.clone} />}>
+        <Tooltip text={ADD_TIPS.clone}>
           <button
             type="button"
             onClick={() => setCloning(!cloning)}
@@ -196,7 +271,23 @@ export default function ProjectSidebar(props: Props) {
             + Clone
           </button>
         </Tooltip>
+        <Tooltip text={ADD_TIPS.scratch}>
+          <button type="button" onClick={() => setNaming({ kind: 'scratch' })}>
+            + Scratch pad
+          </button>
+        </Tooltip>
       </div>
+
+      {naming?.kind === 'scratch' && (
+        <NameForm
+          label="New scratch pad name"
+          placeholder="Scratch pad name"
+          initial={props.scratchPadName}
+          submitLabel="Create"
+          onSubmit={async (name) => done(await props.onCreateScratchPad(name))}
+          onCancel={() => setNaming(null)}
+        />
+      )}
 
       {cloning && (
         <form
@@ -244,12 +335,18 @@ export default function ProjectSidebar(props: Props) {
         </div>
       )}
 
-      <div className="sidebar-body">
+      <div
+        className="sidebar-body"
+        // Over anything that would not take it, a dragged collection lands nowhere.
+        onDragOver={(event) => {
+          if (!event.defaultPrevented && over !== undefined) setOver(undefined)
+        }}
+      >
         {props.projects.length === 0 && (
           <p className="hint empty">
             No projects in this workspace yet. Add a project — a folder with a{' '}
-            <code>collections/</code> directory in it — or, with <strong>+ Monorepo</strong>, every
-            project in a folder at once.
+            <code>collections/</code> folder in it, or a monorepo of them. For requests that belong
+            in no repository, make a <strong>+ Scratch pad</strong>.
           </p>
         )}
 
@@ -280,28 +377,58 @@ export default function ProjectSidebar(props: Props) {
           const nothingFound = filtering(query) && found === 0 && shown.directories.length === 0
           return (
             <section key={project.id} className="project" aria-label={`Project ${project.name}`}>
-              <ProjectHeading
-                project={project}
-                open={open}
-                onToggle={() => toggle(project.id)}
-                onFetch={() => props.onFetch(project.id)}
-                onPull={() => props.onPull(project.id)}
-                onPush={() => props.onPush(project.id)}
-                onChanges={(tab) => props.onChanges(project.id, tab)}
-                onRemove={() => props.onRemoveProject(project.id)}
-                onNewCollection={() => setNaming({ kind: 'collection', projectId: project.id })}
-                onNewDirectory={() => setNaming({ kind: 'directory', projectId: project.id })}
-                onNewSet={() => setNaming({ kind: 'set', projectId: project.id })}
-                onNewEndpoints={() => setNaming({ kind: 'endpoints', projectId: project.id })}
-                onNewBase={() => setNaming({ kind: 'base', projectId: project.id })}
-                onSettings={() => props.onProjectSettings(project.id)}
-                onReveal={() => props.onReveal(project.path)}
-              />
+              {/* The project's heading takes a dragged collection to the root of its collections/. */}
+              <div
+                className={`project-drop${dragFor(project).over === null ? ' drop-target' : ''}`}
+                {...dragFor(project).zone(null)}
+              >
+                <ProjectHeading
+                  project={project}
+                  open={open}
+                  onToggle={() => toggle(project.id)}
+                  onFetch={() => props.onFetch(project.id)}
+                  onPull={() => props.onPull(project.id)}
+                  onPush={() => props.onPush(project.id)}
+                  onChanges={(tab) => props.onChanges(project.id, tab)}
+                  onRemove={() => {
+                    if (!project.scratch) return props.onRemoveProject(project.id)
+                    const count = project.collections.length
+                    const what =
+                      count === 0 ? '' : ` and its ${count} collection${count === 1 ? '' : 's'}`
+                    if (
+                      window.confirm(
+                        `Delete the scratch pad “${project.name}”${what}? Its folder goes to the Trash.`
+                      )
+                    ) {
+                      props.onRemoveProject(project.id)
+                    }
+                  }}
+                  onNewCollection={() => setNaming({ kind: 'collection', projectId: project.id })}
+                  onNewDirectory={() => setNaming({ kind: 'directory', projectId: project.id })}
+                  onNewSet={() => setNaming({ kind: 'set', projectId: project.id })}
+                  onNewEndpoints={() => setNaming({ kind: 'endpoints', projectId: project.id })}
+                  onNewBase={() => setNaming({ kind: 'base', projectId: project.id })}
+                  onSettings={() => props.onProjectSettings(project.id)}
+                  onReveal={() => props.onReveal(project.path)}
+                  onRename={() => setNaming({ kind: 'rename-scratch', projectId: project.id })}
+                />
+              </div>
+
+              {naming?.kind === 'rename-scratch' && naming.projectId === project.id && (
+                <NameForm
+                  label={`New name for ${project.name}`}
+                  placeholder="Scratch pad name"
+                  initial={project.name}
+                  submitLabel="Rename"
+                  onSubmit={async (name) => done(await props.onRenameScratchPad(project.id, name))}
+                  onCancel={() => setNaming(null)}
+                />
+              )}
 
               {naming?.kind === 'directory' && naming.projectId === project.id && (
                 <NameForm
-                  label="New directory name"
-                  placeholder="Directory name"
+                  label="New folder name"
+                  placeholder="Folder name"
                   submitLabel="Create"
                   onSubmit={async (name) => done(await props.onCreateDirectory(project.id, name))}
                   onCancel={() => setNaming(null)}
@@ -323,7 +450,9 @@ export default function ProjectSidebar(props: Props) {
                 )}
               {naming?.kind === 'collection' && naming.projectId === project.id && (
                 <NewCollectionForm
+                  key={naming.folder ?? ''}
                   project={project}
+                  folder={naming.folder ?? ''}
                   onSubmit={async (directory, name) =>
                     done(await props.onCreateCollection(project.id, directory, name))
                   }
@@ -365,7 +494,24 @@ export default function ProjectSidebar(props: Props) {
                       ` Used by ${usersOf(project, props.projects).join(', ')}.`}
                   </p>
                 ) : project.collections.length === 0 && project.directories.length === 0 ? (
-                  <p className="hint">No collections yet.</p>
+                  <p className="hint project-empty">
+                    No collections yet.{' '}
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => setNaming({ kind: 'collection', projectId: project.id })}
+                    >
+                      New collection
+                    </button>
+                    {' · '}
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => setNaming({ kind: 'directory', projectId: project.id })}
+                    >
+                      New folder
+                    </button>
+                  </p>
                 ) : (
                   <CollectionList
                     collections={shown.collections}
@@ -373,6 +519,20 @@ export default function ProjectSidebar(props: Props) {
                     selectedPath={props.selectedRoot}
                     onSelect={(collection) => props.onSelectCollection(project, collection)}
                     expanded={filtering(query)}
+                    folders={project.directories}
+                    drag={dragFor(project)}
+                    actions={{
+                      ...props.collectionActions,
+                      onRenameFolder: (folder, name) =>
+                        props.onRenameFolder(project.id, folder, name),
+                      onDeleteFolder: (folder) => props.onDeleteFolder(project.id, folder),
+                      onNewCollectionIn: (folder) =>
+                        setNaming({ kind: 'collection', projectId: project.id, folder }),
+                      targets: props.projects.filter(
+                        (other) =>
+                          other.id !== project.id && other.available && other.hasCollections
+                      )
+                    }}
                   />
                 ))}
               {open &&
@@ -422,13 +582,15 @@ const LIBRARY_NAMES = {
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
-/** Give a new collection its id — its file name — and pick the directory it goes in. */
+/** Give a new collection its id — its file name — and pick the folder it goes in. */
 function NewCollectionForm(props: {
   project: ProjectView
+  /** The folder picked to begin with; '' for the root of `collections/`. */
+  folder: string
   onSubmit: (directory: string | null, name: string) => Promise<string | null>
   onCancel: () => void
 }) {
-  const [directory, setDirectory] = useState('')
+  const [directory, setDirectory] = useState(props.folder)
   return (
     <NameForm
       label="New collection id"
@@ -439,7 +601,7 @@ function NewCollectionForm(props: {
     >
       {props.project.directories.length > 0 && (
         <select
-          aria-label="Directory"
+          aria-label="Folder"
           value={directory}
           onChange={(e) => setDirectory(e.target.value)}
         >
@@ -467,41 +629,9 @@ const usersOf = (project: ProjectView, projects: ProjectView[]): string[] =>
     .filter((other) => other.global && pathKey(other.global.path) === pathKey(project.path))
     .map((other) => other.name)
 
-/** What each way of adding projects does: the tooltip over its button. */
+/** What each way of adding projects does, in a line: the tooltip over its button. */
 const ADD_TIPS = {
-  project: {
-    title: 'Add a project folder',
-    lines: [
-      'A project is a folder holding collections/ — a service’s repository, or a folder in one.',
-      'A folder with no collections/ but other project files, such as project.yml or requests/, is added as a shared project.',
-      'Choose a monorepo’s root to be offered every project in it; choose any other folder to make it a project.'
-    ]
-  },
-  monorepo: {
-    title: 'Add every project in a folder',
-    lines: [
-      'Searches the folder you choose — a monorepo, or a folder of repositories — up to six levels down, and adds each folder holding collections/, with the shared projects they use.',
-      'node_modules, dot-folders and build output are skipped. Projects already here stay as they are.'
-    ]
-  },
-  clone: {
-    title: 'Clone a git repository and add it',
-    lines: [
-      'Enter its URL, then choose the folder to clone into.',
-      'Every project in the clone is added. A repository with none becomes one project, with collections/ made for it.'
-    ]
-  }
-}
-
-function AddTip({ title, lines }: { title: string; lines: string[] }) {
-  return (
-    <>
-      <span className="tip-title">{title}</span>
-      {lines.map((line) => (
-        <span key={line} className="tip-line">
-          {line}
-        </span>
-      ))}
-    </>
-  )
+  project: 'Add a project folder, or every project in a monorepo',
+  clone: 'Clone a git repository and add its projects',
+  scratch: 'Make a project for ad hoc requests, kept in the app, without git'
 }

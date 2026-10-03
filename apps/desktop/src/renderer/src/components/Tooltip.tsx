@@ -43,6 +43,13 @@ export default function Tooltip({ text, wide = false, children, delay = 350 }: P
   const tipRef = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [position, setPosition] = useState<Position | null>(null)
+  /**
+   * Pressed with the pointer: neither the focus a click gives the control nor
+   * the focus given back when a dialog it opened closes — a folder picker,
+   * say — asks for the explanation. Until the pointer comes back to it, or
+   * focus moves elsewhere in the window.
+   */
+  const pressed = useRef(false)
 
   const hide = useCallback(() => {
     clearTimeout(timer.current)
@@ -109,14 +116,24 @@ export default function Tooltip({ text, wide = false, children, delay = 350 }: P
         ref={triggerRef}
         className="tooltip-trigger"
         onPointerEnter={() => {
+          pressed.current = false
           clearTimeout(timer.current)
           timer.current = setTimeout(show, delay)
         }}
         onPointerLeave={hide}
         // Pressing the button should act, not leave an explanation behind.
-        onPointerDown={hide}
-        onFocusCapture={show}
-        onBlurCapture={hide}
+        onPointerDown={() => {
+          pressed.current = true
+          hide()
+        }}
+        onFocusCapture={() => {
+          if (!pressed.current) show()
+        }}
+        onBlurCapture={() => {
+          // The window losing focus to a dialog is not focus moving on.
+          if (document.hasFocus()) pressed.current = false
+          hide()
+        }}
       >
         {cloneElement(children, { 'aria-describedby': id })}
       </span>

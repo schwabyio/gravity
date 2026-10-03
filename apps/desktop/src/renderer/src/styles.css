@@ -760,6 +760,75 @@ button:disabled {
 
 /* ---------- collection rows ---------- */
 
+/* A collection's row, with its ⋯ menu beside it: shown on hover or focus. */
+.collection-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.collection-item > .collection-row,
+.collection-item > .group-row {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hover and selection span the whole line, the menu button too. */
+.collection-item > .collection-row,
+.collection-item > .collection-row:hover,
+.collection-item > .group-row,
+.collection-item > .group-row:hover {
+  background: none;
+}
+
+.collection-item:hover {
+  background: var(--surface-alt);
+}
+
+.collection-item.selected {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* Where a dragged collection would land: a folder's row, or the project's heading for its root. */
+.collection-item.drop-target,
+.project-drop.drop-target {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.collection-item .project-menu-wrap {
+  flex: none;
+  padding-right: 6px;
+}
+
+.collection-menu-button {
+  padding: 0 5px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.4;
+  opacity: 0;
+}
+
+.collection-item:hover .collection-menu-button,
+.collection-item.menu-open .collection-menu-button,
+.collection-menu-button:focus-visible {
+  opacity: 1;
+}
+
+.collection-menu-button:hover:not(:disabled) {
+  background: var(--surface-alt);
+  color: var(--text);
+}
+
+.transfer-form .transfer-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 11px;
+}
+
 .collection-row {
   padding: 4px 12px 4px 22px;
   font-size: 13px;
@@ -1834,17 +1903,6 @@ body.resizing.resizing-rows * {
 .tooltip.wide {
   max-width: 320px;
   padding: 8px 11px;
-}
-
-.tip-title {
-  display: block;
-  font-weight: 600;
-}
-
-.tip-line {
-  display: block;
-  margin-top: 4px;
-  color: var(--text-dim);
 }
 
 /* An event stream while it is read. */
@@ -3560,8 +3618,23 @@ button.tag.filter.on {
   padding: 2px 8px;
 }
 
+.collapse-all-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-dim);
+}
+
+.collapse-all-button:hover:not(:disabled) {
+  color: var(--text);
+}
+
 .sidebar-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 0 12px 10px;
   border-bottom: 1px solid var(--border);
@@ -3615,6 +3688,16 @@ button.tag.filter.on {
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text-dim);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* A scratch pad: the app's own folder, no git. Dashed, as a draft is. */
+.scratch-tag {
+  padding: 0 6px;
+  border: 1px dashed color-mix(in srgb, var(--redirect) 60%, transparent);
+  border-radius: 8px;
+  color: var(--redirect);
   font-size: 10px;
   white-space: nowrap;
 }
@@ -3708,6 +3791,20 @@ button.tag.filter.on {
 
 .project-field input {
   padding: 5px 8px;
+}
+
+.field-with-button {
+  display: flex;
+  gap: 6px;
+}
+
+.field-with-button input {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-with-button button {
+  padding: 4px 12px;
 }
 
 /* tls.ca: a path per row, with what the saved file holds beneath it. */

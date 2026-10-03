@@ -26,18 +26,18 @@ is a complete, valid project to start from.
 
 ## At a glance
 
-| File                          | Where                                      | What it is                                  | §    |
-| ----------------------------- | ------------------------------------------ | ------------------------------------------- | ---- |
-| `collections/<id>.yml`        | `collections/`, or one directory inside it | A collection: requests run in order         | §2   |
-| `collections/<id>.csv\|.json` | Beside its collection                      | A data file: the collection runs once a row | §2.8 |
-| `environments/<name>.yml`     | `environments/`                            | Variables, secrets and flags for one target | §6   |
-| `project.yml`                 | The project folder                         | Name, global project, variables, trust      | §1.1 |
-| `settings.yml`                | The project folder                         | How `gta` runs the project                  | §1.3 |
-| `requests/<id>.yml`           | `requests/`, or one directory inside it    | A request set, run by `use:`                | §2.5 |
-| `endpoints/<id>.yml`          | `endpoints/`, or one directory inside it   | Defaults and checks per method and path     | §2.6 |
-| `bases/<id>.yml`              | `bases/`, or one directory inside it       | A base collection, for `extends:`           | §2.7 |
-| `checks/<name>.js`            | `checks/`                                  | Shared check functions                      | §5   |
-| `.env`                        | The project folder, never committed        | Values for secrets                          | §6   |
+| File                          | Where                                   | What it is                                  | §    |
+| ----------------------------- | --------------------------------------- | ------------------------------------------- | ---- |
+| `collections/<id>.yml`        | `collections/`, or one folder inside it | A collection: requests run in order         | §2   |
+| `collections/<id>.csv\|.json` | Beside its collection                   | A data file: the collection runs once a row | §2.8 |
+| `environments/<name>.yml`     | `environments/`                         | Variables, secrets and flags for one target | §6   |
+| `project.yml`                 | The project folder                      | Name, global project, variables, trust      | §1.1 |
+| `settings.yml`                | The project folder                      | How `gta` runs the project                  | §1.3 |
+| `requests/<id>.yml`           | `requests/`, or one folder inside it    | A request set, run by `use:`                | §2.5 |
+| `endpoints/<id>.yml`          | `endpoints/`, or one folder inside it   | Defaults and checks per method and path     | §2.6 |
+| `bases/<id>.yml`              | `bases/`, or one folder inside it       | A base collection, for `extends:`           | §2.7 |
+| `checks/<name>.js`            | `checks/`                               | Shared check functions                      | §5   |
+| `.env`                        | The project folder, never committed     | Values for secrets                          | §6   |
 
 The smallest project `gta` runs is three files:
 
@@ -91,7 +91,7 @@ payments/                     a project
 ├── settings.yml              how gta runs it (§1.3)
 ├── collections/
 │   ├── smoke.yml             a collection
-│   └── checkout/             a directory grouping collections: one level only
+│   └── checkout/             a folder grouping collections: one level only
 │       ├── sessions.yml
 │       ├── sessions.csv      its data file (§2.8)
 │       └── refunds.yml
@@ -106,17 +106,17 @@ payments/                     a project
 └── .env                      secret values; not committed (§6)
 ```
 
-**Every `.yml` file directly in `collections/`, or in a directory one level down, is a
+**Every `.yml` file directly in `collections/`, or in a folder one level down, is a
 collection.** Nothing else is. Discovery is exact: no other `.yml` in a repository is
 mistaken for a collection. A file that does not parse is reported as a broken
 collection, never skipped in silence.
 
-- A directory inside a directory of `collections/` is reported as a problem and not
+- A folder inside a folder of `collections/` is reported as a problem and not
   read. `requests/`, `endpoints/` and `bases/` are read to the same depth, and
   `checks/` only at its top level.
-- Names starting with `.` are ignored, as are the directories `node_modules`, `.git`,
+- Names starting with `.` are ignored, as are the folders `node_modules`, `.git`,
   `reports`, `test-results`, `out` and `dist`.
-- Directories carry no configuration and need no file of their own. They group
+- Folders carry no configuration and need no file of their own. They group
   collections for display and for running a group.
 
 A project is any folder: the root of a repository, or one service of a monorepo. A
@@ -203,11 +203,11 @@ Projects are shared between macOS, Windows and Linux, and read the same on all t
   `use:` or `extends:` name, `uses`, a `tls.ca` file, a file a body sends, and an
   environment's file name. One that differs only in case is an error on every platform,
   naming the spelling on disk. The folders and files of §1 are lower case.
-- **No two names in one directory may differ only in case**, such as `Checkout/` and
+- **No two names in one folder may differ only in case**, such as `Checkout/` and
   `checkout/`: Linux can hold both, but a macOS or Windows checkout only one. This
   applies in `collections/`, `requests/`, `endpoints/`, `bases/`, `environments/` and
   `checks/`. Collection ids are unique ignoring case too (§2).
-- File, directory and environment names must avoid what Windows refuses: the characters
+- File, folder and environment names must avoid what Windows refuses: the characters
   `< > : " / \ | ? *`, control characters, a trailing dot or space, and the names `CON`,
   `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM1`–`COM9` and `LPT1`–`LPT9`, with or
   without an extension. A file with such a name, made on macOS or Linux, is reported.
@@ -282,7 +282,7 @@ global project's `settings.yml`, the project's, the environment variable, the fl
 | --------------------- | ----------------------------------------------------------- |
 | `gta get`             | Nothing. It lists what `gta all` would run.                 |
 | `gta all`             | Every collection, except those with `exclude: true` (§2.4). |
-| `gta smoke,checkout/` | The collections and directories named, in that order.       |
+| `gta smoke,checkout/` | The collections and folders named, in that order.           |
 
 `gta get` also reports each `use:` and `extends:` that would stop a run, and each file a
 body names that is in neither the project nor its global project (§2.2), in every
@@ -290,8 +290,8 @@ collection, including those `gta all` leaves out (Appendix A). A file path with
 `{{variables}}` is left to the run. It exits `1` when it finds one, or a broken
 collection, and `0` otherwise.
 
-A collection is named by its `id`, or by its place (`checkout/sessions`). A directory is
-named by its name, and `checkout/` names only the directory. `--flag name=value` sets a
+A collection is named by its `id`, or by its place (`checkout/sessions`). A folder is
+named by its name, and `checkout/` names only the folder. `--flag name=value` sets a
 feature flag (§2.9), and `--json` prints the results as JSON. The exit code is `0` when
 everything passed, `1` when something failed, and `2` when `gta` could not run.
 
@@ -367,7 +367,7 @@ exactly. `collections/checkout/sessions.yml` starts `id: sessions`.
 - **It must match the file name.** A file whose `id` is missing or different is a
   broken collection. Renaming a file means changing its `id` too.
 - **It must be unique in its home, ignoring case.** No two files in a project's
-  `collections/` may share an id, including files in different directories of it; the
+  `collections/` may share an id, including files in different folders of it; the
   same holds for `requests/`, `bases/` and `endpoints/`. Case is ignored because macOS
   and Windows file systems ignore it. Every file sharing an id is broken.
 - **It is letters, digits and `- _ .`, starting with a letter or digit**:
@@ -647,13 +647,13 @@ else selects it. With `stepTags: true`, its steps whose tags match are dropped f
 was selected.
 
 **`exclude: true`** leaves a collection out of group runs: `gta all`, with or without
-tags, and a directory named to `gta`. Named on its own, it still runs. Use it for work in
+tags, and a folder named to `gta`. Named on its own, it still runs. Use it for work in
 progress, a manual-only collection, or one waiting on a fix. `gta` lists what it left
 out, so a suite never shrinks without saying so.
 
 ### 2.5 Request sets and `use:`
 
-A **request set** is a collection in `requests/`, directly or one directory down, with a
+A **request set** is a collection in `requests/`, directly or one folder down, with a
 `params:` key: the inputs it takes. A step elsewhere runs it with **`use:`**, and passes
 values with **`with:`**.
 
@@ -707,7 +707,7 @@ method key, `headers`, `body`, `settings` or `before` on it is an error, and `wi
 without `use` is an error too.
 
 - **Finding the set.** `use: login` is `requests/login.yml` in the project, else in its
-  global project. `use: auth/login` is one directory down. `use: global:login` looks
+  global project. `use: auth/login` is one folder down. `use: global:login` looks
   only in the global project.
 - **`with:`** gives plain values; a param left out takes its default. A string may hold
   `{{variables}}`, resolved as the set's first request starts, just after the
@@ -1568,7 +1568,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - An endpoint (`endpoints/`) has a URL that is a path starting with `/`, and no use
   steps or connections. An endpoints file has no `setup` or `teardown`.
 - A check file's name is a JavaScript identifier; if it isn't, the file is not loaded.
-- `collections/`, `requests/`, `endpoints/` and `bases/` hold files at most one directory
+- `collections/`, `requests/`, `endpoints/` and `bases/` hold files at most one folder
   down.
 
 **Portability (§1.2)**
@@ -1579,7 +1579,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
   `Collections/`.
 - No two names in `collections/`, `requests/`, `endpoints/`, `bases/`, `environments/`
   or `checks/` differ only in case.
-- No file or directory name is one Windows refuses.
+- No file or folder name is one Windows refuses.
 
 **Projects**
 

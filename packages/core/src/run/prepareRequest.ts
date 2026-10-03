@@ -243,7 +243,6 @@ async function fileIn(
     if (code === 'ENOENT' || code === 'ENOTDIR') return null
     throw new BodyFileError(`${what}: ${written} — ${(cause as Error).message}`)
   }
-  if (stat.isDirectory())
-    throw new BodyFileError(`${what}: ${written} — is a directory, not a file`)
+  if (stat.isDirectory()) throw new BodyFileError(`${what}: ${written} — is a folder, not a file`)
   return file
 }

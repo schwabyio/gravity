@@ -179,6 +179,17 @@ export default function ProjectSettingsDrawer({
     identity: global?.path ?? null
   })
   const files = global ? [own, shared] : [own]
+  /** Why the folder chosen for `uses:` could not be named, when it could not. */
+  const [choosing, setChoosing] = useState<string | null>(null)
+
+  // Picked rather than typed: from a scratch pad in the app's data, the path
+  // to a repository is a long run of ../ nobody wants to count.
+  const chooseGlobal = async () => {
+    const result = await window.desktop.projects.pickFile({ kind: 'global', projectId: project.id })
+    if (!result.ok) return setChoosing(result.message)
+    setChoosing(null)
+    if (result.path) own.change({ uses: result.path })
+  }
 
   const close = useCallback(async () => {
     const unsaved = files.filter((file) => file.dirty && file.state !== 'conflict')
@@ -249,14 +260,24 @@ export default function ProjectSettingsDrawer({
             </label>
             <label className="project-field">
               <span className="field-label">Uses (a global project)</span>
-              <input
-                value={own.draft.uses}
-                placeholder="../shared"
-                aria-label="Global project"
-                spellCheck={false}
-                onChange={(e) => own.change({ uses: e.target.value })}
-              />
+              <span className="field-with-button">
+                <input
+                  value={own.draft.uses}
+                  placeholder="../shared"
+                  aria-label="Global project"
+                  spellCheck={false}
+                  onChange={(e) => own.change({ uses: e.target.value })}
+                />
+                <button type="button" onClick={() => void chooseGlobal()}>
+                  Choose…
+                </button>
+              </span>
             </label>
+            {choosing && (
+              <p className="setting-error" role="alert">
+                {choosing}
+              </p>
+            )}
             <p className="hint">
               A path relative to this project, written with <code>/</code> so it works on every
               machine. The global project gives every project that uses it its variables and
@@ -295,7 +316,10 @@ export default function ProjectSettingsDrawer({
 
           <CaSection project={project} ca={own.draft.ca} onChange={(ca) => own.change({ ca })} />
 
-          <LineEndingsSection project={project} onOpenChanges={onOpenChanges} />
+          {/* A scratch pad has no git to keep its line endings. */}
+          {!project.scratch && (
+            <LineEndingsSection project={project} onOpenChanges={onOpenChanges} />
+          )}
 
           {global && (
             <section aria-labelledby="project-shared-title" className="shared-vars">

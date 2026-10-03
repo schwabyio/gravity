@@ -193,7 +193,7 @@ describe('prepareRequest', () => {
       )
     )
     await expect(prepare({ POST: 'http://x/', body: { file: 'files' } })).rejects.toThrow(
-      'body.file: files — is a directory, not a file'
+      'body.file: files — is a folder, not a file'
     )
     await expect(
       prepare({ POST: 'http://x/', body: { file: '{{where}}' } }, { where: '/etc/hosts' })

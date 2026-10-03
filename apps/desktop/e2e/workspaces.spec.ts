@@ -183,7 +183,7 @@ test('adds a repository as a project, and each service of a monorepo as its own'
   await expect(page.locator('.sidebar')).not.toContainText('nope')
 })
 
-test('a project shows its directories one level deep, and reports anything deeper', async () => {
+test('a project shows its folders one level deep, and reports anything deeper', async () => {
   await expect(page.locator('.sidebar .step-row')).toHaveCount(0)
   // The constant collections/ segment is never shown.
   await expect(page.locator('.sidebar')).not.toContainText('collections/')

@@ -84,5 +84,7 @@ describe('a version 2 registry', () => {
       ]
     })
     expect(parsed.workspaces[0]?.projects[0]?.lineEndingsNoticeDismissed).toBe(false)
+    // Nor did scratch pads: every project then was an ordinary one.
+    expect(parsed.workspaces[0]?.projects[0]?.scratch).toBe(false)
   })
 })

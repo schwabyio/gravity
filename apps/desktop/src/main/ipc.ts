@@ -458,25 +458,17 @@ export function registerIpc(projects: ProjectService): void {
 
   /* ------------------------------------------------------------ projects -- */
 
-  ipcMain.handle(
-    IpcChannel.projectPick,
-    async (event, purpose: unknown): Promise<string | null> => {
-      const window = BrowserWindow.fromWebContents(event.sender)
-      const options = {
-        title:
-          purpose === 'all'
-            ? 'Add every project in a folder — a monorepo, or a folder of repositories'
-            : 'Add a project — the folder holding collections/, or a shared project',
-        properties: ['openDirectory', 'createDirectory'] as Array<
-          'openDirectory' | 'createDirectory'
-        >
-      }
-      const result = window
-        ? await dialog.showOpenDialog(window, options)
-        : await dialog.showOpenDialog(options)
-      return result.canceled ? null : (result.filePaths[0] ?? null)
+  ipcMain.handle(IpcChannel.projectPick, async (event): Promise<string | null> => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = {
+      title: 'Add a project — the folder holding collections/, or a monorepo of them',
+      properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>
     }
-  )
+    const result = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options)
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
 
   ipcMain.handle(
     IpcChannel.projectAdd,
@@ -484,12 +476,15 @@ export function registerIpc(projects: ProjectService): void {
       if (typeof workspaceId !== 'string') return { ok: false, message: 'Missing workspace' }
       if (typeof folder !== 'string' || folder === '')
         return { ok: false, message: 'Missing folder' }
-      const createCollections =
-        typeof options === 'object' &&
-        options !== null &&
-        (options as { createCollections?: unknown }).createCollections === true
+      const asked = (typeof options === 'object' && options !== null ? options : {}) as {
+        createCollections?: unknown
+        alone?: unknown
+      }
       try {
-        return await projects.addProject(workspaceId, folder, { createCollections })
+        return await projects.addProject(workspaceId, folder, {
+          createCollections: asked.createCollections === true,
+          alone: asked.alone === true
+        })
       } catch (cause) {
         return { ok: false, message: cause instanceof Error ? cause.message : String(cause) }
       }
@@ -514,14 +509,47 @@ export function registerIpc(projects: ProjectService): void {
     IpcChannel.projectClone,
     guard(async (_event, workspaceId: unknown, url: unknown, parentDir: unknown) => {
       if (typeof url !== 'string' || url.trim() === '') throw new Error('Missing repository URL')
-      if (typeof parentDir !== 'string' || parentDir === '') throw new Error('Missing directory')
+      if (typeof parentDir !== 'string' || parentDir === '') throw new Error('Missing folder')
       return await projects.cloneInto(String(workspaceId), url.trim(), parentDir)
     })
   )
 
-  ipcMain.handle(IpcChannel.projectRemove, async (_event, id: unknown) => {
-    if (typeof id === 'string') await projects.removeProject(id)
-  })
+  ipcMain.handle(
+    IpcChannel.projectRemove,
+    guard(async (_event, id: unknown) => {
+      if (typeof id === 'string') await projects.removeProject(id)
+      return {}
+    })
+  )
+
+  ipcMain.handle(
+    IpcChannel.projectRenameFolder,
+    guard(async (_event, id: unknown, name: unknown, to: unknown) => ({
+      path: await projects.renameFolder(String(id), String(name ?? ''), String(to ?? ''))
+    }))
+  )
+
+  ipcMain.handle(
+    IpcChannel.projectDeleteFolder,
+    guard(async (_event, id: unknown, name: unknown) => {
+      await projects.deleteFolder(String(id), String(name ?? ''))
+      return {}
+    })
+  )
+
+  ipcMain.handle(
+    IpcChannel.projectRenameScratchPad,
+    guard(async (_event, id: unknown, name: unknown) => ({
+      path: (await projects.renameScratchPad(String(id), String(name ?? ''))).path
+    }))
+  )
+
+  ipcMain.handle(
+    IpcChannel.projectCreateScratchPad,
+    guard(async (_event, workspaceId: unknown, name: unknown) => ({
+      id: (await projects.createScratchPad(String(workspaceId), String(name ?? ''))).id
+    }))
+  )
 
   ipcMain.handle(
     IpcChannel.projectSelectEnvironment,
@@ -580,9 +608,17 @@ export function registerIpc(projects: ProjectService): void {
       const { kind, root } = pickRoot(request)
       const window = BrowserWindow.fromWebContents(event.sender)
       const options = {
-        title: kind === 'certificate' ? 'Trust a CA certificate' : 'Choose a file to upload',
-        defaultPath: root,
-        properties: ['openFile'] as Array<'openFile'>,
+        title:
+          kind === 'certificate'
+            ? 'Trust a CA certificate'
+            : kind === 'global'
+              ? 'Choose the global project this one uses'
+              : 'Choose a file to upload',
+        // A global project is usually beside this one, not in it.
+        defaultPath: kind === 'global' ? path.dirname(root) : root,
+        properties: [kind === 'global' ? 'openDirectory' : 'openFile'] as Array<
+          'openFile' | 'openDirectory'
+        >,
         filters:
           kind === 'certificate'
             ? [
@@ -599,6 +635,9 @@ export function registerIpc(projects: ProjectService): void {
       // Spelled as the project root is: through symlinks (/var is /private/var on
       // macOS), and on Windows with long names, never 8.3 ones like RUNNER~1.
       const file = await canonical(picked)
+      if (kind === 'global' && samePath(file, root)) {
+        throw new Error('A project cannot use itself as its global project')
+      }
       // One of the global project's, not the project's own: named as its (SPEC.md §2.2).
       if (kind === 'upload' && !isInside(root, file)) {
         const { global } = await readProject(root)
@@ -609,7 +648,9 @@ export function registerIpc(projects: ProjectService): void {
       // Written relative so it works on every machine; another drive has no relative path.
       if (path.isAbsolute(path.relative(root, file))) {
         throw new Error(
-          `The file must be on the same drive as the project, so ${kind === 'certificate' ? 'tls.ca' : 'the collection'} can name it with a relative path`
+          `The ${kind === 'global' ? 'folder' : 'file'} must be on the same drive as the project, so ${
+            kind === 'certificate' ? 'tls.ca' : kind === 'global' ? 'uses:' : 'the collection'
+          } can name it with a relative path`
         )
       }
       return { path: relativePosix(root, file) }
@@ -617,16 +658,18 @@ export function registerIpc(projects: ProjectService): void {
   )
 
   /** The folder a picked file is named from: a known project's, or its global project's. */
-  const pickRoot = (request: unknown): { kind: 'certificate' | 'upload'; root: string } => {
+  const pickRoot = (
+    request: unknown
+  ): { kind: 'certificate' | 'upload' | 'global'; root: string } => {
     const asked = (request ?? {}) as {
       kind?: unknown
       projectId?: unknown
       collectionPath?: unknown
     }
-    if (asked.kind === 'certificate') {
+    if (asked.kind === 'certificate' || asked.kind === 'global') {
       const view = projects.project(String(asked.projectId))
       if (!view) throw new Error('Unknown project')
-      return { kind: 'certificate', root: view.path }
+      return { kind: asked.kind, root: view.path }
     }
     if (asked.kind === 'upload' && typeof asked.collectionPath === 'string') {
       const root = projectRootOf(asked.collectionPath) ?? path.dirname(asked.collectionPath)
@@ -773,6 +816,41 @@ export function registerIpc(projects: ProjectService): void {
       return outcome.ok
         ? { conflict: false, source: outcome.source, wrote: outcome.wrote }
         : { conflict: true, source: outcome.source, wrote: false }
+    })
+  )
+
+  // Each names a collection file of a project in a workspace; the service refuses any other.
+  ipcMain.handle(
+    IpcChannel.collectionRename,
+    guard(async (_event, file: unknown, id: unknown) => ({
+      path: await projects.renameCollection(assertInProjects(String(file)), String(id ?? ''))
+    }))
+  )
+
+  ipcMain.handle(
+    IpcChannel.collectionCopy,
+    guard(async (_event, file: unknown, projectId: unknown, directory: unknown, move: unknown) => ({
+      path: await projects.copyCollection(
+        assertInProjects(String(file)),
+        String(projectId),
+        optionalString(directory),
+        move === true
+      )
+    }))
+  )
+
+  ipcMain.handle(
+    IpcChannel.collectionMoveToFolder,
+    guard(async (_event, file: unknown, folder: unknown) => ({
+      path: await projects.moveToFolder(assertInProjects(String(file)), optionalString(folder))
+    }))
+  )
+
+  ipcMain.handle(
+    IpcChannel.collectionDelete,
+    guard(async (_event, file: unknown) => {
+      await projects.deleteCollection(assertInProjects(String(file)))
+      return {}
     })
   )
 

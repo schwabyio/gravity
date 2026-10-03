@@ -92,13 +92,25 @@ export function useProjects() {
     if (!folder) return
     const adding = `Adding ${folderName(folder)}…`
     let result = await whileDoing(adding, () => window.desktop.projects.add(workspaceId, folder))
+    // A monorepo's root, or a folder of repositories: the projects in it, all at once.
     if (!result.ok && result.projectsInside) {
-      if (!window.confirm(`${result.message} Add them all?`)) return
-      const all = await whileDoing(adding, () =>
-        window.desktop.projects.addAll(workspaceId, folder)
+      const question = result.alsoProject
+        ? result.projectsInside.length === 1
+          ? 'Add it too?'
+          : 'Add them too?'
+        : 'Add them all?'
+      if (window.confirm(`${result.message} ${question}`)) {
+        const all = await whileDoing(adding, () =>
+          window.desktop.projects.addAll(workspaceId, folder)
+        )
+        if (!all.ok) return fail(all.message)
+        return tell(addedMessage(folder, all.added, all.already))
+      }
+      if (!result.alsoProject) return
+      // Just the project picked, then.
+      result = await whileDoing(adding, () =>
+        window.desktop.projects.add(workspaceId, folder, { alone: true })
       )
-      if (!all.ok) return fail(all.message)
-      return tell(addedMessage(folder, all.added, all.already))
     }
     if (!result.ok && result.noCollections) {
       if (!window.confirm(`${result.message} Create collections/ in it and add it as a project?`)) {
@@ -109,20 +121,6 @@ export function useProjects() {
       )
     }
     if (!result.ok) fail(result.message)
-  }, [state.activeWorkspaceId])
-
-  /** Search a folder, a monorepo's say, and add every project in it. */
-  const addProjectsIn = useCallback(async () => {
-    setError(null)
-    const workspaceId = state.activeWorkspaceId ?? (await listing.current)?.activeWorkspaceId
-    if (!workspaceId) return
-    const folder = await window.desktop.projects.pick('all')
-    if (!folder) return
-    const result = await whileDoing(`Searching ${folderName(folder)} for projects…`, () =>
-      window.desktop.projects.addAll(workspaceId, folder)
-    )
-    if (!result.ok) return fail(result.message)
-    tell(addedMessage(folder, result.added, result.already))
   }, [state.activeWorkspaceId])
 
   const cloneUrl = useCallback(
@@ -169,9 +167,19 @@ export function useProjects() {
     notice,
     cloning,
     addProject,
-    addProjectsIn,
     cloneUrl,
-    removeProject: (id: string) => window.desktop.projects.remove(id),
+    removeProject: (id: string) => run(window.desktop.projects.remove(id)),
+    /** Make a scratch pad in the active workspace; resolves to a refusal to show, or null. */
+    createScratchPad: async (name: string): Promise<string | null> => {
+      const workspaceId = state.activeWorkspaceId ?? (await listing.current)?.activeWorkspaceId
+      if (!workspaceId) return 'No workspace to add it to'
+      const result = await window.desktop.projects.createScratchPad(workspaceId, name)
+      return result.ok ? null : result.message
+    },
+    /** A brief word on what was just done; it fades. */
+    notify: tell,
+    /** Say what went wrong, above the sidebar's projects. */
+    showError: (message: string) => fail(message),
     fetch: (id: string) => void run(window.desktop.git.fetch(id)),
     pull,
     push: (id: string) => void run(window.desktop.git.push(id)),

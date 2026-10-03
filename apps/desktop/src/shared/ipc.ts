@@ -50,6 +50,10 @@ export const IpcChannel = {
   projectSelectEnvironment: 'projects:selectEnvironment',
   projectCreateDirectory: 'projects:createDirectory',
   projectCreateCollection: 'projects:createCollection',
+  projectCreateScratchPad: 'projects:createScratchPad',
+  projectRenameScratchPad: 'projects:renameScratchPad',
+  projectRenameFolder: 'projects:renameFolder',
+  projectDeleteFolder: 'projects:deleteFolder',
   projectApplyEdits: 'projects:applyEdits',
   projectPickFile: 'projects:pickFile',
 
@@ -72,6 +76,10 @@ export const IpcChannel = {
 
   collectionRead: 'collection:read',
   collectionApplyEdits: 'collection:applyEdits',
+  collectionRename: 'collection:rename',
+  collectionCopy: 'collection:copy',
+  collectionMoveToFolder: 'collection:moveToFolder',
+  collectionDelete: 'collection:delete',
   dataRead: 'data:read',
   dataApply: 'data:apply',
   dataApplyText: 'data:applyText',
@@ -279,8 +287,11 @@ export interface GlobalProjectView {
  * in the body of a collection file's step — named from that file's project,
  * which may be a global one.
  */
+/** A file to name from a project: a CA certificate, a file to upload, or a global project's folder. */
 export type PickFileRequest =
-  { kind: 'certificate'; projectId: string } | { kind: 'upload'; collectionPath: string }
+  | { kind: 'certificate'; projectId: string }
+  | { kind: 'upload'; collectionPath: string }
+  | { kind: 'global'; projectId: string }
 
 /** One file in `tls.ca` (SPEC.md §1.1), and what it holds. */
 export interface CaFileView {
@@ -302,6 +313,8 @@ export interface ProjectView {
   name: string
   /** False when the folder has gone: the entry is kept, not dropped. */
   available: boolean
+  /** A scratch pad: made by the app in its own data folder, with no git. */
+  scratch: boolean
   isRepo: boolean
   /** The repository's root — shared by every project in a monorepo. */
   repoRoot: string | null
@@ -398,8 +411,12 @@ export type AddProjectOutcome =
       message: string
       /** Neither a project nor holding any: `createCollections` makes it one. */
       noCollections?: boolean
-      /** Not a project, but the folder of the projects here, relative to it: add them all instead. */
+      /**
+       * The projects in the folder, relative to it: add them all instead — or,
+       * with `alsoProject`, besides the folder, itself a project (`alone` adds it on its own).
+       */
       projectsInside?: string[]
+      alsoProject?: boolean
     }
 
 /** Every project found in a folder, as added: those new to the workspace and those already in it. */
@@ -613,11 +630,8 @@ export interface DesktopApi {
   }
 
   projects: {
-    /**
-     * Open a folder picker; resolves null when cancelled. `all`: the folder to
-     * search for projects, rather than a project itself.
-     */
-    pick(purpose?: 'all'): Promise<string | null>
+    /** Open a folder picker; resolves null when cancelled. */
+    pick(): Promise<string | null>
     /**
      * Add a folder as a project: one with `collections/`, or a shared project with
      * the rest of one; `createCollections` makes a missing `collections/` otherwise.
@@ -625,7 +639,7 @@ export interface DesktopApi {
     add(
       workspaceId: string,
       folder: string,
-      options?: { createCollections?: boolean }
+      options?: { createCollections?: boolean; alone?: boolean }
     ): Promise<AddProjectOutcome>
     /** Add every project in a folder, a monorepo's say, by name: those found and already there. */
     addAll(workspaceId: string, folder: string): Promise<AddProjectsOutcome>
@@ -635,10 +649,15 @@ export interface DesktopApi {
       url: string,
       parentDir: string
     ): Promise<Result<{ folder: string; added: string[] }>>
-    remove(id: string): Promise<void>
+    /** Remove a project from its workspace; a scratch pad's folder goes to the Trash. */
+    remove(id: string): Promise<Result<Record<string, never>>>
     reveal(path: string): Promise<void>
     selectEnvironment(id: string, environment: string | null): Promise<void>
     createDirectory(id: string, name: string): Promise<Result<{ path: string }>>
+    /** Rename a folder of the project's `collections/`, with everything in it. */
+    renameFolder(id: string, name: string, to: string): Promise<Result<{ path: string }>>
+    /** Delete a folder of the project's `collections/` and everything in it, to the Trash. */
+    deleteFolder(id: string, name: string): Promise<Result<Record<string, never>>>
     /** A collection in `collections/`, or with `kind: 'set'` a request set in `requests/`. */
     createCollection(
       id: string,
@@ -658,9 +677,17 @@ export interface DesktopApi {
       target?: 'project' | 'global'
     ): Promise<Result<{ conflict: boolean; source: string; wrote: boolean }>>
     /**
-     * Pick a file for a project to name: a certificate for its `tls.ca`, or a
-     * file for a collection's body to upload. It resolves to the file's path
-     * from the project folder, with `/`, or to null when cancelled.
+     * Make a scratch pad in a workspace: a project in the app's own data folder,
+     * with no git, for ad hoc work.
+     */
+    createScratchPad(workspaceId: string, name: string): Promise<Result<{ id: string }>>
+    /** Rename a scratch pad: its folder, and its `project.yml` name if it has one. */
+    renameScratchPad(id: string, name: string): Promise<Result<{ path: string }>>
+    /**
+     * Pick a file for a project to name: a certificate for its `tls.ca`, a
+     * file for a collection's body to upload, or the folder of a global
+     * project for its `uses:`. It resolves to the path from the project
+     * folder, with `/`, or to null when cancelled.
      */
     pickFile(request: PickFileRequest): Promise<Result<{ path: string | null }>>
     onUpdated(callback: (project: ProjectView) => void): Unsubscribe
@@ -723,6 +750,19 @@ export interface DesktopApi {
       baseSource: string,
       edits: CollectionEdit[]
     ): Promise<Result<{ conflict: boolean; source: string; wrote: boolean }>>
+    /** Give a collection a new id: its file, its data file and its `id:` together. */
+    rename(path: string, id: string): Promise<Result<{ path: string }>>
+    /** Copy a collection, with its data file, into another project's `collections/`, or move it there. */
+    copy(
+      path: string,
+      projectId: string,
+      directory: string | null,
+      move: boolean
+    ): Promise<Result<{ path: string }>>
+    /** Move a collection, with its data file, to another folder of its project; null for the root. */
+    moveToFolder(path: string, folder: string | null): Promise<Result<{ path: string }>>
+    /** Delete a collection and its data file, to the Trash. */
+    remove(path: string): Promise<Result<Record<string, never>>>
   }
 
   data: {

@@ -119,7 +119,7 @@ export async function discoverProject(root: string): Promise<ProjectLayout> {
         } else if (inner.isDirectory() && !isHidden(inner.name)) {
           layout.problems.push({
             path: `${entry.name}/${inner.name}`,
-            message: `Directories inside collections/ go one level deep, so collections/${entry.name}/${inner.name}/ is not read (SPEC.md §1)`
+            message: `Folders inside collections/ go one level deep, so collections/${entry.name}/${inner.name}/ is not read (SPEC.md §1)`
           })
         }
       }

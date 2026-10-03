@@ -104,7 +104,7 @@ async function readCaFile(
         code === 'ENOENT'
           ? 'no such file'
           : code === 'EISDIR'
-            ? 'is a directory, not a certificate file'
+            ? 'is a folder, not a certificate file'
             : `cannot be read: ${(cause as Error).message}`
     }
   }

@@ -168,6 +168,8 @@ test('collapses long docs behind a chevron toggle', async () => {
   await expect(toggle).toHaveAttribute('aria-expanded', 'true')
   // An icon, named for screen readers and explained on hover.
   await expect(toggle).toHaveText('')
+  // Away first: the pointer is still where it pressed the toggle, and a press explains nothing.
+  await page.mouse.move(0, 0)
   await toggle.hover()
   await expect(page.getByRole('tooltip')).toHaveText('Show less')
   await expect(page.getByRole('button', { name: 'Show less' })).toBeVisible()

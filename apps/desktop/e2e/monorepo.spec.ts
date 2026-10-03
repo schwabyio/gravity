@@ -12,8 +12,9 @@ import {
 import { DEFAULT_WINDOW, sizeWindow } from './window'
 
 /**
- * + Monorepo: search a folder and add every project in it — each folder with a
- * collections/, and the global project they use — in one go.
+ * + Project on a monorepo's root, or a folder of repositories: it offers every
+ * project in it — each folder with a collections/, and the global project
+ * they use — and adds them in one go.
  */
 
 const MAIN = path.resolve(process.cwd(), 'out/main/index.js')
@@ -56,18 +57,28 @@ test.afterAll(async () => {
   fs.rmSync(tmp, { recursive: true, force: true })
 })
 
-const addFrom = async (folder: string) => {
+/** + Project on `folder`, answering the question it asks, if any; resolves to that question. */
+const addFrom = async (folder: string, answer = true): Promise<() => string> => {
+  let asked = ''
+  page.once('dialog', (dialog) => {
+    asked = dialog.message()
+    void (answer ? dialog.accept() : dialog.dismiss())
+  })
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
   }, folder)
-  await page.getByRole('button', { name: '+ Monorepo' }).click()
+  await page.getByRole('button', { name: '+ Project' }).click()
+  return () => asked
 }
 const projects = () => page.locator('.sidebar section.project')
 
 test('adds every project in a monorepo, and the shared project they use, at once', async () => {
-  await addFrom(platform)
+  const asked = await addFrom(platform)
   await expect(page.locator('.sidebar-status')).toHaveText(
     'Added 3 projects from platform: auth, users, Shared.'
+  )
+  expect(asked()).toBe(
+    'platform is not a project, but holds 3 projects: services/auth, services/users, shared. Add them all?'
   )
   await expect(projects()).toHaveCount(3)
   for (const name of ['auth', 'users', 'Shared']) {
@@ -87,33 +98,53 @@ test('adding the same folder again adds nothing, and says so', async () => {
   await expect(projects()).toHaveCount(3)
 })
 
-test('a folder with no projects in it says what a project is', async () => {
-  await addFrom(path.join(tmp, 'empty'))
-  await expect(page.locator('.sidebar-error')).toContainText(
-    'No projects in empty: a project is a folder holding collections/.'
-  )
+test('a folder with no projects in it asks before becoming one', async () => {
+  const asked = await addFrom(path.join(tmp, 'empty'), false)
+  await expect
+    .poll(asked)
+    .toBe(
+      'empty has no collections/ folder, nor project.yml or anything else a project holds. Create collections/ in it and add it as a project?'
+    )
   await expect(projects()).toHaveCount(3)
+  expect(fs.existsSync(path.join(tmp, 'empty', 'collections'))).toBe(false)
 })
 
-test('+ Project on a monorepo’s root offers the projects in it, and adds them all', async () => {
+test('a folder of repositories offers the projects in it, and adds them all', async () => {
   const other = path.join(tmp, 'other')
   write(path.join(other, 'apps', 'web', 'collections', 'home.yml'), collection('home'))
   write(path.join(other, 'apps', 'admin', 'collections', 'users.yml'), collection('users'))
-  let asked = ''
-  page.once('dialog', (dialog) => {
-    asked = dialog.message()
-    void dialog.accept()
-  })
-  await app.evaluate(({ dialog }, target) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
-  }, other)
-  await page.getByRole('button', { name: '+ Project' }).click()
+  const asked = await addFrom(other)
   await expect(page.locator('.sidebar-status')).toHaveText(
     'Added 2 projects from other: admin, web.'
   )
-  expect(asked).toBe(
+  expect(asked()).toBe(
     'other is not a project, but holds 2 projects: apps/admin, apps/web. Add them all?'
   )
   await expect(projects()).toHaveCount(5)
   expect(fs.existsSync(path.join(other, 'collections'))).toBe(false)
+})
+
+test('a project holding more projects offers them too, or is added alone', async () => {
+  const suite = path.join(tmp, 'suite')
+  write(path.join(suite, 'collections', 'smoke.yml'), collection('smoke'))
+  write(
+    path.join(suite, 'services', 'billing', 'collections', 'invoices.yml'),
+    collection('invoices')
+  )
+  write(path.join(suite, 'services', 'search', 'collections', 'query.yml'), collection('query'))
+
+  // Told no: the folder picked, and nothing inside it.
+  const declined = await addFrom(suite, false)
+  await expect(page.getByRole('region', { name: 'Project suite', exact: true })).toBeVisible()
+  expect(declined()).toBe(
+    'suite is a project, and holds 2 more: services/billing, services/search. Add them too?'
+  )
+  await expect(projects()).toHaveCount(6)
+
+  // Told yes: the rest join it.
+  await addFrom(suite)
+  await expect(page.locator('.sidebar-status')).toHaveText(
+    'Added 2 projects from suite: billing, search. 1 more was here already.'
+  )
+  await expect(projects()).toHaveCount(8)
 })

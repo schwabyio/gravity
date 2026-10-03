@@ -13,7 +13,7 @@ interface Props {
 }
 
 /**
- * A one-line form for naming something — a workspace, a directory, a
+ * A one-line form for naming something — a workspace, a folder, a
  * collection. Enter submits, Escape cancels; a refusal (a name already used,
  * one Windows would not allow) is shown under the field and the name kept.
  */

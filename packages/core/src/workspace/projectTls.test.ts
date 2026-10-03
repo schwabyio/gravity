@@ -72,7 +72,7 @@ describe('loadProjectTls', () => {
     expect(trust.ca).toEqual([])
     expect(trust.files.map((file) => file.problem)).toEqual([
       'holds no certificate: a PEM file needs a -----BEGIN CERTIFICATE----- block',
-      'is a directory, not a certificate file',
+      'is a folder, not a certificate file',
       'no such file'
     ])
     expect(trust.problems).toEqual([
@@ -81,7 +81,7 @@ describe('loadProjectTls', () => {
         message:
           'holds no certificate: a PEM file needs a -----BEGIN CERTIFICATE----- block (tls.ca in project.yml)'
       },
-      { path: 'certs', message: 'is a directory, not a certificate file (tls.ca in project.yml)' },
+      { path: 'certs', message: 'is a folder, not a certificate file (tls.ca in project.yml)' },
       {
         path: '../../shared/certs/missing.pem',
         message: 'no such file (tls.ca in ../../shared/project.yml)'

@@ -18,8 +18,12 @@ const isDev = !app.isPackaged
 placeUserData()
 migrateUserData()
 // A discarded change goes to the Trash, so it can be got back. Looked up on
-// each call rather than bound once.
-const projects = new ProjectService({ moveAside: (file) => shell.trashItem(file) })
+// each call rather than bound once. Scratch pads live in the app's own data,
+// asked for only once the app is ready and `--user-data-dir` has been applied.
+const projects = new ProjectService({
+  moveAside: (file) => shell.trashItem(file),
+  scratchPads: () => path.join(app.getPath('userData'), 'Scratch pads')
+})
 
 function createWindow(): void {
   // Never larger than the screen it opens on, whose edges would hide its own.

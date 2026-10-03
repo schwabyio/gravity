@@ -243,7 +243,7 @@ describe('editing a project', () => {
       await import('./projectEdits.js')
     const root = path.join(tmp, 'made')
     await createDirectory(root, 'Orders')
-    await expect(createDirectory(root, 'Orders')).rejects.toThrow('already a directory')
+    await expect(createDirectory(root, 'Orders')).rejects.toThrow('already a folder')
     await expect(createDirectory(root, 'a/b')).rejects.toThrow('cannot contain')
     const made = await createCollection(root, 'Orders', 'place-an-order')
     expect(made.path).toBe(path.join(root, 'collections', 'Orders', 'place-an-order.yml'))

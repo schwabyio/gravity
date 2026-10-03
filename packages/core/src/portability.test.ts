@@ -150,7 +150,7 @@ describe('names a checkout on another platform could not hold', () => {
     const project = path.join(tmp, 'services', 'making')
     await fs.mkdir(path.join(project, 'collections', 'checkout'), { recursive: true })
     await expect(createDirectory(project, 'Checkout')).rejects.toThrow(
-      'There is already a directory called "checkout"'
+      'There is already a folder called "checkout"'
     )
     await write(path.join(project, 'environments', 'Staging.yml'), 'vars: {}\n')
     await expect(

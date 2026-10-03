@@ -26,12 +26,18 @@ import {
   addLfAttributes,
   applyProjectEdits,
   clone,
+  canonical,
+  collectionsFolder,
   convertToLf,
+  copyCollectionFile,
   createCollectionFile,
   createDirectory,
   defaultCloneName,
   discoverProject,
+  DOC_EXTENSION,
+  findDataFile,
   findProjects,
+  foldName,
   gitAtLeast,
   GitCommandError,
   gitVersion,
@@ -41,8 +47,12 @@ import {
   lineEndingState,
   loadProjectCollections,
   loadProjectTls,
+  moveCollectionToFolder,
+  nameProblem,
   parseProgress,
   relativePosix,
+  renameCollectionFile,
+  renameCollectionsFolder,
   resolveRelative,
   projectEnvironments,
   projectRootFor,
@@ -84,6 +94,8 @@ export interface ProjectServiceOptions {
    * rejects when it cannot, and then nothing is discarded.
    */
   moveAside: (file: string) => Promise<void>
+  /** The folder scratch pads are made in: the app's own data, never a repository. */
+  scratchPads: () => string
 }
 
 /**
@@ -217,8 +229,13 @@ export class ProjectService {
     this.emitState()
   }
 
+  /** Forget a workspace and its projects, leaving their files alone — but its scratch pads' go to the Trash. */
   async removeWorkspace(id: string): Promise<void> {
-    for (const project of await this.registry.removeWorkspace(id)) this.forget(project.id)
+    for (const project of await this.registry.removeWorkspace(id)) {
+      this.forget(project.id)
+      // A folder the Trash refuses stays where it is; the workspace goes all the same.
+      if (project.scratch) await this.trashScratchPad(project.path).catch(() => undefined)
+    }
     this.emitState()
   }
 
@@ -234,12 +251,15 @@ export class ProjectService {
    * its parent. A folder with no `collections/` is added as it is when it holds
    * the rest of a project — a global project may hold nothing else (SPEC.md
    * §1.1) — and otherwise only when asked to create one, so a wrong pick does
-   * not quietly become an empty project.
+   * not quietly become an empty project. A folder holding projects — a
+   * monorepo's root, a folder of repositories — offers them instead; one that
+   * is a project and holds more besides, a repository-wide suite above its
+   * services, offers them too unless `alone`.
    */
   async addProject(
     workspaceId: string,
     folder: string,
-    options: { createCollections?: boolean } = {}
+    options: { createCollections?: boolean; alone?: boolean } = {}
   ): Promise<AddProjectOutcome> {
     const root = await projectRootFor(folder)
     const stat = await fs.stat(root).catch(() => null)
@@ -264,6 +284,17 @@ export class ProjectService {
         }
       }
       await fs.mkdir(collections)
+    } else if (!options.alone) {
+      const more = (await findProjects(root)).filter((project) => !samePath(project, root))
+      if (more.length > 0) {
+        const names = more.map((project) => relativePosix(root, project))
+        return {
+          ok: false,
+          projectsInside: names,
+          alsoProject: true,
+          message: `${path.basename(root)} is a project, and holds ${more.length} more: ${names.join(', ')}.`
+        }
+      }
     }
 
     const entry = await this.registry.addProject(workspaceId, root)
@@ -313,7 +344,7 @@ export class ProjectService {
 
   /**
    * Clone a repository into a folder and add it, reporting progress as it goes:
-   * a monorepo's projects each, as + Monorepo adds them; otherwise the clone
+   * a monorepo's projects each, as + Project adds a monorepo's; otherwise the clone
    * itself, as + Project would, made a project if it is not one yet. Returns the
    * clone's folder and the names of the projects added.
    */
@@ -354,10 +385,183 @@ export class ProjectService {
     }
   }
 
+  /**
+   * Remove a project from its workspace, leaving its files alone — except a
+   * scratch pad's, which are the app's: its folder goes to the Trash, unless
+   * another workspace has it too.
+   */
   async removeProject(id: string): Promise<void> {
+    const found = this.registry.project(id)
     this.forget(id)
+    if (found?.entry.scratch) {
+      try {
+        await this.trashScratchPad(found.entry.path, id)
+      } catch (cause) {
+        // Still a project, then: listed and watched again.
+        await this.refresh(id)
+        throw cause
+      }
+    }
     await this.registry.removeProject(id)
     this.emitState()
+  }
+
+  /** A scratch pad's folder, to the Trash — unless a project other than `except` is that folder too. */
+  private async trashScratchPad(root: string, except?: string): Promise<void> {
+    const shared = this.registry
+      .projects()
+      .some(({ entry }) => entry.id !== except && samePath(entry.path, root))
+    if (!shared && (await isDirectory(root))) await this.options.moveAside(root)
+  }
+
+  /* -------------------------------------------------------- scratch pads -- */
+
+  /**
+   * Make a scratch pad in a workspace: a project of its own in the app's data
+   * folder, `Scratch pads/<name>/` with a `collections/`, for ad hoc work that
+   * belongs in no repository. It is read like any project, without git.
+   */
+  async createScratchPad(workspaceId: string, name: string): Promise<ProjectView> {
+    const trimmed = name.trim()
+    const problem = nameProblem(trimmed)
+    if (problem) throw new Error(problem)
+    if (!this.registry.workspace(workspaceId)) throw new Error('Unknown workspace')
+    const home = this.options.scratchPads()
+    await fs.mkdir(home, { recursive: true })
+    // One folder each, whatever the case: macOS and Windows could not hold both.
+    const existing = (await fs.readdir(home)).find((entry) => foldName(entry) === foldName(trimmed))
+    if (existing !== undefined)
+      throw new Error(`There is already a scratch pad called "${existing}"`)
+    const root = path.join(home, trimmed)
+    await fs.mkdir(path.join(root, COLLECTIONS_DIR), { recursive: true })
+    const entry = await this.registry.addProject(workspaceId, await canonical(root), {
+      scratch: true
+    })
+    const view = (await this.listed(entry.id)) ?? placeholder(entry, workspaceId)
+    this.emitState()
+    return view
+  }
+
+  /**
+   * Rename a scratch pad: its folder in the app's data, and the name its
+   * `project.yml` gives it, if it gives one. Its collections keep their ids
+   * and its `uses:` still reaches its global project, from a folder beside the
+   * old one.
+   */
+  async renameScratchPad(id: string, name: string): Promise<ProjectView> {
+    const found = this.registry.project(id)
+    const view = this.views.get(id)
+    if (!found?.entry.scratch || !view) throw new Error('Only a scratch pad is renamed here')
+    const trimmed = name.trim()
+    const problem = nameProblem(trimmed)
+    if (problem) throw new Error(problem)
+    const from = found.entry.path
+    const home = path.dirname(from)
+    const existing = (await fs.readdir(home)).find(
+      (entry) => foldName(entry) === foldName(trimmed) && entry !== path.basename(from)
+    )
+    if (existing !== undefined)
+      throw new Error(`There is already a scratch pad called "${existing}"`)
+
+    // Shown under the name its project.yml gives, if any: that becomes the new one too.
+    if (view.project?.name !== undefined) {
+      const named = await applyProjectEdits(from, view.projectSource, [
+        { key: 'name', value: trimmed }
+      ])
+      if (!named.ok) throw new Error(`${PROJECT_FILE} changed on disk: try again`)
+    }
+    const to = path.join(home, trimmed)
+    if (to !== from) {
+      // Not watched while it moves: on Windows an open watch can hold the folder.
+      const sharing = this.registry.projects().filter(({ entry }) => samePath(entry.path, from))
+      for (const { entry } of sharing) this.forget(entry.id)
+      try {
+        await fs.rename(from, to)
+        await this.registry.moveProjects(from, await canonical(to))
+      } finally {
+        await Promise.all(sharing.map(({ entry }) => this.refresh(entry.id)))
+      }
+    } else {
+      await this.refresh(id)
+    }
+    this.emitState()
+    return this.required(id)
+  }
+
+  /* --------------------------------------------------------- collections -- */
+
+  /** The project a file of `collections/` is in, or a refusal for any other file. */
+  private ownerOf(file: string): ProjectView {
+    const view = [...this.views.values()].find((candidate) =>
+      isInside(path.join(candidate.path, COLLECTIONS_DIR), file)
+    )
+    if (!view || !file.endsWith(DOC_EXTENSION)) {
+      throw new Error('Not a collection of a project in a workspace')
+    }
+    return view
+  }
+
+  /** Re-read every project in a folder: a folder can be a project in more than one workspace. */
+  private async refreshAt(root: string): Promise<void> {
+    const views = [...this.views.values()].filter((view) => samePath(view.path, root))
+    await Promise.all(views.map((view) => this.refresh(view.id)))
+  }
+
+  /** Give a collection a new id: its file and its data file renamed, and its `id:` rewritten. */
+  async renameCollection(file: string, id: string): Promise<string> {
+    const owner = this.ownerOf(file)
+    const renamed = await renameCollectionFile(owner.path, file, id)
+    await this.refreshAt(owner.path)
+    return renamed
+  }
+
+  /** Move a collection, with its data file, to another folder of its project — or its root. */
+  async moveToFolder(file: string, folder: string | null): Promise<string> {
+    const owner = this.ownerOf(file)
+    const moved = await moveCollectionToFolder(owner.path, file, folder)
+    await this.refreshAt(owner.path)
+    return moved
+  }
+
+  /** Copy a collection, with its data file, into another project — or move it there. */
+  async copyCollection(
+    file: string,
+    projectId: string,
+    directory: string | null,
+    move: boolean
+  ): Promise<string> {
+    const owner = this.ownerOf(file)
+    const target = this.required(projectId)
+    if (samePath(owner.path, target.path)) {
+      throw new Error(`${path.basename(file)} is in ${target.name} already`)
+    }
+    const copied = await copyCollectionFile(file, target.path, directory, { move })
+    await Promise.all([this.refreshAt(owner.path), this.refreshAt(target.path)])
+    return copied
+  }
+
+  /** Rename a folder of a project's `collections/`, with everything in it. */
+  async renameFolder(projectId: string, name: string, to: string): Promise<string> {
+    const view = this.required(projectId)
+    const renamed = await renameCollectionsFolder(view.path, name, to)
+    await this.refreshAt(view.path)
+    return renamed
+  }
+
+  /** Delete a folder of a project's `collections/` and everything in it, to the Trash. */
+  async deleteFolder(projectId: string, name: string): Promise<void> {
+    const view = this.required(projectId)
+    await this.options.moveAside(await collectionsFolder(view.path, name))
+    await this.refreshAt(view.path)
+  }
+
+  /** Delete a collection and its data file, to the Trash. */
+  async deleteCollection(file: string): Promise<void> {
+    const owner = this.ownerOf(file)
+    const dataFile = await findDataFile(file)
+    await this.options.moveAside(file)
+    if (dataFile) await this.options.moveAside(dataFile)
+    await this.refreshAt(owner.path)
   }
 
   private forget(id: string): void {
@@ -455,8 +659,11 @@ export class ProjectService {
     }
 
     // git is read alongside the files rather than before them: on Windows it
-    // can be slow to start, and the files need not wait for it.
-    const reading = this.readRepo(entry.path)
+    // can be slow to start, and the files need not wait for it. A scratch pad
+    // has none, even were the app's data folder in a repository.
+    const reading = entry.scratch
+      ? Promise.resolve({ repo: null, git: null, gitNote: null })
+      : this.readRepo(entry.path)
     // Its failure is met below; until then it must not count as unhandled.
     reading.catch(() => undefined)
     const layout = await discoverProject(entry.path)
@@ -488,6 +695,7 @@ export class ProjectService {
       path: entry.path,
       name: info.doc?.name ?? path.basename(entry.path),
       available: true,
+      scratch: entry.scratch,
       hasCollections: await isDirectory(layout.collectionsDir),
       collections,
       directories: layout.directories,
@@ -1042,6 +1250,7 @@ const placeholder = (entry: ProjectEntry, workspaceId: string): ProjectView => (
   path: entry.path,
   name: path.basename(entry.path),
   available: true,
+  scratch: entry.scratch,
   isRepo: false,
   repoRoot: null,
   git: null,

@@ -44,7 +44,7 @@ const api: DesktopApi = {
   },
 
   projects: {
-    pick: (purpose?: 'all') => ipcRenderer.invoke(IpcChannel.projectPick, purpose),
+    pick: () => ipcRenderer.invoke(IpcChannel.projectPick),
     addAll: (workspaceId: string, folder: string) =>
       ipcRenderer.invoke(IpcChannel.projectAddAll, workspaceId, folder),
     add: (workspaceId: string, folder: string, options?: { createCollections?: boolean }) =>
@@ -61,6 +61,14 @@ const api: DesktopApi = {
       ipcRenderer.invoke(IpcChannel.projectCreateCollection, id, directory, name, kind),
     applyEdits: (id: string, baseSource: string | null, edits, target) =>
       ipcRenderer.invoke(IpcChannel.projectApplyEdits, id, baseSource, edits, target),
+    renameFolder: (id: string, name: string, to: string) =>
+      ipcRenderer.invoke(IpcChannel.projectRenameFolder, id, name, to),
+    deleteFolder: (id: string, name: string) =>
+      ipcRenderer.invoke(IpcChannel.projectDeleteFolder, id, name),
+    createScratchPad: (workspaceId: string, name: string) =>
+      ipcRenderer.invoke(IpcChannel.projectCreateScratchPad, workspaceId, name),
+    renameScratchPad: (id: string, name: string) =>
+      ipcRenderer.invoke(IpcChannel.projectRenameScratchPad, id, name),
     pickFile: (request) => ipcRenderer.invoke(IpcChannel.projectPickFile, request),
     onUpdated: (callback: (project: ProjectView) => void) =>
       subscribe(IpcChannel.eventProject, callback)
@@ -94,7 +102,13 @@ const api: DesktopApi = {
   collection: {
     read: (file: string) => ipcRenderer.invoke(IpcChannel.collectionRead, file),
     applyEdits: (file: string, baseSource: string, edits) =>
-      ipcRenderer.invoke(IpcChannel.collectionApplyEdits, file, baseSource, edits)
+      ipcRenderer.invoke(IpcChannel.collectionApplyEdits, file, baseSource, edits),
+    rename: (file: string, id: string) => ipcRenderer.invoke(IpcChannel.collectionRename, file, id),
+    copy: (file: string, projectId: string, directory: string | null, move: boolean) =>
+      ipcRenderer.invoke(IpcChannel.collectionCopy, file, projectId, directory, move),
+    moveToFolder: (file: string, folder: string | null) =>
+      ipcRenderer.invoke(IpcChannel.collectionMoveToFolder, file, folder),
+    remove: (file: string) => ipcRenderer.invoke(IpcChannel.collectionDelete, file)
   },
 
   variables: {

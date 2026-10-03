@@ -308,7 +308,7 @@ export default function CollectionView(props: Props) {
               onChange={props.onCollectionTags}
             />
             {props.collection.exclude === true && (
-              <Tooltip text="Left out of gta all and directory runs; named on its own, it still runs">
+              <Tooltip text="Left out of gta all and folder runs; named on its own, it still runs">
                 <button
                   type="button"
                   className="excluded-badge"

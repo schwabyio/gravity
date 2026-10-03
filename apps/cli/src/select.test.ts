@@ -76,7 +76,7 @@ describe('selectCollections', () => {
   it('refuses a name that matches nothing', () => {
     expect(() =>
       selectCollections(all, { kind: 'list', selectors: ['smoke', 'nope'] }, none)
-    ).toThrow('No collection or directory is called "nope"')
+    ).toThrow('No collection or folder is called "nope"')
   })
 
   it('leaves an excluded collection out of all and its directory, but runs it when named', () => {

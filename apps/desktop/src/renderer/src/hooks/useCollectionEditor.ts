@@ -517,6 +517,31 @@ export function useCollectionEditor({
     [openPath, autoSave.enabled, flush, load, update, pendingCount, commit]
   )
 
+  /**
+   * Let go of a file the editor had open: renamed, moved or deleted. What it
+   * held goes with it; a rename or move is saved first by whoever asked.
+   */
+  const forget = useCallback(
+    (path: string) => {
+      const { [path]: _gone, ...rest } = latest.current
+      commit(rest)
+      setOpenPath((current) => (current === path ? null : current))
+    },
+    [commit]
+  )
+
+  /** Let go of every file of a project whose files are gone: a scratch pad deleted. */
+  const forgetProject = useCallback(
+    (projectId: string) => {
+      const kept = Object.entries(latest.current).filter(([, s]) => s.projectId !== projectId)
+      commit(Object.fromEntries(kept))
+      setOpenPath((current) =>
+        current && kept.some(([path]) => path === current) ? current : null
+      )
+    },
+    [commit]
+  )
+
   /* --------------------------------------------------- step structure -- */
 
   /**
@@ -797,6 +822,8 @@ export function useCollectionEditor({
     removeStep,
     moveStep,
     openCollection,
+    forget,
+    forgetProject,
     saveAll,
     flush,
     unsavedNames,

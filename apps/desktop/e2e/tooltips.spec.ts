@@ -82,25 +82,43 @@ test('every icon-only button is explained on hover', async () => {
   }
 })
 
-test('each way of adding projects says what it does, inside the window', async () => {
-  const cases: Array<[string, string, RegExp]> = [
-    ['+ Project', 'Add a project folder', /is added as a shared project/],
-    ['+ Monorepo', 'Add every project in a folder', /up to six levels down/],
-    ['+ Clone', 'Clone a git repository and add it', /choose the folder to clone into/]
+test('each way of adding projects says what it does in a line, inside the window', async () => {
+  const cases: Array<[string, string]> = [
+    ['+ Project', 'Add a project folder, or every project in a monorepo'],
+    ['+ Clone', 'Clone a git repository and add its projects'],
+    ['+ Scratch pad', 'Make a project for ad hoc requests, kept in the app, without git']
   ]
   const width = await page.evaluate(
     () => (globalThis as unknown as { innerWidth: number }).innerWidth
   )
-  for (const [name, title, detail] of cases) {
+  for (const [name, text] of cases) {
     await page.mouse.move(0, 0)
     await page.getByRole('button', { name, exact: true }).hover()
-    await expect(tip().locator('.tip-title')).toHaveText(title)
-    await expect(tip()).toContainText(detail)
+    await expect(tip()).toHaveText(text)
     // Wider than the button is from the window's edge, it is moved in rather than cut off.
     const box = (await tip().boundingBox())!
     expect(box.x).toBeGreaterThanOrEqual(7)
     expect(box.x + box.width).toBeLessThanOrEqual(width - 7)
   }
+})
+
+test('pressing + Project leaves no explanation behind its folder picker', async () => {
+  await app.evaluate(({ dialog }) => {
+    dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] })
+  })
+  await page.mouse.move(0, 0)
+  const button = page.getByRole('button', { name: '+ Project', exact: true })
+  await button.click()
+  // A click focuses the button, which used to show its explanation at once.
+  await expect(button).toBeFocused()
+  await expect(tip()).toHaveCount(0)
+  // Nor later, once a hover would have shown it.
+  await page.waitForTimeout(600)
+  await expect(tip()).toHaveCount(0)
+  // Keyboard focus elsewhere and back still explains.
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Shift+Tab')
+  await expect(tip()).toHaveText('Add a project folder, or every project in a monorepo')
 })
 
 test('the Pull explanation says why it is unavailable', async () => {

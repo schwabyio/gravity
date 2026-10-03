@@ -24,7 +24,12 @@ export const ProjectEntrySchema = z.object({
    * "Not now" on the Changes drawer's line-endings notice, for this project.
    * Project settings still offers the `.gitattributes`.
    */
-  lineEndingsNoticeDismissed: z.boolean().default(false)
+  lineEndingsNoticeDismissed: z.boolean().default(false),
+  /**
+   * A scratch pad: a project the app made in its own data folder, for ad hoc
+   * work, with no git. Removing it deletes its folder (to the Trash).
+   */
+  scratch: z.boolean().default(false)
 })
 export type ProjectEntry = z.infer<typeof ProjectEntrySchema>
 
@@ -92,7 +97,8 @@ export async function migrateV1(
         path: root,
         autoFetchSeconds: entry.autoFetchSeconds,
         selectedEnvironment: chosenFor(root, entry.selectedEnvironments),
-        lineEndingsNoticeDismissed: false
+        lineEndingsNoticeDismissed: false,
+        scratch: false
       })
     }
   }

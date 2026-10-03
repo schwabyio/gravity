@@ -214,7 +214,7 @@ export default function CollectionSettings(props: Props) {
                       <label htmlFor="collection-exclude">Exclude from group runs</label>
                       <p>
                         Leave this collection out of <code>gta all</code> and of a run of its
-                        directory. Named on its own it still runs, and so does Run all here.
+                        folder. Named on its own it still runs, and so does Run all here.
                       </p>
                     </div>
                     <input
