@@ -789,6 +789,43 @@ button:disabled {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
+/* What git says of a row: M changed, U new, C in conflict — a dot on a folder. */
+.git-mark {
+  flex: none;
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.git-mark::before {
+  content: attr(data-letter);
+}
+
+/* Pushed to the right, unless a mark before it already is. */
+.row .label + .git-mark {
+  margin-left: auto;
+}
+
+.git-mark.modified {
+  color: var(--redirect);
+}
+
+.git-mark.new {
+  color: var(--ok);
+}
+
+.git-mark.conflicted {
+  color: var(--client);
+}
+
+.git-mark.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 /* Where a dragged collection would land: a folder's row, or the project's heading for its root. */
 .collection-item.drop-target,
 .project-drop.drop-target {
@@ -2475,6 +2512,45 @@ button.status-pill.focused {
 
 .step-list li {
   position: relative;
+}
+
+/* What changed of a step since the last commit: a bar inside its left edge. */
+.step-git {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 3px;
+  border-radius: 2px;
+}
+
+.step-git.new {
+  background: var(--ok);
+}
+
+.step-git.changed {
+  background: var(--redirect);
+}
+
+.step-git.moved {
+  background: color-mix(in srgb, var(--text-dim) 70%, transparent);
+}
+
+.steps-removed {
+  margin: 4px 12px 0;
+  font-size: 11px;
+}
+
+/* The settings gear's dot: something besides the steps changed since the last commit. */
+.collection-settings-button {
+  position: relative;
+}
+
+.collection-settings-button .settings-changed {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  margin: 0;
 }
 
 .step-list li.dragging {

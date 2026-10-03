@@ -17,6 +17,7 @@ const git = (over: Partial<GitStatusView> = {}): GitStatusView => ({
   operation: null,
   remotes: ['origin'],
   projectChanges: 0,
+  projectFiles: {},
   fetchProblem: null,
   ...over
 })

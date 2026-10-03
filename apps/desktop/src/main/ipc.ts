@@ -847,6 +847,13 @@ export function registerIpc(projects: ProjectService): void {
   )
 
   ipcMain.handle(
+    IpcChannel.collectionCommitted,
+    guard(async (_event, file: unknown) => ({
+      doc: await projects.committedDoc(assertInProjects(String(file)))
+    }))
+  )
+
+  ipcMain.handle(
     IpcChannel.collectionDelete,
     guard(async (_event, file: unknown) => {
       await projects.deleteCollection(assertInProjects(String(file)))

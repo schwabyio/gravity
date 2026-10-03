@@ -305,6 +305,15 @@ export class GitRepo {
 
   /* ------------------------------------------------------------------ diff -- */
 
+  /**
+   * A file's text as the last commit has it (repo-relative path, `/`), or
+   * null when it has none: a new file, or a branch with no commits yet.
+   */
+  async committed(repoPath: string): Promise<string | null> {
+    const result = await this.run(['show', '--no-textconv', `HEAD:${repoPath}`])
+    return result.code === 0 ? result.stdout : null
+  }
+
   /** What changed in one file since the last commit: staged and unstaged together. */
   async diff(file: GitFileChange): Promise<FileDiff> {
     const base = { path: file.path, origPath: file.origPath }

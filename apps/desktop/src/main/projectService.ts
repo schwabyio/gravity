@@ -21,6 +21,7 @@ import {
   isUseStep,
   listRequestSets,
   loadChecks,
+  parseCollection,
   readRequestLine,
   stepLabel,
   addLfAttributes,
@@ -540,6 +541,28 @@ export class ProjectService {
     return copied
   }
 
+  /**
+   * A collection file as its last commit has it, parsed — for the editor to
+   * mark what changed since. Null when there is nothing to compare with: a
+   * scratch pad, a project outside git, a file never committed, or a
+   * committed version that will not parse.
+   */
+  async committedDoc(file: string): Promise<Collection | null> {
+    const view = [...this.views.values()].find(
+      (candidate) => candidate.isRepo && !candidate.scratch && isInside(candidate.path, file)
+    )
+    if (!view) return null
+    const repo = await this.repoFor(view.id).catch(() => null)
+    if (!repo) return null
+    const source = await repo.committed(relativePosix(repo.root, file))
+    if (source === null) return null
+    try {
+      return parseCollection(source, path.basename(file)).data
+    } catch {
+      return null
+    }
+  }
+
   /** Rename a folder of a project's `collections/`, with everything in it. */
   async renameFolder(projectId: string, name: string, to: string): Promise<string> {
     const view = this.required(projectId)
@@ -891,6 +914,7 @@ export class ProjectService {
       projectChanges: projectPath
         ? status.files.filter((file) => isInside(projectPath, repo.absolute(file.path))).length
         : 0,
+      projectFiles: projectPath ? projectFiles(repo, status, projectPath) : {},
       fetchProblem: this.fetchProblems.get(this.repoKey(repo.root)) ?? null
     }
   }
@@ -1200,6 +1224,23 @@ export class ProjectService {
     this.stateListeners.clear()
     this.progressListeners.clear()
   }
+}
+
+/**
+ * What changed of each file in a project's own folder, by its path from the
+ * project, with `/`: the sidebar marks its rows with it.
+ */
+function projectFiles(
+  repo: GitRepo,
+  status: GitStatus,
+  projectPath: string
+): Record<string, GitStatus['files'][number]['kind']> {
+  const files: Record<string, GitStatus['files'][number]['kind']> = {}
+  for (const file of status.files) {
+    const absolute = repo.absolute(file.path)
+    if (isInside(projectPath, absolute)) files[relativePosix(projectPath, absolute)] = file.kind
+  }
+  return files
 }
 
 /** A file in the repository's changes as they are now, or a refusal when it has none. */

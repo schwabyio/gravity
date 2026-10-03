@@ -108,7 +108,8 @@ const api: DesktopApi = {
       ipcRenderer.invoke(IpcChannel.collectionCopy, file, projectId, directory, move),
     moveToFolder: (file: string, folder: string | null) =>
       ipcRenderer.invoke(IpcChannel.collectionMoveToFolder, file, folder),
-    remove: (file: string) => ipcRenderer.invoke(IpcChannel.collectionDelete, file)
+    remove: (file: string) => ipcRenderer.invoke(IpcChannel.collectionDelete, file),
+    committed: (file: string) => ipcRenderer.invoke(IpcChannel.collectionCommitted, file)
   },
 
   variables: {

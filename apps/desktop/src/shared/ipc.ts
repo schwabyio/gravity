@@ -79,6 +79,7 @@ export const IpcChannel = {
   collectionRename: 'collection:rename',
   collectionCopy: 'collection:copy',
   collectionMoveToFolder: 'collection:moveToFolder',
+  collectionCommitted: 'collection:committed',
   collectionDelete: 'collection:delete',
   dataRead: 'data:read',
   dataApply: 'data:apply',
@@ -145,6 +146,8 @@ export interface GitStatusView {
   remotes: string[]
   /** Changed files inside this project's own folder. */
   projectChanges: number
+  /** Those files, by their path from the project folder with `/`, and what changed of each. */
+  projectFiles: Record<string, ChangeKindView>
   /** Why the last background fetch failed, or null. */
   fetchProblem: string | null
 }
@@ -763,6 +766,8 @@ export interface DesktopApi {
     moveToFolder(path: string, folder: string | null): Promise<Result<{ path: string }>>
     /** Delete a collection and its data file, to the Trash. */
     remove(path: string): Promise<Result<Record<string, never>>>
+    /** The file as its last commit has it, parsed; null with nothing to compare with. */
+    committed(path: string): Promise<Result<{ doc: Collection | null }>>
   }
 
   data: {

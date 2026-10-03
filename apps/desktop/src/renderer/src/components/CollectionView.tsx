@@ -32,6 +32,7 @@ import StepList, { type AddAction } from './StepList.js'
 import TagEditor from './TagEditor.js'
 import Tooltip from './Tooltip.js'
 import VariableInput from './VariableInput.js'
+import type { CollectionChanges } from '../stepChanges.js'
 
 interface Props {
   name: string
@@ -65,6 +66,8 @@ interface Props {
   runningAll: boolean
   summary: CollectionRunSummary | null
   draftIndexes: Record<ListName, Set<number>>
+  /** What changed since the last commit: its steps, and the rest of it; null with nothing to compare. */
+  changes: CollectionChanges | null
   onSelect: (list: ListName, index: number) => void
   onRunStep: (list: ListName, index: number) => void
   onRunAll: () => void
@@ -261,6 +264,8 @@ export default function CollectionView(props: Props) {
         runningIndex={props.runningAt?.list === list ? props.runningAt.index : null}
         busy={props.busy}
         draftIndexes={props.draftIndexes[list]}
+        changes={props.changes?.steps[list]}
+        removed={props.changes?.removed[list] ?? 0}
         onSelect={(index) => props.onSelect(list, index)}
         onRun={(index) => props.onRunStep(list, index)}
         adds={addsFor(list)}
@@ -382,7 +387,9 @@ export default function CollectionView(props: Props) {
             {!props.dataFile && props.onCreateData && (
               <CreateDataFile onCreate={props.onCreateData} />
             )}
-            <Tooltip text="Collection settings: group runs, step tags, headers, request settings, variables and scripts">
+            <Tooltip
+              text={`Collection settings: group runs, step tags, headers, request settings, variables and scripts${props.changes?.collection ? ' — changed since the last commit' : ''}`}
+            >
               <button
                 type="button"
                 className="collection-settings-button"
@@ -391,6 +398,9 @@ export default function CollectionView(props: Props) {
                 aria-haspopup="dialog"
               >
                 <GearIcon size={16} />
+                {props.changes?.collection && (
+                  <span className="git-mark modified dot settings-changed" aria-hidden="true" />
+                )}
               </button>
             </Tooltip>
           </div>

@@ -4,6 +4,8 @@ import type { GitProgress, LibraryKind, ProjectView, WorkspaceSummary } from '@s
 import { summaryOfFile } from '../reuse.js'
 import { filterCollections, filtering, keepsFile } from '../sidebarFilter.js'
 import CollapseIcon from './CollapseIcon.js'
+import GitBadge from './GitBadge.js'
+import { gitMarks, MARK_WORDS } from '../gitMarks.js'
 import CollectionList, { type CollectionActions, type FolderDrag } from './CollectionList.js'
 import NameForm from './NameForm.js'
 import ProjectHeading from './ProjectHeading.js'
@@ -372,6 +374,7 @@ export default function ProjectSidebar(props: Props) {
             files: files.filter((file) => keepsFile(query, file))
           }))
           const shown = filterCollections(project.collections, project.directories, query)
+          const marks = gitMarks(project)
           const total = project.collections.length + libraries.reduce((n, l) => n + l.all, 0)
           const found = shown.collections.length + libraries.reduce((n, l) => n + l.files.length, 0)
           const nothingFound = filtering(query) && found === 0 && shown.directories.length === 0
@@ -460,7 +463,8 @@ export default function ProjectSidebar(props: Props) {
                 />
               )}
 
-              {open && project.available && total + project.directories.length > 0 && (
+              {/* Only where there is enough to look through — and never hiding a filter in use. */}
+              {open && project.available && (total >= FILTER_FROM || filtering(query)) && (
                 <div className="project-filter" role="search">
                   <input
                     type="search"
@@ -521,6 +525,7 @@ export default function ProjectSidebar(props: Props) {
                     expanded={filtering(query)}
                     folders={project.directories}
                     drag={dragFor(project)}
+                    marks={marks}
                     actions={{
                       ...props.collectionActions,
                       onRenameFolder: (folder, name) =>
@@ -547,21 +552,33 @@ export default function ProjectSidebar(props: Props) {
                         aria-label={`${title} of ${project.name}`}
                       >
                         <div className="request-sets-head">{title}</div>
-                        {files.map((file) => (
-                          <button
-                            key={file.path}
-                            type="button"
-                            className={`row set-row${file.path === props.selectedRoot ? ' selected' : ''}`}
-                            title={file.problem ?? `${home}/${file.name}.yml`}
-                            onClick={() =>
-                              props.onSelectCollection(project, summaryOfFile(file, home))
-                            }
-                          >
-                            <span className="label">{file.title}</span>
-                            {file.source === 'global' && <span className="shared-tag">shared</span>}
-                            {file.problem && <span className="problem">!</span>}
-                          </button>
-                        ))}
+                        {files.map((file) => {
+                          // A shared one's changes are its global project's, marked there.
+                          const mark = file.source === 'project' ? marks.file(file.path) : null
+                          return (
+                            <button
+                              key={file.path}
+                              type="button"
+                              className={`row set-row${file.path === props.selectedRoot ? ' selected' : ''}`}
+                              title={[
+                                file.problem ?? `${home}/${file.name}.yml`,
+                                mark ? MARK_WORDS[mark].toLowerCase() : null
+                              ]
+                                .filter(Boolean)
+                                .join(' — ')}
+                              onClick={() =>
+                                props.onSelectCollection(project, summaryOfFile(file, home))
+                              }
+                            >
+                              <span className="label">{file.title}</span>
+                              {file.source === 'global' && (
+                                <span className="shared-tag">shared</span>
+                              )}
+                              {file.problem && <span className="problem">!</span>}
+                              <GitBadge mark={mark} />
+                            </button>
+                          )
+                        })}
                       </div>
                     )
                 )}
@@ -572,6 +589,12 @@ export default function ProjectSidebar(props: Props) {
     </aside>
   )
 }
+
+/**
+ * How many files a project lists — collections, request sets, endpoints files
+ * and bases, what its filter looks through — before it offers the filter.
+ */
+const FILTER_FROM = 5
 
 /** What each kind of library file is called, in a sentence. */
 const LIBRARY_NAMES = {

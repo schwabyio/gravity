@@ -148,6 +148,17 @@ describe('commit', () => {
   })
 })
 
+describe('committed', () => {
+  it('reads a file as the last commit has it, edits on disk or not, and null for a new one', async () => {
+    const { work, repo } = await setup()
+    await write(path.join(work, 'a.yml'), 'a: 2\n')
+    await write(path.join(work, 'c.yml'), 'c: 1\n')
+    expect(await repo.committed('a.yml')).toBe('a: 1\n')
+    expect(await repo.committed('c.yml')).toBeNull()
+    expect(await repo.committed('nope/missing.yml')).toBeNull()
+  })
+})
+
 describe('identity', () => {
   it('knows when name and email are missing, and saves them globally', async () => {
     const { repo } = await setup()

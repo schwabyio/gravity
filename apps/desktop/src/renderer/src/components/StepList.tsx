@@ -12,6 +12,7 @@ import type { RequestSetView } from '@shared/ipc.js'
 import { resolveSet } from '../reuse.js'
 import type { FlagState } from '../flagState.js'
 import { formatMs } from '../format.js'
+import { STEP_CHANGE_WORDS, type StepChange } from '../stepChanges.js'
 import Tooltip from './Tooltip.js'
 import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
@@ -42,6 +43,10 @@ interface Props {
   busy: boolean
   /** Step indexes with unsaved edits. */
   draftIndexes: Set<number>
+  /** What changed of each step since the last commit, by index; absent with nothing to compare. */
+  changes?: Array<StepChange | null>
+  /** How many of the last commit's steps of this list are gone. */
+  removed?: number
   onSelect: (index: number) => void
   onRun: (index: number) => void
   /** The buttons under the list that add steps. */
@@ -137,6 +142,7 @@ export default function StepList(props: Props) {
           if (!props.visible.has(index)) return null
           const tags = props.showTags ? (step.tags ?? []) : []
 
+          const change = props.changes?.[index] ?? null
           return (
             <li
               key={index}
@@ -165,6 +171,14 @@ export default function StepList(props: Props) {
                 setDropAt(null)
               }}
             >
+              {change && (
+                <span
+                  className={`step-git ${change}`}
+                  role="img"
+                  aria-label={STEP_CHANGE_WORDS[change]}
+                  title={STEP_CHANGE_WORDS[change]}
+                />
+              )}
               {renaming === index ? (
                 <RenameField
                   initial={step.name ?? ''}
@@ -331,6 +345,11 @@ export default function StepList(props: Props) {
           )
         })}
       </ol>
+      {(props.removed ?? 0) > 0 && (
+        <p className="hint steps-removed">
+          {props.removed} step{props.removed === 1 ? '' : 's'} removed since the last commit
+        </p>
+      )}
       <div className="add-steps">
         {props.adds.map((add) => {
           const button = (

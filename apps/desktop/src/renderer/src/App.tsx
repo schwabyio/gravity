@@ -64,6 +64,7 @@ import {
   summaryOfSet
 } from './reuse.js'
 import { filterSteps } from './tagFilter.js'
+import { changesSince } from './stepChanges.js'
 
 const NO_TAGS: string[] = []
 const NO_FLAGS = {}
@@ -470,6 +471,34 @@ export default function App() {
     // Leaving the drawer is a natural moment to save what was edited in it.
     if (autoSave.enabled) void saveEnvironments()
   }, [autoSave.enabled, saveEnvironments])
+
+  /* ------------------------------------------------------- since git */
+
+  /**
+   * The open file as its last commit has it, to mark what changed since:
+   * read again whenever the file is saved or its project's git state moves.
+   */
+  const [committed, setCommitted] = useState<{ path: string; doc: Collection | null } | null>(null)
+  const savedSource = open?.source
+  const projectGit = activeProject?.git
+  useEffect(() => {
+    if (!collectionPath) return
+    let stale = false
+    void window.desktop.collection.committed(collectionPath).then((result) => {
+      if (!stale) setCommitted({ path: collectionPath, doc: result.ok ? result.doc : null })
+    })
+    return () => {
+      stale = true
+    }
+  }, [collectionPath, savedSource, projectGit])
+  /** What changed of the open file since then, as it is on disk; unsaved edits have their own •. */
+  const sinceCommit = useMemo(
+    () =>
+      open && committed?.path === open.summary.path && committed.doc
+        ? changesSince(committed.doc, open.doc)
+        : null,
+    [open, committed]
+  )
 
   /* ----------------------------------------------------- collection files */
 
@@ -1287,6 +1316,7 @@ export default function App() {
               runningAll={runningAll}
               summary={summary}
               draftIndexes={editor.dirtyIndexes}
+              changes={sinceCommit}
               onSelect={selectStep}
               onRunStep={runStep}
               onRunAll={() => void runAll()}

@@ -250,6 +250,11 @@ test('a request set’s step is marked as the one a use step’s tests check', a
 
 test('a project’s filter narrows its request sets too', async () => {
   const shopProject = page.getByRole('region', { name: 'Project shop' })
+  // The filter looks through request sets as well as collections, and counts them to five.
+  const more = ['refunds', 'search'].map((id) => path.join(shop, 'requests', `${id}.yml`))
+  for (const file of more) {
+    fs.writeFileSync(file, `id: ${path.basename(file, '.yml')}\nparams: {}\nsteps: []\n`)
+  }
   await shopProject.getByLabel('Filter shop').fill('ord')
   await expect(
     page.getByRole('group', { name: 'Request sets of shop' }).locator('.set-row')
@@ -257,4 +262,6 @@ test('a project’s filter narrows its request sets too', async () => {
   await expect(shopProject.locator('.collection-row')).toHaveCount(0)
   await shopProject.getByLabel('Filter shop').fill('')
   await expect(shopProject.locator('.collection-row')).toHaveCount(1)
+  for (const file of more) fs.rmSync(file)
+  await expect(shopProject.getByLabel('Filter shop')).toHaveCount(0)
 })

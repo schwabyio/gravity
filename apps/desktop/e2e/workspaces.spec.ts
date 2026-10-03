@@ -248,24 +248,44 @@ test('a project heading collapses and expands its collections', async () => {
 test('a project’s filter narrows its collections, and leaves other projects alone', async () => {
   const auth = project('auth')
   const filter = auth.getByLabel('Filter auth')
+  // Two collections are not enough to filter: the box waits for five.
+  await expect(filter).toHaveCount(0)
+  const more = ['cart', 'checkout', 'search'].map((id) =>
+    path.join(monorepo, 'services', 'auth', 'collections', `${id}.yml`)
+  )
+  for (const file of more) fs.writeFileSync(file, `id: ${path.basename(file, '.yml')}\nsteps: []\n`)
+  await expect(filter).toBeVisible()
+
   await filter.fill('REFR')
   await expect(auth.locator('.collection-row')).toHaveText(['refresh'])
   await expect(auth.locator('.group-row .label')).toHaveText(['tokens'])
-  await expect(auth.locator('.filter-count')).toHaveText('1 of 2')
+  await expect(auth.locator('.filter-count')).toHaveText('1 of 5')
   await expect(project('users').locator('.collection-row')).toHaveCount(1)
 
   await filter.fill('nothing here')
   await expect(auth.locator('.filter-empty')).toHaveText('Nothing matches “nothing here”.')
   await filter.press('Escape')
-  await expect(auth.locator('.collection-row')).toHaveText(['refresh', 'auth'])
+  await expect(auth.locator('.collection-row')).toHaveText([
+    'refresh',
+    'auth',
+    'cart',
+    'checkout',
+    'search'
+  ])
   await expect(auth.locator('.filter-count')).toHaveCount(0)
 
-  // A directory collapsed by hand shows what a filter finds in it, and is collapsed again after.
+  // A folder collapsed by hand shows what a filter finds in it, and is collapsed again after.
   await auth.locator('.group-row', { hasText: 'tokens' }).click()
-  await expect(auth.locator('.collection-row')).toHaveText(['auth'])
+  await expect(auth.locator('.collection-row')).toHaveText(['auth', 'cart', 'checkout', 'search'])
   await filter.fill('tokens')
   await expect(auth.locator('.collection-row')).toHaveText(['refresh'])
+
+  // Fewer than five again, the box stays while it filters, and goes once cleared.
+  for (const file of more) fs.rmSync(file)
+  await expect(auth.locator('.collection-row')).toHaveText(['refresh'])
+  await expect(filter).toBeVisible()
   await filter.fill('')
+  await expect(filter).toHaveCount(0)
   await expect(auth.locator('.collection-row')).toHaveText(['auth'])
   await auth.locator('.group-row', { hasText: 'tokens' }).click()
   await expect(auth.locator('.collection-row')).toHaveText(['refresh', 'auth'])

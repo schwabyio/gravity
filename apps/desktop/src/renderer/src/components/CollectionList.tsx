@@ -5,6 +5,8 @@ import {
   type CollectionSummary
 } from '@schwabyio/gravity-core/model'
 import type { ProjectView } from '@shared/ipc.js'
+import { MARK_WORDS, type GitMarks } from '../gitMarks.js'
+import GitBadge from './GitBadge.js'
 import NameForm from './NameForm.js'
 import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
@@ -54,12 +56,21 @@ interface Props {
   directories: string[]
   /** Every folder of the project, whatever a filter shows: where a collection can move. */
   folders: string[]
+  /** What git says of each file and folder: changed, new or in conflict. */
+  marks: GitMarks
   drag: FolderDrag
   selectedPath: string | null
   onSelect: (collection: CollectionSummary) => void
   /** Every directory shown open, as while a filter narrows the list. */
   expanded?: boolean
   actions: CollectionActions
+}
+
+/** What a folder's dot says of what is in it. */
+const FOLDER_WORDS: Record<NonNullable<ReturnType<GitMarks['folder']>>, string> = {
+  modified: 'changed since the last commit',
+  new: 'new, not committed yet',
+  conflicted: 'in conflict'
 }
 
 /** A row's menu open, or one of its forms: a collection's by its path, a folder's by `folder:<name>`. */
@@ -99,6 +110,7 @@ export default function CollectionList(props: Props) {
       actions={props.actions}
       folders={props.folders}
       drag={props.drag}
+      marks={props.marks}
     />
   )
 
@@ -118,6 +130,7 @@ export default function CollectionList(props: Props) {
             }}
             actions={props.actions}
             drag={props.drag}
+            marks={props.marks}
           />
         ) : (
           row(node.summary, 0)
@@ -137,8 +150,10 @@ function CollectionRow(props: {
   actions: CollectionActions
   folders: string[]
   drag: FolderDrag
+  marks: GitMarks
 }) {
   const { summary, actions } = props
+  const mark = props.marks.collection(summary)
   /** Where it could move in its project: the root, unless it is there, and every other folder. */
   const elsewhere = [
     ...(summary.directory !== null ? [null] : []),
@@ -208,11 +223,13 @@ function CollectionRow(props: {
         <button
           className={`row collection-row${props.selected ? ' selected' : ''}${summary.excluded ? ' excluded' : ''}`}
           onClick={() => props.onSelect(summary)}
-          title={
-            summary.excluded
-              ? `${summary.relativePath} — excluded from group runs`
-              : summary.relativePath
-          }
+          title={[
+            summary.relativePath,
+            summary.excluded ? 'excluded from group runs' : null,
+            mark ? MARK_WORDS[mark].toLowerCase() : null
+          ]
+            .filter(Boolean)
+            .join(' — ')}
         >
           <span className="label">{summary.name}</span>
           {/* Only a problem, or being left out of group runs, is worth a mark here.
@@ -236,6 +253,7 @@ function CollectionRow(props: {
               !
             </span>
           )}
+          <GitBadge mark={mark} />
         </button>
         <span className="project-menu-wrap">
           <button
@@ -457,11 +475,13 @@ function Directory(props: {
   onAct: (kind: NonNullable<Acting>['kind'] | null) => void
   actions: CollectionActions
   drag: FolderDrag
+  marks: GitMarks
 }) {
   const [chosen, setOpen] = useState(true)
   // A filter shows what it found, whatever was collapsed; clearing it restores the choice.
   const open = chosen || props.expanded
   const { node, actions } = props
+  const folderMark = props.marks.folder(node.name)
   return (
     <>
       {props.acting === 'rename' ? (
@@ -487,9 +507,15 @@ function Directory(props: {
             style={{ paddingLeft: 14 }}
             onClick={() => setOpen(!chosen)}
             aria-expanded={open}
+            title={
+              folderMark
+                ? `${node.name}/ — something in it is ${FOLDER_WORDS[folderMark]}`
+                : undefined
+            }
           >
             <span className="chevron">{open ? '▾' : '▸'}</span>
             <span className="label">{node.name}</span>
+            <GitBadge mark={folderMark} dot />
           </button>
           <span className="project-menu-wrap">
             <button
