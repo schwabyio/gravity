@@ -505,18 +505,21 @@ export default function CollectionView(props: Props) {
               : ''}
           </button>
         )}
-        <Tooltip
-          text={props.busy ? 'Close this collection, stopping its run' : 'Close this collection'}
-        >
-          <button
-            type="button"
-            className="collection-close"
-            onClick={props.onClose}
-            aria-label="Close the collection"
+        {/* In the header's top right corner, above Run all. */}
+        <div className="collection-close-corner">
+          <Tooltip
+            text={props.busy ? 'Close this collection, stopping its run' : 'Close this collection'}
           >
-            ×
-          </button>
-        </Tooltip>
+            <button
+              type="button"
+              className="collection-close"
+              onClick={props.onClose}
+              aria-label="Close the collection"
+            >
+              ×
+            </button>
+          </Tooltip>
+        </div>
       </header>
 
       {props.settingsOpen && (

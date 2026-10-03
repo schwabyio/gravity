@@ -1537,26 +1537,37 @@ button:disabled {
 }
 
 .collection-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
+  /* Tall enough that Run all, centred, clears the close button above it. */
+  min-height: 92px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
-/* Closing the collection: the workbench goes back to choosing one. */
+/* Closing the collection, from the header's top right corner: back to choosing one. */
+.collection-close-corner {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+}
+
 .collection-close {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  margin-left: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: 6px;
   background: none;
   color: var(--text-dim);
-  font-size: 18px;
+  font-size: 17px;
+  line-height: 1;
 }
 
 .collection-close:hover:not(:disabled) {
