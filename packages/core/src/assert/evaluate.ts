@@ -270,7 +270,7 @@ function checkBodyValue(
       }
       for (const index of used) claimed.add(index)
       if (missing.length > 0)
-        failures.push(`Missing from the array: ${missing.map(show).join(', ')}`)
+        failures.push(`Missing from the array: ${missing.map(showEntry).join(', ')}`)
     }
   }
 
@@ -280,7 +280,7 @@ function checkBodyValue(
       const found = wanted.unorderedNot.filter((expected) =>
         value.some((item) => matchItem(item, expected, context) !== null)
       )
-      if (found.length > 0) failures.push(`Must not contain: ${found.map(show).join(', ')}`)
+      if (found.length > 0) failures.push(`Must not contain: ${found.map(showEntry).join(', ')}`)
       else if (value.length === 0) whole = true
     }
   }
@@ -427,13 +427,18 @@ interface ItemMatch {
 /**
  * Whether one array item satisfies one `unordered` entry.
  *
- * A scalar entry compares by value. An object entry lists properties the item
- * must have, keyed by path (`id.value`), each either a literal or a matcher, so
+ * A scalar entry compares by value, and a RegExp entry is a pattern the item
+ * must match as text. An object entry lists properties the item must have,
+ * keyed by path (`id.value`), each a literal, a RegExp or a matcher, so
  * `{ id.value: { into: accountId } }` both finds the item and captures from it.
  * An empty object matches only an empty object, never every item.
  */
 function matchItem(item: unknown, expected: unknown, context: CheckContext): ItemMatch | null {
   const noop = () => {}
+  if (isRegExp(expected)) {
+    const check = checkBodyValue({ matches: expected }, item, context)
+    return check.failure ? null : { covered: check.covered, capture: noop }
+  }
   if (expected === null || typeof expected !== 'object' || Array.isArray(expected)) {
     return deepEqual(item, expected) ? { covered: [{ pattern: [] }], capture: noop } : null
   }
@@ -445,7 +450,8 @@ function matchItem(item: unknown, expected: unknown, context: CheckContext): Ite
 
   const covered: Coverage[] = []
   const captures: Array<() => void> = []
-  for (const [key, want] of entries) {
+  for (const [key, written] of entries) {
+    const want = isRegExp(written) ? { matches: written } : written
     const segments = parsePath(key)
     const located = locate(
       item,
@@ -528,12 +534,18 @@ export function show(value: unknown): string {
   if (value === undefined) return 'undefined'
   const text =
     typeof value === 'string' ? JSON.stringify(value) : (JSON.stringify(value) ?? String(value))
-  return text.length > 200 ? `${text.slice(0, 199)}…` : text
+  return clip(text)
 }
+
+const clip = (text: string): string => (text.length > 200 ? `${text.slice(0, 199)}…` : text)
 
 /** A matcher in words, as the report's name for it. */
 export function describe(matcher: object, { brief = false }: { brief?: boolean } = {}): string {
-  const m = matcher as CheckMatcher
+  const parts = describeParts(matcher as CheckMatcher, brief)
+  return parts.length > 0 ? parts.join(', ') : 'is present'
+}
+
+function describeParts(m: CheckMatcher, brief: boolean): string[] {
   const parts: string[] = []
   if (m.equals !== undefined) {
     if (m.dateAsEpoch)
@@ -558,7 +570,39 @@ export function describe(matcher: object, { brief = false }: { brief?: boolean }
   if (m.unorderedNot !== undefined) parts.push(`does not contain ${listed(m.unorderedNot, brief)}`)
   if (m.into !== undefined) parts.push(`→ {{${m.into}}}`)
   if (m.intoEnv !== undefined) parts.push(`→ env {{${m.intoEnv}}}`)
-  return parts.length > 0 ? parts.join(', ') : 'is present'
+  return parts
+}
+
+/**
+ * An `unordered` entry, for a name or a message. A value, or an item of
+ * values, is its JSON. An item whose properties hold matchers, as an xtest
+ * validation list builds, shows each as written — `{ balance: 19 ± 1,
+ * nickname: absent }` — rather than as the matcher objects the engine reads,
+ * whose patterns JSON would print as `{}`.
+ */
+function showEntry(entry: unknown): string {
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry) || isRegExp(entry)) {
+    return show(entry)
+  }
+  // A matcher that only compares is its value, so a plain validation list reads as JSON;
+  // a RegExp is the pattern it is matched as.
+  const props = Object.entries(entry).map(([key, want]): [string, unknown] => [
+    key,
+    isRegExp(want)
+      ? { matches: want }
+      : isMatcherObject(want) && Object.keys(want).join() === 'equals'
+        ? want.equals
+        : want
+  ])
+  if (!props.some(([, want]) => isMatcherObject(want))) {
+    return show(Object.fromEntries(props))
+  }
+  const shown = props.map(([key, want]) => {
+    if (!isMatcherObject(want)) return `${key}: ${show(want)}`
+    const parts = describeParts(want, true).map((part) => part.replace(/^is /, ''))
+    return `${key}: ${parts.length > 0 ? parts.join(' ') : 'present'}`
+  })
+  return clip(`{ ${shown.join(', ')} }`)
 }
 
 /**
@@ -566,7 +610,7 @@ export function describe(matcher: object, { brief = false }: { brief?: boolean }
  * rather than printing them, since one account record would fill the line.
  */
 function listed(items: unknown[], brief: boolean): string {
-  const text = items.map(show).join(', ')
+  const text = items.map(showEntry).join(', ')
   if (!brief || text.length <= 60) return text
   return `${items.length} item${items.length === 1 ? '' : 's'}`
 }
