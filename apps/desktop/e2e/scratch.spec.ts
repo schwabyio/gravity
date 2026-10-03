@@ -472,6 +472,26 @@ test('one button collapses every project, and then expands them again', async ()
   await page.getByRole('button', { name: 'Expand all projects' }).click()
 })
 
+test('the open collection closes from its header, saving what was edited', async () => {
+  const row = project('Scratch pad').locator('.collection-row', { hasText: 'ping-check' })
+  await row.click()
+  await expect(header()).toHaveText('ping-check')
+  await page.locator('.step-open').first().click()
+  await page.getByLabel('Request URL').fill('{{baseUrl}}/closed')
+
+  // Closed before auto save's delay is up: leaving it saves it, as opening another does.
+  await page.getByRole('button', { name: 'Close the collection' }).click()
+  await expect(page.locator('.placeholder')).toHaveText('Choose a collection to see its steps.')
+  await expect(row).not.toHaveClass(/selected/)
+  await expect
+    .poll(() => readSoon(pad('collections', 'smoke', 'ping-check.yml')))
+    .toContain('{{baseUrl}}/closed')
+
+  await row.click()
+  await expect(header()).toHaveText('ping-check')
+  await expect(page.getByLabel('Request URL')).toHaveValue('{{baseUrl}}/closed')
+})
+
 test('a scratch pad is still one after a restart', async () => {
   await app.close()
   await launch()

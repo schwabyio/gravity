@@ -678,6 +678,19 @@ export default function App() {
     for (const collection of inside) editor.forget(collection.path)
   }
 
+  /**
+   * Close the open collection: the workbench goes back to choosing one. A run
+   * of it in flight stops; its edits stay for when it is opened again.
+   */
+  const closeCollection = () => {
+    if (activeRunId.current) window.desktop.runCancel(activeRunId.current)
+    editor.close()
+    setCollectionSettingsOpen(null)
+    setDataOpen(false)
+    setSummary(null)
+    setError(null)
+  }
+
   /* ----------------------------------------------------------------- save */
 
   const save = useCallback(async () => {
@@ -1320,6 +1333,7 @@ export default function App() {
               onSelect={selectStep}
               onRunStep={runStep}
               onRunAll={() => void runAll()}
+              onClose={closeCollection}
               onCancel={cancel}
               onAddStep={(list) =>
                 editor.addStep(

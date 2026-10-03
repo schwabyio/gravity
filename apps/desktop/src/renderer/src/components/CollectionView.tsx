@@ -71,6 +71,8 @@ interface Props {
   onSelect: (list: ListName, index: number) => void
   onRunStep: (list: ListName, index: number) => void
   onRunAll: () => void
+  /** Stop showing it: its edits are kept, and with auto save on it is saved. */
+  onClose: () => void
   onCancel: () => void
   onAddStep: (list: ListName) => void
   /** Request sets a use step can run. */
@@ -503,6 +505,18 @@ export default function CollectionView(props: Props) {
               : ''}
           </button>
         )}
+        <Tooltip
+          text={props.busy ? 'Close this collection, stopping its run' : 'Close this collection'}
+        >
+          <button
+            type="button"
+            className="collection-close"
+            onClick={props.onClose}
+            aria-label="Close the collection"
+          >
+            ×
+          </button>
+        </Tooltip>
       </header>
 
       {props.settingsOpen && (

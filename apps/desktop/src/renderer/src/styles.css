@@ -1460,6 +1460,25 @@ button:disabled {
   background: var(--surface);
 }
 
+/* Closing the collection: the workbench goes back to choosing one. */
+.collection-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-left: -6px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 18px;
+}
+
+.collection-close:hover:not(:disabled) {
+  background: var(--surface-alt);
+  color: var(--text);
+}
+
 .collection-title {
   min-width: 0;
 }

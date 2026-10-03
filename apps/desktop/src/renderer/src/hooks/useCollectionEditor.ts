@@ -518,6 +518,16 @@ export function useCollectionEditor({
   )
 
   /**
+   * Stop showing the open file. Its edits are kept, as when another file is
+   * opened, so reopening it brings them back — and with auto save on, leaving
+   * it saves it, as leaving for another does.
+   */
+  const close = useCallback(() => {
+    if (openPath && autoSave.enabled) void flush(openPath)
+    setOpenPath(null)
+  }, [openPath, autoSave.enabled, flush])
+
+  /**
    * Let go of a file the editor had open: renamed, moved or deleted. What it
    * held goes with it; a rename or move is saved first by whoever asked.
    */
@@ -822,6 +832,7 @@ export function useCollectionEditor({
     removeStep,
     moveStep,
     openCollection,
+    close,
     forget,
     forgetProject,
     saveAll,
