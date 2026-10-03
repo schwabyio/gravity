@@ -171,6 +171,13 @@ variables, `environments/`, `requests/`, `endpoints/`, `bases/`, `checks/` and
   same name, key by key, and the project's values win. An environment only the global
   project has is available too.
 - The global project's `settings.yml` lies under the project's the same way (§1.3).
+- A global project's own `collections/` is **not** shared: a project using it never
+  sees or runs those collections. A global project needs none. It may have one for a
+  single purpose: **testing what it shares**. A collection there can `use:` its request
+  sets, `extends:` its bases and call its checks, against its own environments, so a
+  broken shared piece fails in one place, before every project relying on it does.
+  Those collections run only when the global project itself does, as a project in
+  Gravity or with `gta` in its folder, such as its own CI job.
 
 **`tls.ca`** lists certificate files that requests trust, for a server whose certificate
 a company or local CA signed, or a server's own self-signed certificate. A request
