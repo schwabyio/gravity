@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  isReadStep,
   isUseStep,
   readRequestLine,
   stepLabel,
@@ -115,7 +116,9 @@ export default function StepList(props: Props) {
           const set = use ? resolveSet(props.sets, use.use) : null
           const { method, url } = use
             ? { method: 'USE', url: set ? set.path : `no request set called ${use.use}` }
-            : readRequestLine(step)
+            : isReadStep(step)
+              ? { method: 'READ', url: `connection ${step.connection}` }
+              : readRequestLine(step)
           const children = use ? (props.childResults[index] ?? []) : []
           const ran = children.filter((child): child is RunResult => child !== undefined)
           // A forEach step reports once per item: counted like a use step's requests.

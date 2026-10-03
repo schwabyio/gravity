@@ -17,14 +17,47 @@ export const TimingsSchema = z.object({
   startedAt: z.number(),
   /** Milliseconds until response headers arrived. */
   ttfbMs: z.number(),
-  /** Milliseconds until the response body was fully read. */
+  /** Milliseconds until the response body was fully read, or an event stream stopped. */
   totalMs: z.number()
 })
 export type Timings = z.infer<typeof TimingsSchema>
 
-/** A body preview classification, so the UI can pick a highlighter. */
-export const BodyKindSchema = z.enum(['json', 'xml', 'html', 'text', 'binary', 'empty'])
+/**
+ * A body preview classification, so the UI can pick a highlighter. `events` is
+ * a `text/event-stream` body: its text as received, read as a list of events.
+ */
+export const BodyKindSchema = z.enum(['json', 'xml', 'html', 'text', 'binary', 'empty', 'events'])
 export type BodyKind = z.infer<typeof BodyKindSchema>
+
+/**
+ * What stopped a step's reading of an event stream (SPEC.md §2.3, §2.11): the
+ * server closing it; `maxEvents`, `streamTimeout` or `untilEvent`; the safety
+ * limit; Stop in the app; or, for a step on a connection that sets none of
+ * the three, nothing to wait for, so it took the events already held.
+ */
+export const StreamEndSchema = z.enum([
+  'close',
+  'maxEvents',
+  'streamTimeout',
+  'untilEvent',
+  'limit',
+  'stopped',
+  'held'
+])
+export type StreamEnd = z.infer<typeof StreamEndSchema>
+
+/** How an event stream was read (SPEC.md §2.3). */
+export const EventStreamReadSchema = z.object({
+  endedBy: StreamEndSchema,
+  /** Milliseconds from the response headers to each event, in order. */
+  at: z.array(z.number()),
+  /**
+   * For a step that opens or reads a connection (SPEC.md §2.11): its name, and
+   * whether it was still open when the step's reading stopped.
+   */
+  connection: z.object({ name: z.string(), open: z.boolean() }).optional()
+})
+export type EventStreamRead = z.infer<typeof EventStreamReadSchema>
 
 export const SentRequestSchema = z.object({
   method: z.string(),
@@ -43,11 +76,13 @@ export const ReceivedResponseSchema = z.object({
   headers: z.array(HeaderEntrySchema),
   body: z.string(),
   bodyKind: BodyKindSchema,
-  /** Size of the response body on the wire, in bytes. */
+  /** Size of the response body on the wire, in bytes; for an event stream, of what `body` kept. */
   sizeBytes: z.number(),
   /** Number of redirects followed to reach this response. */
   redirectCount: z.number(),
-  timings: TimingsSchema
+  timings: TimingsSchema,
+  /** For an event stream: why the reading stopped, and when each event came. */
+  stream: EventStreamReadSchema.optional()
 })
 export type ReceivedResponse = z.infer<typeof ReceivedResponseSchema>
 
@@ -84,9 +119,20 @@ export type LogEntry = z.infer<typeof LogEntrySchema>
 export const RunErrorSchema = z.object({
   /**
    * Which stage failed, so the UI can say where without guessing. `body` is a
-   * file the body names that could not be read (SPEC.md §2.2).
+   * file the body names that could not be read (SPEC.md §2.2); `connection`, a
+   * step reading a connection that is not open (§2.11).
    */
-  phase: z.enum(['use', 'flags', 'forEach', 'interpolate', 'body', 'pre-request', 'http', 'tests']),
+  phase: z.enum([
+    'use',
+    'flags',
+    'forEach',
+    'interpolate',
+    'body',
+    'pre-request',
+    'http',
+    'connection',
+    'tests'
+  ]),
   message: z.string(),
   code: z.string().optional(),
   stack: z.string().optional(),

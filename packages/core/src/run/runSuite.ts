@@ -1,6 +1,8 @@
 import type { Collection, VarValue } from '../model/documents.js'
 import type { CollectionRunSummary, RunResult } from '../model/run.js'
 import type { ScopeContext } from '../vars/resolve.js'
+import type { StreamWatch } from '../http/stream.js'
+import { Connections } from './connections.js'
 import { planSteps } from './plan.js'
 import { runCollection } from './runCollection.js'
 
@@ -39,6 +41,14 @@ export interface SuiteRunOptions {
    * (`result.stage` says which list), and the data row it ran with, if any.
    */
   onResult?: (index: number, result: RunResult, iteration: SuiteIteration | undefined) => void
+  /**
+   * The connections steps open and read (SPEC.md §2.11), when the caller keeps
+   * them past the run, as the app does between Sends. Absent, the run has its
+   * own, closed when it ends.
+   */
+  connections?: Connections
+  /** For an event stream: the app's live view of its events, and its Stop button. */
+  watch?: StreamWatch
 }
 
 /**
@@ -53,7 +63,21 @@ export interface SuiteRunOptions {
  * cleanup. A cancelled run stops where it is, teardown included.
  */
 export async function runSuite(options: SuiteRunOptions): Promise<CollectionRunSummary> {
+  const connections = options.connections ?? new Connections()
+  try {
+    return await runStages(options, connections)
+  } finally {
+    // A connection lasts the run: setup's are read by every row, a row's by its later steps.
+    if (!options.connections) connections.close()
+  }
+}
+
+async function runStages(
+  options: SuiteRunOptions,
+  connections: Connections
+): Promise<CollectionRunSummary> {
   const { collection, collectionPath = null, context, signal, bail = false, onResult } = options
+  const shared = { connections, ...(options.watch ? { watch: options.watch } : {}) }
   const values = new Map<string, VarValue>()
   const summaries: CollectionRunSummary[] = []
   /** Setup and teardown run with no data row, and everything they set lasts. */
@@ -63,6 +87,7 @@ export async function runSuite(options: SuiteRunOptions): Promise<CollectionRunS
       collectionPath,
       stage,
       run: { values, wide: true },
+      ...shared,
       ...(context ? { context: { ...context, dataRow: null } } : {}),
       ...(signal ? { signal } : {}),
       bail: stopEarly,
@@ -90,6 +115,7 @@ export async function runSuite(options: SuiteRunOptions): Promise<CollectionRunS
       collection,
       collectionPath,
       run: { values },
+      ...shared,
       ...(context
         ? {
             context: row ? { ...context, dataRow: { source: row.source, vars: row.vars } } : context

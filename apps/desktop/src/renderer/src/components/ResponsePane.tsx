@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { formatPath, type RunResult } from '@schwabyio/gravity-core/model'
+import {
+  formatPath,
+  type EventStreamRead,
+  type RunResult,
+  type StreamEvent
+} from '@schwabyio/gravity-core/model'
 import {
   MARK_GLYPH,
   checkedBody,
@@ -31,6 +36,20 @@ interface Props {
   jumpedPath: string | null
   /** A marked line or row was clicked: these are the assertions about it. */
   onPick: (about: number[]) => void
+
+  /** While running: the event stream being read, as it is read. */
+  live?: LiveView | null
+  /** Stop reading it: a normal end, so its checks run on what came. */
+  onStop?: () => void
+}
+
+/** An event stream as it is read: its status, and each event so far. */
+export interface LiveView {
+  status: number
+  statusText: string
+  events: Array<{ event: StreamEvent; at: number }>
+  /** How many arrived, when `events` keeps only the latest. */
+  count: number
 }
 
 const statusClass = (status: number): string => {
@@ -46,6 +65,35 @@ const formatSize = (bytes: number): string =>
 
 const formatMs = (ms: number): string =>
   ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(2)} s`
+
+/** What stopped an event stream's reading, as the summary says it. */
+const ENDED_BY: Record<EventStreamRead['endedBy'], { short: string; long: string }> = {
+  close: { short: 'closed by the server', long: 'The server closed the stream.' },
+  maxEvents: { short: 'max events reached', long: 'Reading stopped at the Max events setting.' },
+  streamTimeout: {
+    short: 'stream timeout reached',
+    long: 'Reading stopped at the Stream timeout setting.'
+  },
+  untilEvent: {
+    short: 'until event reached',
+    long: 'Reading stopped at the event the Until event setting names.'
+  },
+  limit: {
+    short: 'safety limit reached',
+    long: 'Reading stopped at the safety limit: 1,000 events or 10 MB.'
+  },
+  stopped: { short: 'stopped', long: 'Reading was stopped with the Stop button.' },
+  held: {
+    short: 'took what had arrived',
+    long: 'On a connection, a step that sets none of Max events, Stream timeout or Until event waits for nothing: it takes the events already held.'
+  }
+}
+
+/** The connection a step opened or read, and whether it is still open. */
+const connectionNote = (stream: EventStreamRead): string | null =>
+  stream.connection
+    ? `connection ${stream.connection.name} ${stream.connection.open ? 'open' : 'closed'}`
+    : null
 
 /** Pretty-print JSON so a response is readable without leaving the panel. */
 function presentBody(body: string, kind: string): string {
@@ -67,7 +115,13 @@ const markClass = (marked: Marked | undefined, focused: boolean): string =>
 export default function ResponsePane(props: Props) {
   const { result, error, running, tab, onTab, checks, focus } = props
 
-  if (running) return <div className="placeholder">Sending…</div>
+  if (running) {
+    return props.live ? (
+      <LiveStreamView live={props.live} onStop={props.onStop} />
+    ) : (
+      <div className="placeholder">Sending…</div>
+    )
+  }
   if (error) return <div className="placeholder error">{error}</div>
   if (!result) return <div className="placeholder">Send a request to see the response.</div>
 
@@ -134,6 +188,13 @@ export default function ResponsePane(props: Props) {
             {response.redirectCount} redirect{response.redirectCount > 1 ? 's' : ''}
           </span>
         )}
+        {response.stream && (
+          <span className="metric stream-metric" title={ENDED_BY[response.stream.endedBy].long}>
+            {response.stream.at.length} event{response.stream.at.length === 1 ? '' : 's'} ·{' '}
+            {ENDED_BY[response.stream.endedBy].short}
+            {connectionNote(response.stream) && ` · ${connectionNote(response.stream)}`}
+          </span>
+        )}
       </div>
 
       <div className="tabs">
@@ -169,6 +230,12 @@ export default function ResponsePane(props: Props) {
                 <td className="header-name">Time to first byte</td>
                 <td>{formatMs(response.timings.ttfbMs)}</td>
               </tr>
+              {response.stream && response.stream.at.length > 0 && (
+                <tr>
+                  <td className="header-name">First event</td>
+                  <td>{formatMs(response.stream.at[0]!)} after the headers</td>
+                </tr>
+              )}
               <tr>
                 <td className="header-name">Total</td>
                 <td>{formatMs(response.timings.totalMs)}</td>
@@ -189,7 +256,8 @@ export default function ResponsePane(props: Props) {
  * The body, line by line, marked by the assertions about each line.
  *
  * Shown as the engine checked it by default. When that differs from what the
- * server sent — XML converted, arrays sorted — a switch offers the raw text too.
+ * server sent — XML converted, an event stream read as events, arrays sorted —
+ * a switch offers the raw text too.
  */
 function BodyTab(props: Props & { result: RunResult }) {
   const { result, checks, focus, selected, jumpedPath } = props
@@ -241,6 +309,7 @@ function BodyTab(props: Props & { result: RunResult }) {
               ? 'as the server sent it'
               : [
                   response.bodyKind === 'xml' ? 'converted from XML' : null,
+                  response.bodyKind === 'events' ? 'read as events' : null,
                   result.sortedBy ? `sorted by ${result.sortedBy.join(', ')}` : null
                 ]
                   .filter(Boolean)
@@ -275,6 +344,47 @@ function BodyTab(props: Props & { result: RunResult }) {
               </li>
             )
           })}
+        </ol>
+      )}
+    </div>
+  )
+}
+
+/**
+ * An event stream while it is read: its status, the events so far, newest
+ * last, and a Stop that ends the reading so the checks run on what came.
+ */
+function LiveStreamView({ live, onStop }: { live: LiveView; onStop?: (() => void) | undefined }) {
+  const listRef = useRef<HTMLOListElement>(null)
+  useEffect(() => {
+    const list = listRef.current
+    if (list) list.scrollTop = list.scrollHeight
+  }, [live.count])
+  return (
+    <div className="response live-stream" aria-label="Event stream">
+      <div className="response-summary">
+        <span className={`status-pill ${statusClass(live.status)}`}>
+          {live.status} {live.statusText}
+        </span>
+        <span className="metric stream-metric" aria-live="polite">
+          {live.count} event{live.count === 1 ? '' : 's'} · reading…
+        </span>
+        {onStop && (
+          <button type="button" className="stop" onClick={onStop}>
+            Stop
+          </button>
+        )}
+      </div>
+      {live.events.length === 0 ? (
+        <div className="placeholder">Waiting for events…</div>
+      ) : (
+        <ol className="live-events" ref={listRef}>
+          {live.events.map(({ event, at }, i) => (
+            <li key={live.count - live.events.length + i}>
+              <span className="line-no">+{formatMs(at)}</span>
+              <span className="line-text">{JSON.stringify(event)}</span>
+            </li>
+          ))}
         </ol>
       )}
     </div>

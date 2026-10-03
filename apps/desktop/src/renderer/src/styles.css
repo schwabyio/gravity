@@ -1819,6 +1819,41 @@ body.resizing * {
   color: var(--text-dim);
 }
 
+/* An event stream while it is read. */
+.live-stream .stop {
+  margin-left: auto;
+}
+
+.live-events {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.live-events li {
+  display: grid;
+  grid-template-columns: 6em 1fr;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.live-events .line-no {
+  padding-right: 10px;
+  color: var(--text-dim);
+  text-align: right;
+  user-select: none;
+}
+
+.live-events .line-text {
+  padding-right: 12px;
+}
+
 .body-lines {
   margin: 0;
   padding: 4px 0;
@@ -2621,6 +2656,11 @@ button.status-pill.focused {
 .setting-number input {
   width: 96px;
   text-align: right;
+}
+
+.setting-text input {
+  width: 100%;
+  max-width: 240px;
 }
 
 /* A checkbox drawn as a switch. */
@@ -3692,6 +3732,55 @@ button.tag.filter.on {
   .m-use {
     color: #b58cff;
   }
+}
+
+/* A step reading a connection (SPEC.md §2.11). */
+.m-read {
+  color: #0f8a8a;
+}
+
+@media (prefers-color-scheme: dark) {
+  .m-read {
+    color: #4fd1d1;
+  }
+}
+
+.read-bar .method.m-read {
+  width: auto;
+  padding: 0 10px;
+}
+
+.read-bar .read-connection {
+  flex: 1;
+  min-width: 0;
+}
+
+.connection-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0 0 12px;
+}
+
+.connections-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.connections-bar .connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.connections-bar .connection-state {
+  color: var(--text-dim);
 }
 
 .add-steps {

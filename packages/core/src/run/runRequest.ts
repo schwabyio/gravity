@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { CheckSession } from '../assert/session.js'
-import { sendHttpRequest } from '../http/client.js'
+import { readConnection, sendHttpRequest, type SendOutcome } from '../http/client.js'
+import type { OpenStream, StreamWatch } from '../http/stream.js'
 import type { Body, Collection, Step, VarValue } from '../model/documents.js'
 import {
+  isReadStep,
   isUseStep,
   readRequestLine,
   stepLabel,
@@ -12,6 +14,7 @@ import {
 } from '../model/documents.js'
 import {
   deriveStatus,
+  type ReceivedResponse,
   type LogEntry,
   type RunError,
   type RunResult,
@@ -36,6 +39,7 @@ import { interpolateToString } from '../vars/interpolate.js'
 import { resolveSettings, toSentRequest } from './buildRequest.js'
 import { fileRootsOf, resolveParams } from './plan.js'
 import { BodyFileError, bodyFiles, prepareRequest, type FileRoots } from './prepareRequest.js'
+import type { Connections } from './connections.js'
 
 export interface RunStepInput {
   step: Step
@@ -72,6 +76,13 @@ export interface RunStepInput {
   item?: ForEachItem
   /** Where the step's scripts record `gta.skip` and `gta.skipRest`; absent, the step's own. */
   control?: StepControl
+  /**
+   * The run's connections (SPEC.md §2.11): where a step with `connection:`
+   * keeps the event stream it opens, and where a step reading one finds it.
+   */
+  connections?: Connections
+  /** For an event stream: the app's live view of its events, and its Stop button. */
+  watch?: StreamWatch
 }
 
 /** One item of a step's `forEach` list (SPEC.md §2.1). */
@@ -160,7 +171,7 @@ const needsLibrary = (input: RunStepInput) =>
 
 /** The endpoint base a step's request is for, if any. */
 function endpointFor(step: Step, endpoints: EndpointBase[]): EndpointBase | null {
-  if (isUseStep(step) || endpoints.length === 0) return null
+  if (isUseStep(step) || isReadStep(step) || endpoints.length === 0) return null
   const { method, url } = readRequestLine(step)
   return findEndpoint(method, url, endpoints)
 }
@@ -227,8 +238,23 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       []
     )
   }
+  // The connection a step reads, which must be open: it sends no request of its own.
+  const reading = isReadStep(step) ? input.connections?.get(step.connection) : undefined
+  if (isReadStep(step) && !reading) {
+    return failedBeforeSending(
+      step,
+      input.collection,
+      { path: itemPath, name: stepLabel(step), seq: null },
+      {
+        phase: 'connection',
+        message: `No connection named ${step.connection} is open. A step with connection: ${step.connection} beside its method opens it; run that step first (SPEC.md §2.11)`
+      },
+      performance.now(),
+      []
+    )
+  }
   // A tls.ca file that cannot be read: send nothing, rather than fail later with a vaguer TLS error.
-  if (tls && tls.problems.length > 0) {
+  if (tls && tls.problems.length > 0 && !reading) {
     return failedBeforeSending(
       step,
       input.collection,
@@ -284,7 +310,6 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
     ...withLogs()
   })
 
-  let spec: SentRequest
   let run: VariableScope
   /** The params, once known: a set's only from its own layer on (below). */
   let params: Record<string, VarValue> | undefined
@@ -333,7 +358,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
     const before = layer.before
     const script = layer.script
     if (before?.script) {
-      const shown: SentRequest = edited ?? toSentRequestSafely(step, collection)
+      const shown: SentRequest = reading?.request ?? edited ?? toSentRequestSafely(step, collection)
       let view: RequestView | undefined
       const error = await runScript(before.script, {
         phase: 'pre-request',
@@ -347,7 +372,8 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       })
       if (error) return failed({ ...error, script })
       try {
-        edited = changedRequest(shown, view, step.body) ?? edited
+        // A step reading a connection sends nothing, so there is nothing to change.
+        if (!reading) edited = changedRequest(shown, view, step.body) ?? edited
       } catch (cause) {
         return failed({ phase: 'pre-request', message: (cause as Error).message, script })
       }
@@ -355,7 +381,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       if (control.skip !== null) {
         return {
           item,
-          request: edited ?? toSentRequestSafely(step, collection),
+          request: reading?.request ?? edited ?? toSentRequestSafely(step, collection),
           response: null,
           assertions: [],
           ...withLogs(),
@@ -368,33 +394,56 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
     }
   }
 
-  let payload: Uint8Array | null
-  try {
-    const prepared = await prepareRequest(
-      edited ?? toSentRequest(step, collection),
-      step.body,
-      scope,
-      await fileRoots(
-        step,
-        set?.path ?? context?.collectionPath ?? itemPath,
-        context?.collectionPath ?? itemPath
-      )
-    )
-    spec = prepared.request
-    payload = prepared.payload
-  } catch (cause) {
-    if (cause instanceof BodyFileError) return failed({ phase: 'body', message: cause.message })
-    return failed(interpolateError(cause))
-  }
-
   const settings = resolveSettings(collection?.settings, step.settings)
-  const outcome = await sendHttpRequest(spec, {
-    settings,
-    payload,
-    ...(signal ? { signal } : {}),
-    ...(tls && tls.ca.length > 0 ? { ca: tls.ca } : {})
-  })
+  /** Build the request, then send it: what goes wrong building it is the step's result. */
+  const send = async (): Promise<SendOutcome | RunResult> => {
+    let spec: SentRequest
+    let payload: Uint8Array | null
+    try {
+      const prepared = await prepareRequest(
+        edited ?? toSentRequest(step, collection),
+        step.body,
+        scope,
+        await fileRoots(
+          step,
+          set?.path ?? context?.collectionPath ?? itemPath,
+          context?.collectionPath ?? itemPath
+        )
+      )
+      spec = prepared.request
+      payload = prepared.payload
+    } catch (cause) {
+      if (cause instanceof BodyFileError) return failed({ phase: 'body', message: cause.message })
+      return failed(interpolateError(cause))
+    }
+    // A step opening a connection replaces one of the same name, whatever comes back.
+    const opens = step.connection
+    if (opens !== undefined) input.connections?.close(opens)
+    return sendHttpRequest(spec, {
+      settings,
+      payload,
+      ...(signal ? { signal } : {}),
+      ...(tls && tls.ca.length > 0 ? { ca: tls.ca } : {}),
+      ...(input.watch ? { watch: input.watch } : {}),
+      ...(opens !== undefined
+        ? {
+            keep: (stream: OpenStream) => {
+              if (input.connections) input.connections.open(opens, stream)
+              else stream.close()
+            }
+          }
+        : {})
+    })
+  }
+  const outcome = reading
+    ? await readConnection(reading, {
+        settings,
+        ...(signal ? { signal } : {}),
+        ...(input.watch ? { watch: input.watch } : {})
+      })
+    : await send()
 
+  if (!('ok' in outcome)) return outcome
   if (!outcome.ok) {
     const error: RunError = {
       phase: 'http',
@@ -413,7 +462,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
     }
   }
 
-  const response = outcome.response
+  const response = withConnection(outcome.response, step, input.connections)
   const session = new CheckSession({ response, scope })
   let testsError: RunError | null = null
   try {
@@ -465,6 +514,24 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
     error: testsError,
     status: deriveStatus(checked.assertions, testsError, true),
     durationMs: performance.now() - startedHr
+  }
+}
+
+/**
+ * An event stream's response, saying which connection it opened or read and
+ * whether that is still open (SPEC.md §2.11).
+ */
+function withConnection(
+  response: ReceivedResponse,
+  step: Step,
+  connections: Connections | undefined
+): ReceivedResponse {
+  const name = step.connection
+  if (name === undefined || !response.stream) return response
+  const kept = connections?.get(name)
+  return {
+    ...response,
+    stream: { ...response.stream, connection: { name, open: kept?.pump.end === null } }
   }
 }
 
@@ -560,6 +627,7 @@ function failedBeforeSending(
 
 /** The uninterpolated call, so a failed run still shows what was attempted. */
 function toSentRequestSafely(step: Step, collection?: Collection): SentRequest {
+  if (isReadStep(step)) return { method: 'READ', url: step.connection, headers: [], body: null }
   try {
     return toSentRequest(step, collection)
   } catch {

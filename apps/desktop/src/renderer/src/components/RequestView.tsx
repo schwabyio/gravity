@@ -25,7 +25,8 @@ import KeyValueEditor from './KeyValueEditor.js'
 import MultipartEditor, { FileBodyEditor } from './MultipartEditor.js'
 import QueryParamsEditor from './QueryParamsEditor.js'
 import Markdown from './Markdown.js'
-import ResponsePane, { type ResponseTab } from './ResponsePane.js'
+import ResponsePane, { type LiveView, type ResponseTab } from './ResponsePane.js'
+import { ConnectionField, ReadBar } from './ConnectionStep.js'
 import TestResultsPane from './TestResultsPane.js'
 import Tooltip from './Tooltip.js'
 import { UseBar, UseStepEditor } from './UseStep.js'
@@ -87,6 +88,12 @@ interface Props {
   /** For a use step: which of its set's requests the response panes show. */
   shownChild: number
   onOpenSet: (set: RequestSetView) => void
+
+  /** While running: an event stream as it is read, and the Stop that ends its reading. */
+  live?: LiveView | null
+  onStop?: () => void
+  /** Names the collection's steps open connections as, for a step reading one. */
+  connectionNames?: string[]
 }
 
 /** One request: where it sits, what it sends, and what came back. */
@@ -107,6 +114,10 @@ export default function RequestView(props: Props) {
   const testResultsPane = usePaneWidth('pane.testResults', 360, 240, 720)
 
   const result = props.result
+  // A step reading a connection sends nothing: it has no params, headers or body.
+  const reads = props.request.reads !== null
+  const shownTab: RequestTab =
+    reads && (tab === 'params' || tab === 'headers' || tab === 'body') ? 'tests' : tab
   const checks = useMemo(() => buildChecks(result?.assertions ?? []), [result])
   const logs = result?.logs ?? []
   const scriptError = result?.error?.phase === 'tests' ? result.error : null
@@ -215,6 +226,15 @@ export default function RequestView(props: Props) {
           onCancel={props.onCancel}
           shownChild={props.shownChild}
         />
+      ) : request.reads !== null ? (
+        <ReadBar
+          request={request}
+          names={props.connectionNames ?? []}
+          onChange={props.onChange}
+          running={props.running}
+          onSend={props.onSend}
+          onCancel={props.onCancel}
+        />
       ) : (
         <form
           className="url-bar"
@@ -259,7 +279,7 @@ export default function RequestView(props: Props) {
         </form>
       )}
 
-      {request.use === null && (
+      {request.use === null && request.reads === null && (
         <EndpointNote
           endpoint={findEndpoint(request.method, request.url, props.endpoints)}
           using={request.base}
@@ -303,37 +323,53 @@ export default function RequestView(props: Props) {
         ) : (
           <section className="pane request-pane">
             <div className="tabs">
-              <button className={tab === 'params' ? 'active' : ''} onClick={() => setTab('params')}>
-                Params {paramCount > 0 && <span className="count">{paramCount}</span>}
-              </button>
+              {!reads && (
+                <>
+                  <button
+                    className={shownTab === 'params' ? 'active' : ''}
+                    onClick={() => setTab('params')}
+                  >
+                    Params {paramCount > 0 && <span className="count">{paramCount}</span>}
+                  </button>
+                  <button
+                    className={shownTab === 'headers' ? 'active' : ''}
+                    onClick={() => setTab('headers')}
+                  >
+                    Headers {headerCount > 0 && <span className="count">{headerCount}</span>}
+                  </button>
+                  <button
+                    className={shownTab === 'body' ? 'active' : ''}
+                    onClick={() => setTab('body')}
+                  >
+                    Body {request.bodyMode !== 'none' && <span className="count dot">•</span>}
+                  </button>
+                </>
+              )}
               <button
-                className={tab === 'headers' ? 'active' : ''}
-                onClick={() => setTab('headers')}
-              >
-                Headers {headerCount > 0 && <span className="count">{headerCount}</span>}
-              </button>
-              <button className={tab === 'body' ? 'active' : ''} onClick={() => setTab('body')}>
-                Body {request.bodyMode !== 'none' && <span className="count dot">•</span>}
-              </button>
-              <button
-                className={tab === 'pre-request' ? 'active' : ''}
+                className={shownTab === 'pre-request' ? 'active' : ''}
                 onClick={() => setTab('pre-request')}
               >
                 Pre-request{' '}
                 {request.preRequest.trim() !== '' && <span className="count dot">•</span>}
               </button>
-              <button className={tab === 'tests' ? 'active' : ''} onClick={() => setTab('tests')}>
+              <button
+                className={shownTab === 'tests' ? 'active' : ''}
+                onClick={() => setTab('tests')}
+              >
                 Tests {request.tests.trim() !== '' && <span className="count dot">•</span>}
               </button>
               <button
-                className={tab === 'settings' ? 'active' : ''}
+                className={shownTab === 'settings' ? 'active' : ''}
                 onClick={() => setTab('settings')}
               >
                 Settings{' '}
                 {Object.keys(request.settings).length > 0 && <span className="count dot">•</span>}
               </button>
               {props.docs && (
-                <button className={tab === 'docs' ? 'active' : ''} onClick={() => setTab('docs')}>
+                <button
+                  className={shownTab === 'docs' ? 'active' : ''}
+                  onClick={() => setTab('docs')}
+                >
                   Docs
                 </button>
               )}
@@ -353,7 +389,7 @@ export default function RequestView(props: Props) {
             </div>
 
             <div className="tab-body">
-              {tab === 'params' && (
+              {shownTab === 'params' && (
                 <QueryParamsEditor
                   url={request.url}
                   onUrlChange={(url) => props.onChange({ url })}
@@ -361,7 +397,7 @@ export default function RequestView(props: Props) {
                   onCopyVariable={props.onCopyVariable}
                 />
               )}
-              {tab === 'headers' && (
+              {shownTab === 'headers' && (
                 <>
                   <KeyValueEditor
                     rows={request.headers}
@@ -376,8 +412,14 @@ export default function RequestView(props: Props) {
                   />
                 </>
               )}
-              {tab === 'docs' && props.docs && <Markdown source={props.docs} />}
-              {tab === 'settings' && (
+              {shownTab === 'docs' && props.docs && <Markdown source={props.docs} />}
+              {shownTab === 'settings' && !reads && (
+                <ConnectionField
+                  value={request.connection}
+                  onChange={(connection) => props.onChange({ connection })}
+                />
+              )}
+              {shownTab === 'settings' && (
                 <SettingsTab
                   level="step"
                   own={request.settings}
@@ -385,7 +427,7 @@ export default function RequestView(props: Props) {
                   onChange={(settings) => props.onChange({ settings })}
                 />
               )}
-              {tab === 'tests' && (
+              {shownTab === 'tests' && (
                 <div className="script-editor">
                   <p className="hint">
                     Runs after the response. xtest is built in as <code>gta</code> — type{' '}
@@ -405,7 +447,7 @@ export default function RequestView(props: Props) {
                   />
                 </div>
               )}
-              {tab === 'pre-request' && (
+              {shownTab === 'pre-request' && (
                 <div className="script-editor">
                   <p className="hint">
                     Runs before the request is built. Set the variables the request uses with{' '}
@@ -429,7 +471,7 @@ export default function RequestView(props: Props) {
                   />
                 </div>
               )}
-              {tab === 'body' && (
+              {shownTab === 'body' && (
                 <div className="body-editor">
                   <select
                     value={request.bodyMode}
@@ -496,6 +538,8 @@ export default function RequestView(props: Props) {
             selected={selected}
             jumpedPath={jumpedPath}
             onPick={pick}
+            live={props.live ?? null}
+            {...(props.onStop ? { onStop: props.onStop } : {})}
           />
         </section>
 

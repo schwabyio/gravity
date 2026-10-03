@@ -14,6 +14,7 @@ import type {
   RunResult,
   Step,
   StepList,
+  StreamEvent,
   VariablePreviews,
   VarValue,
   Vars
@@ -31,6 +32,8 @@ export const IpcChannel = {
   runStart: 'run:start',
   runCollection: 'run:collection',
   runCancel: 'run:cancel',
+  runStop: 'run:stop',
+  connectionClose: 'run:connectionClose',
 
   workspacesList: 'workspaces:list',
   workspaceCreate: 'workspaces:create',
@@ -94,6 +97,10 @@ export const IpcChannel = {
 
   /** main -> renderer: one step of a collection run finished. */
   eventRunProgress: 'event:runProgress',
+  /** main -> renderer: an event stream a run is reading: its headers, then each event. */
+  eventRunLive: 'event:runLive',
+  /** main -> renderer: the connections a collection's Sends hold open changed. */
+  eventConnections: 'event:connections',
   /** main -> renderer: workspaces, the active one, or which projects they hold changed. */
   eventWorkspaces: 'event:workspaces',
   /** main -> renderer: one project was rescanned or its git state moved. */
@@ -457,6 +464,12 @@ export interface RunCollectionRequest {
    * each with a fresh scope (SPEC.md §2.8). Progress says which row.
    */
   dataRows?: DataRowInput[]
+  /**
+   * For steps run on their own, not Run all: they use, and leave open, the
+   * connections the collection's Sends hold (SPEC.md §2.11). Run all closes
+   * those, and its own close when it ends.
+   */
+  keepConnections?: boolean
 }
 
 /**
@@ -476,6 +489,31 @@ export interface FlagsView {
    * will not read. Runs go on with the fixed values and overrides.
    */
   error: string | null
+}
+
+/** An event stream a run is reading, as it is read: its headers, then each event. */
+export type LiveStream =
+  | { kind: 'open'; status: number; statusText: string }
+  | { kind: 'event'; event: StreamEvent; at: number }
+
+export interface RunLive {
+  runId: string
+  live: LiveStream
+}
+
+/** A connection a collection's Sends hold (SPEC.md §2.11). */
+export interface ConnectionView {
+  name: string
+  /** Events arrived and not yet read by a step. */
+  held: number
+  /** False once the server closed it. */
+  open: boolean
+}
+
+/** The connections a collection's Sends hold, after a change. */
+export interface ConnectionsView {
+  collectionPath: string
+  connections: ConnectionView[]
 }
 
 export interface RunProgress {
@@ -516,8 +554,15 @@ export interface DesktopApi {
   /** Run every step in order, sharing one variable scope. */
   runCollection(request: RunCollectionRequest): Promise<Result<{ summary: CollectionRunSummary }>>
   runCancel(runId: string): void
+  /** Stop reading the event stream a run is reading: a normal end, unlike Cancel. */
+  runStop(runId: string): void
   /** Per-step results, delivered as they land rather than at the end. */
   onRunProgress(callback: (progress: RunProgress) => void): Unsubscribe
+  /** An event stream a run is reading, as it is read. */
+  onRunLive(callback: (live: RunLive) => void): Unsubscribe
+  /** Close a connection a collection's Sends hold, or with no name all of them. */
+  closeConnection(collectionPath: string, name?: string): void
+  onConnections(callback: (view: ConnectionsView) => void): Unsubscribe
 
   workspaces: {
     list(): Promise<WorkspacesState>

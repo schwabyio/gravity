@@ -8,6 +8,8 @@
  */
 import {
   checkFlags,
+  Connections,
+  isReadStep,
   isUseStep,
   readRequestLine,
   stepLabel,
@@ -19,6 +21,7 @@ import {
   type Collection,
   type RunResult,
   type Step,
+  type StreamWatch,
   CollectionSchema,
   EnvironmentDocSchema,
   StepSchema,
@@ -58,21 +61,73 @@ interface RunCollectionMessage {
   dataRow?: DataRow | null
   /** Every row: the collection runs once per row, each with a fresh scope. */
   dataRows?: DataRow[]
+  /** Steps run on their own: they use, and leave open, the connections Sends hold. */
+  keepConnections?: boolean
 }
 
 interface CancelMessage {
-  type: 'cancel'
+  type: 'cancel' | 'stop'
   runId: string
 }
 
-type Incoming = RunStepMessage | RunCollectionMessage | CancelMessage
+interface CloseConnectionMessage {
+  type: 'closeConnection'
+  collectionPath: string
+  name?: string
+}
+
+type Incoming = RunStepMessage | RunCollectionMessage | CancelMessage | CloseConnectionMessage
 
 const inFlight = new Map<string, AbortController>()
+/** What stops the event stream each run is reading now: its Stop button. */
+const stoppers = new Map<string, AbortController>()
+
+/**
+ * The connections each collection's Sends hold (SPEC.md §2.11), by its path:
+ * open from the Send of the step that opens one, for the steps sent after it,
+ * until that step is sent again, Run all starts, or Close is pressed.
+ */
+const held = new Map<string, Connections>()
+
+function heldFor(collectionPath: string | null): Connections {
+  const key = collectionPath ?? ''
+  let connections = held.get(key)
+  if (!connections) {
+    connections = new Connections((state) => {
+      if (collectionPath)
+        process.parentPort.postMessage({ type: 'connections', collectionPath, connections: state })
+    })
+    held.set(key, connections)
+  }
+  return connections
+}
+
+/** The live view of the streams a run reads, and the Stop that ends the one it reads now. */
+function watchFor(runId: string): StreamWatch {
+  return {
+    open: (head) => {
+      const stopper = new AbortController()
+      stoppers.set(runId, stopper)
+      process.parentPort.postMessage({ type: 'live', runId, live: { kind: 'open', ...head } })
+      return stopper.signal
+    },
+    event: (event, at) =>
+      process.parentPort.postMessage({ type: 'live', runId, live: { kind: 'event', event, at } })
+  }
+}
 
 process.parentPort.on('message', (event) => {
   const message = event.data as Incoming
   if (message.type === 'cancel') {
     inFlight.get(message.runId)?.abort()
+    return
+  }
+  if (message.type === 'stop') {
+    stoppers.get(message.runId)?.abort()
+    return
+  }
+  if (message.type === 'closeConnection') {
+    held.get(message.collectionPath)?.close(message.name)
     return
   }
   if (message.type === 'run') void handleStep(message)
@@ -145,6 +200,8 @@ async function handleStep(message: RunStepMessage): Promise<void> {
       ...(collection ? { collection } : {}),
       itemPath: message.collectionPath,
       signal: controller.signal,
+      connections: heldFor(message.collectionPath),
+      watch: watchFor(message.runId),
       ...run
     })
     const shown = hidingSecrets(run.context ? await secretValues(run.context) : [])
@@ -153,6 +210,7 @@ async function handleStep(message: RunStepMessage): Promise<void> {
     postFailure(message.runId, cause)
   } finally {
     inFlight.delete(message.runId)
+    stoppers.delete(message.runId)
   }
 }
 
@@ -163,6 +221,9 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
     const collection = CollectionSchema.parse(message.collection)
     const run = contextFor(message)
     const shown = hidingSecrets(run.context ? await secretValues(run.context) : [])
+    // Run all closes what Sends left open, and keeps its own only while it runs.
+    const sends = heldFor(message.collectionPath)
+    if (!message.keepConnections) sends.close()
     // As gta runs it (SPEC.md §2.8, §2.10): setup once, then with a data file
     // once per row — each row a fresh scope, rows in order — then teardown.
     // Cancel stops where it is.
@@ -187,6 +248,8 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
           result: shown(result),
           ...(iteration ? { iteration } : {})
         }),
+      ...(message.keepConnections ? { connections: sends } : {}),
+      watch: watchFor(message.runId),
       ...run
     })
     process.parentPort.postMessage({
@@ -198,6 +261,7 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
     postFailure(message.runId, cause)
   } finally {
     inFlight.delete(message.runId)
+    stoppers.delete(message.runId)
   }
 }
 
@@ -232,7 +296,7 @@ function flagGate(
   const notRun = (): RunResult => ({
     item: { path: collectionPath, name: stepLabel(step), seq: null },
     request: {
-      method: isUseStep(step) ? 'USE' : readRequestLine(step).method,
+      method: isUseStep(step) ? 'USE' : isReadStep(step) ? 'READ' : readRequestLine(step).method,
       url: '',
       headers: [],
       body: null

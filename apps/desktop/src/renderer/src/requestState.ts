@@ -2,6 +2,7 @@
 // into the sandboxed renderer bundle.
 import {
   HTTP_METHODS as CORE_METHODS,
+  isReadStep,
   isUseStep,
   readRequestLine,
   type Body,
@@ -77,6 +78,17 @@ export interface EditorState {
   with: Record<string, VarValue>
   /** Whether the step uses its endpoint's base (SPEC.md §2.6); only `false` is written. */
   base: boolean
+  /**
+   * For a request: the connection its event stream stays open as, for later
+   * steps to read (SPEC.md §2.11); empty for none.
+   */
+  connection: string
+  /**
+   * For a step reading a connection: its name. Null for a request of the
+   * step's own; a reading step sends nothing, so it has no method, URL,
+   * headers or body.
+   */
+  reads: string | null
 }
 
 export const HTTP_METHODS: readonly HttpMethod[] = CORE_METHODS
@@ -125,7 +137,9 @@ export const emptyRequest = (): EditorState => ({
   settings: {},
   use: null,
   with: {},
-  base: true
+  base: true,
+  connection: '',
+  reads: null
 })
 
 /** A query parameter as read out of the URL; the URL stays the source of truth. */
@@ -299,6 +313,19 @@ export function fromStep(step: Step): EditorState {
       with: step.with ?? {}
     }
   }
+  if (isReadStep(step)) {
+    return {
+      ...emptyRequest(),
+      name: step.name ?? '',
+      preRequest: step.before?.script ?? '',
+      tests: step.tests ?? '',
+      tags: step.tags ?? [],
+      flags: step.flags ?? {},
+      useTests: step.useTests === true,
+      settings: step.settings ?? {},
+      reads: step.connection
+    }
+  }
   const { method, url } = readRequestLine(step)
   const headers = headerRows(step.headers)
 
@@ -317,7 +344,9 @@ export function fromStep(step: Step): EditorState {
     settings: step.settings ?? {},
     use: null,
     with: {},
-    base: step.base !== false
+    base: step.base !== false,
+    connection: step.connection ?? '',
+    reads: null
   }
 }
 
@@ -333,6 +362,27 @@ function mergeIntoUseStep(original: Step, edited: EditorState): Step {
   if (edited.tags.length > 0) next['tags'] = edited.tags
   if (Object.keys(edited.flags).length > 0) next['flags'] = edited.flags
   if (original.docs !== undefined) next['docs'] = original.docs
+  if (edited.tests.trim() !== '') next['tests'] = edited.tests
+  return next as Step
+}
+
+/**
+ * A step reading a connection (SPEC.md §2.11): the connection, and what it
+ * checks and waits for. It sends nothing, so it has no request to carry over.
+ */
+function mergeIntoReadStep(original: Step, edited: EditorState): Step {
+  const next: Record<string, unknown> = {}
+  if (edited.name.trim() !== '') next['name'] = edited.name
+  next['connection'] = edited.reads
+  if (edited.tags.length > 0) next['tags'] = edited.tags
+  if (Object.keys(edited.flags).length > 0) next['flags'] = edited.flags
+  if (edited.useTests) next['useTests'] = true
+  if (original.docs !== undefined) next['docs'] = original.docs
+  const settings = Object.fromEntries(
+    Object.entries(edited.settings).filter(([, value]) => value !== undefined)
+  )
+  if (Object.keys(settings).length > 0) next['settings'] = settings
+  if (edited.preRequest.trim() !== '') next['before'] = { script: edited.preRequest }
   if (edited.tests.trim() !== '') next['tests'] = edited.tests
   return next as Step
 }
@@ -365,6 +415,7 @@ function readBody(body: Body | undefined): BodyState {
  */
 export function mergeIntoStep(original: Step, edited: EditorState): Step {
   if (edited.use !== null) return mergeIntoUseStep(original, edited)
+  if (edited.reads !== null) return mergeIntoReadStep(original, edited)
   const next: Record<string, unknown> = { ...original }
   for (const method of HTTP_METHODS) delete next[method]
   next[edited.method] = edited.url
@@ -403,6 +454,9 @@ export function mergeIntoStep(original: Step, edited: EditorState): Step {
 
   if (edited.base) delete next['base']
   else next['base'] = false
+
+  if (edited.connection.trim() === '') delete next['connection']
+  else next['connection'] = edited.connection.trim()
 
   // `before` also holds `set`, which has no editor: change only `script`.
   const before: Record<string, unknown> = { ...original.before }

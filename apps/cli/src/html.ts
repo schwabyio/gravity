@@ -1,7 +1,9 @@
 import {
+  parseEventStream,
   parseMarkdown,
   resultName,
   type AssertionResult,
+  type EventStreamRead,
   type HeaderEntry,
   type MdBlock,
   type MdInline,
@@ -320,6 +322,23 @@ function requestCard(r: RunResult): string {
   )
 }
 
+/** What stopped an event stream's reading (SPEC.md §2.3). */
+const ENDED_BY: Record<EventStreamRead['endedBy'], string> = {
+  close: 'closed by the server',
+  maxEvents: 'stopped at maxEvents',
+  streamTimeout: 'stopped at streamTimeout',
+  untilEvent: 'stopped at untilEvent',
+  limit: 'stopped at the safety limit',
+  stopped: 'stopped by hand',
+  held: 'took the events held'
+}
+
+/** A connection a step opened or read (SPEC.md §2.11), and whether it was left open. */
+const connectionNote = (stream: EventStreamRead): string =>
+  stream.connection
+    ? `, connection ${stream.connection.name} ${stream.connection.open ? 'open' : 'closed'}`
+    : ''
+
 function responseCard(r: RunResult): string {
   const res = r.response
   if (!res) {
@@ -328,12 +347,22 @@ function responseCard(r: RunResult): string {
       field('Failure', '<span class="c-failed">No response was received.</span>', 'wide')
     )
   }
-  const body = res.bodyKind === 'json' ? prettyJson(res.body) : res.body
+  // An event stream is shown as the events its checks' paths address.
+  const events = res.bodyKind === 'events'
+  const body =
+    res.bodyKind === 'json'
+      ? prettyJson(res.body)
+      : events
+        ? JSON.stringify(parseEventStream(res.body), null, 2)
+        : res.body
   const extra = [
     `first byte ${Math.round(res.timings.ttfbMs)}ms`,
     bytes(res.sizeBytes),
     res.redirectCount > 0
       ? `${res.redirectCount} redirect${res.redirectCount === 1 ? '' : 's'}`
+      : '',
+    res.stream
+      ? `${res.stream.at.length} event${res.stream.at.length === 1 ? '' : 's'}, ${ENDED_BY[res.stream.endedBy]}${connectionNote(res.stream)}`
       : ''
   ].filter(Boolean)
   return card(
@@ -343,7 +372,9 @@ function responseCard(r: RunResult): string {
       res.headers.length > 0
         ? field('Response Headers', scrollPre(headerText(res.headers)), 'wide')
         : '',
-      body ? field('Response Body', scrollPre(clip(body)), 'wide') : '',
+      body
+        ? field(events ? 'Response Events' : 'Response Body', scrollPre(clip(body)), 'wide')
+        : '',
       field(
         'Response Time',
         `${Math.round(res.timings.totalMs)}ms <span class="dim">· ${extra.join(' · ')}</span>`

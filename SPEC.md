@@ -388,27 +388,31 @@ key**, in capitals, whose value is the URL as a string.
 
 Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
 
-| Key        | Type         | Required | Meaning                                                                   |
-| ---------- | ------------ | -------- | ------------------------------------------------------------------------- |
-| `<METHOD>` | string       | **yes**  | The URL, query string included.                                           |
-| `name`     | string       | no       | Display name. Defaults to the method and URL.                             |
-| `headers`  | map          | no       | Over the collection's headers (§2.3).                                     |
-| `body`     | map          | no       | Exactly one kind of body (§2.2).                                          |
-| `settings` | map          | no       | Over the collection's settings (§2.3).                                    |
-| `before`   | map          | no       | `script:` run before the request (§5).                                    |
-| `tests`    | string       | no       | The checks, as JavaScript: calls on `gta` (§3) and any other code (§5).   |
-| `tags`     | list of tags | no       | The step's own tags. Only with `stepTags: true` on the collection (§2.4). |
-| `flags`    | map          | no       | Feature flags the step needs (§2.9).                                      |
-| `forEach`  | string       | no       | Send the request once for each item of a list (below).                    |
-| `useTests` | `true`       | no       | In a request set: the use step's `tests` check this response (§2.5).      |
-| `base`     | `false`      | no       | `false` leaves the step's endpoint base out (§2.6).                       |
-| `docs`     | string       | no       | Markdown.                                                                 |
+| Key          | Type         | Required | Meaning                                                                   |
+| ------------ | ------------ | -------- | ------------------------------------------------------------------------- |
+| `<METHOD>`   | string       | **yes**  | The URL, query string included.                                           |
+| `name`       | string       | no       | Display name. Defaults to the method and URL.                             |
+| `headers`    | map          | no       | Over the collection's headers (§2.3).                                     |
+| `body`       | map          | no       | Exactly one kind of body (§2.2).                                          |
+| `settings`   | map          | no       | Over the collection's settings (§2.3).                                    |
+| `before`     | map          | no       | `script:` run before the request (§5).                                    |
+| `tests`      | string       | no       | The checks, as JavaScript: calls on `gta` (§3) and any other code (§5).   |
+| `tags`       | list of tags | no       | The step's own tags. Only with `stepTags: true` on the collection (§2.4). |
+| `flags`      | map          | no       | Feature flags the step needs (§2.9).                                      |
+| `forEach`    | string       | no       | Send the request once for each item of a list (below).                    |
+| `useTests`   | `true`       | no       | In a request set: the use step's `tests` check this response (§2.5).      |
+| `connection` | string       | no       | Keep the event stream this request opens as a connection (§2.11).         |
+| `base`       | `false`      | no       | `false` leaves the step's endpoint base out (§2.6).                       |
+| `docs`       | string       | no       | Markdown.                                                                 |
 
-- A step with no method key, or with two, is an error.
+- A step with two method keys is an error, and so is a step with none, unless it is a
+  use step or reads a connection.
 - **The URL is authoritative, query string included.** There is no separate block of
   query parameters. Editors show a parameter table as a view over the URL.
 - A step may instead run a request set with `use:` (§2.5). A use step has no method
   key.
+- A step may also read a connection, an event stream an earlier step keeps open, with
+  `connection:` and no method key (§2.11).
 - **Any other key is an error**, so a misspelled key such as `heders:` fails at once
   rather than being ignored. A method key in lower case (`get:`) is reported as such.
 
@@ -532,12 +536,65 @@ body:
 **`settings`** on a collection apply to every step; a step's own settings merge over
 them. Any other key is an error.
 
-| Key               | Type        | Default | Meaning                                                        |
-| ----------------- | ----------- | ------- | -------------------------------------------------------------- |
-| `timeout`         | number ≥ 0  | `0`     | Milliseconds for the whole request; `0` means no limit.        |
-| `followRedirects` | boolean     | `true`  | Follow 3xx responses.                                          |
-| `maxRedirects`    | integer ≥ 0 | `5`     | The most redirects followed.                                   |
-| `encodeUrl`       | boolean     | `true`  | Percent-encode what a hand-typed URL left raw, before sending. |
+| Key               | Type        | Default | Meaning                                                                                                |
+| ----------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------ |
+| `timeout`         | number ≥ 0  | `0`     | Milliseconds for the whole request; `0` means no limit. For an event stream, until its headers arrive. |
+| `followRedirects` | boolean     | `true`  | Follow 3xx responses.                                                                                  |
+| `maxRedirects`    | integer ≥ 0 | `5`     | The most redirects followed.                                                                           |
+| `encodeUrl`       | boolean     | `true`  | Percent-encode what a hand-typed URL left raw, before sending.                                         |
+| `maxEvents`       | integer ≥ 0 | `0`     | Stop reading an event stream after this many events; `0` means no limit.                               |
+| `streamTimeout`   | number ≥ 0  | `0`     | Stop reading an event stream this many milliseconds after its headers; `0` means no limit.             |
+| `untilEvent`      | string      | none    | Stop reading an event stream after the first event of this name, its `event:` line.                    |
+
+**Event streams.** A response whose `Content-Type` is `text/event-stream` (Server-Sent
+Events) is read as it arrives, whatever the method, and checked as a list of events
+(§3). Nothing in the step marks it as a stream. Reading stops at whichever comes first:
+
+- the server closes the stream
+- `maxEvents` events have arrived
+- `streamTimeout` milliseconds have passed since its headers arrived
+- the first event named `untilEvent` has arrived
+- 1,000 events or 10 MB, a limit no setting lifts
+
+```yaml
+- name: price stream
+  GET: '{{baseUrl}}/prices/stream?symbol=ACME'
+  headers:
+    Accept: text/event-stream
+  settings:
+    maxEvents: 3
+    streamTimeout: 5000
+  tests: |
+    gta.expectResponseStatusCodeToBe(200)
+    gta.expectResponseBodyToHaveProperty('[0].event', 'subscribed')
+    gta.expectResponseBodyToHaveProperty('[1].data.price', 100)
+```
+
+- Each way of stopping is a normal end, not an error, and the checks run on the events
+  that arrived. A check that wanted more fails with the path it missed.
+- Stopped at a number of events, the body ends with the last one.
+- Cancel, or a connection that drops mid-stream, is an error, as for any request.
+- `maxEvents`, `streamTimeout` and `untilEvent` do nothing to any other response.
+- In the desktop app, the events show as they arrive, and Stop ends the reading as
+  these do, so the checks run on what came.
+- A step that keeps its stream open for later steps is a connection (§2.11).
+
+**Resuming.** A stream is never reconnected: the server closing it ends the step. To
+test that a stream resumes, capture the last event's id and send it as `Last-Event-ID`
+in a later step:
+
+```yaml
+- name: first part
+  GET: '{{baseUrl}}/feed'
+  tests: |
+    gta.set('lastId', res.body.at(-1).id)
+- name: the rest
+  GET: '{{baseUrl}}/feed'
+  headers:
+    Last-Event-ID: '{{lastId}}'
+  tests: |
+    gta.expectResponseBodyToHaveProperty('[0].id', '4')
+```
 
 **`headers`** is a map from header name to one of:
 
@@ -934,12 +991,73 @@ steps: # once per row of approved-domains.csv, as before
 - Reports name their results `setup › log in` and `teardown › remove the grant`. Running
   a single step in the desktop app does not run them.
 
+### 2.11 Connections: a stream across steps
+
+A request whose response is an event stream (§2.3) can keep it open for later steps, as
+a **connection** named by `connection:`. A later step with `connection:` and no method
+key sends nothing: it reads the events the connection holds. The steps between can do
+what those events are about:
+
+```yaml
+steps:
+  - name: watch orders
+    GET: '{{baseUrl}}/orders/events'
+    connection: orders # keep the stream open as "orders"
+    settings:
+      untilEvent: subscribed # read until the server confirms, then go on
+  - name: place order
+    POST: '{{baseUrl}}/orders'
+    body:
+      json: '{ "sku": "ACME-1" }'
+    tests: |
+      gta.expectResponseBodyToHaveProperty('id', 'orderId', 'setAsCollectionVariable')
+  - name: order created
+    connection: orders # no method key: reads the connection
+    settings:
+      untilEvent: order.created
+      streamTimeout: 5000
+    tests: |
+      gta.expectResponseBodyToHaveProperty('[0].event', 'order.created')
+      gta.test('the order placed', () => assert.equal(res.body[0].data.id, gta.get('orderId')))
+```
+
+- **Opening.** The step sends its request and reads the stream as any step does, until
+  its `maxEvents`, `streamTimeout` or `untilEvent`. Then, rather than closing it, it
+  keeps reading in the background, holding the events that arrive for the next step
+  that reads the connection. With none of the three set, it reads no events and goes
+  straight on.
+- **Reading.** A reading step takes the events held since the last step read them,
+  then waits for more, until its `maxEvents`, `streamTimeout` or `untilEvent`, or the
+  server closes the stream. With none of the three set, it takes what is held and ends
+  without waiting, as `held`.
+- **What a reading step sees.** Its body is the events it took (§3). Its status and
+  headers are those of the response that opened the connection, `req` is that request,
+  and `res.stream.at` counts from that response's headers.
+- A reading step may have `name`, `settings`, `before`, `tests`, `tags`, `flags`,
+  `useTests` and `docs`, and nothing that would build a request: no `headers`, `body`,
+  `base` or `forEach`. A step opening a connection has no `forEach`, and a use step has
+  no `connection`.
+- **A connection lasts the run.** One opened in `setup` is read by every data row; one
+  opened in a row, by that row's later steps. Every connection closes when the run ends,
+  cancelled or not. A step opening a name already open closes the old connection first,
+  whatever its own response is.
+- A connection the server closes keeps the events it held: the next step reads them,
+  then ends with `close`. A connection holds at most 1,000 events or 10 MB; at that it
+  stops reading, and the step that reads it ends with `limit`.
+- Reading a connection no step has opened is an error, and the step's scripts do not
+  run.
+- **In the desktop app**, a connection opened by sending a step stays open for the steps
+  sent after it, until that step is sent again, the connection is closed from above the
+  step list, Run all starts, or the app quits. Run all, like `gta`, opens its own and
+  closes them when it ends.
+
 ---
 
 ## 3. Checking a response
 
-A step's checks are calls to the [xtest](https://github.com/schwabyio/xtest) functions
-on `gta`, in its `tests` (§5 lists them). This section is what the calls mean.
+A step's checks are calls to functions on `gta`, in its `tests` (§5 lists them).
+[FUNCTIONS.md](./FUNCTIONS.md) documents each one, with examples. This section is the
+rules they share.
 
 ```yaml
 tests: |
@@ -962,14 +1080,14 @@ A key that holds a `.`, `[` or `]`, or is empty, goes in brackets as a JSON stri
 `jwt.payload["https://example.com/id"]`, `modules[""].edition`. Reports show such keys
 the same way.
 
-As in xtest, a path can also be a list of keys: `['jwt', 'payload', 'https://example.com/id']`.
+A path can also be a list of keys: `['jwt', 'payload', 'https://example.com/id']`.
 Each item is one key, whatever it holds, and a number is its digits, so
 `['groups', 0, 'name']` reads an index. Every function that takes a path takes a list
 too, and so does `pathToProperty`.
 
 A path that runs into a `null` before its end, such as `phoneNumber.number` when
-`phoneNumber` is `null`, reads as that `null` for a check that the value is `null`, as
-xtest read it. For any other check the property is not present.
+`phoneNumber` is `null`, reads as that `null` for a check that the value is `null`. For
+any other check the property is not present.
 
 ### Body conversion
 
@@ -977,6 +1095,37 @@ A JSON body is used as it is. An XML body is converted: the root element is the 
 top-level key, namespace prefixes and attributes are dropped, an element holding only
 text becomes that string (an empty one `""`), and a repeated element becomes an array.
 A `text/plain` or HTML body is the single property `plaintext`.
+
+An event stream (§2.3) is a list with one item per event:
+
+- **`data`** is the event's `data:` lines joined with a line feed: their JSON value when
+  they parse as JSON, so `[1].data.price` is a number, and otherwise the text, such as
+  `[DONE]`.
+- **`event`** and **`id`** are there only when that event's own lines set them. Neither
+  carries over to the next event.
+- Comments (`: heartbeat`) and a block with no `data:` are not events, `retry:` is not
+  kept, and an event the stream ended in the middle of is dropped.
+
+```text
+event: price
+id: 41
+data: {"symbol":"ACME","price":100}
+
+: heartbeat
+
+data: [DONE]
+
+```
+
+reads as
+
+```json
+[{ "event": "price", "id": "41", "data": { "symbol": "ACME", "price": 100 } }, { "data": "[DONE]" }]
+```
+
+The path `''` is the whole list, so `expectResponseBodyToHaveUnorderedArray('', …)` finds
+events whose order is not guaranteed. Under strict validation every event's properties
+need accounting for, so a small `maxEvents` keeps a busy stream practical.
 
 ### Values and patterns
 
@@ -1008,7 +1157,9 @@ saying so, and the checks after it still run.
 ### Unordered arrays
 
 `gta.expectResponseBodyToHaveUnorderedArray(path, list)` passes when the array holds
-every item of a simple `list`, in any order.
+every item of a simple `list`, in any order. A `RegExp` in the list is a pattern some item
+must match as text, and so is one held by an object in the list:
+`[/^admin/, { name: /^Grace/ }]`. A pattern never matches an object or array item.
 
 A list of `{ pathToProperty, expectedValue, specialHandling? }` objects describes **one**
 item, property by property; call it once per item. A property may appear twice, once to
@@ -1022,15 +1173,16 @@ gta.expectResponseBodyToHaveUnorderedArray('users', [
 ```
 
 `gta.expectResponseBodyToHaveUnorderedArrayNotThisItem(path, list)` passes when no item
-matches. A `compareValue` may be a `RegExp`.
+matches. A simple list may hold patterns here too, and a `compareValue` may be a
+`RegExp`.
 
 - **Each call prefers items an earlier call did not match.** Two calls with the same
   description find two items when there are two, so each capture and strict validation
   see a different one. A sort starts this over, since its indexes name other items.
-- **A list of one `notThisExpectedValue` entry reads as xtest read it.** Without strict
-  validation it means no item has that value, so an empty array passes. With it, it
-  means one item whose value is something else, as any list does. The step's last word
-  on strict validation decides.
+- **A list of one `notThisExpectedValue` entry depends on strict validation.** Without
+  it, the entry means no item has that value, so an empty array passes. With it, the
+  entry means one item whose value is something else, as any list does. The step's last
+  word on strict validation decides.
 
 ### Strict validation
 
@@ -1159,8 +1311,8 @@ request, and `tests` checks the response:
 
 ### The `gta` object
 
-The xtest functions keep their original names, arguments and `specialHandling` strings.
-There is nothing to load, and no `startXTest` or `endXTest`.
+There is nothing to import or load. [FUNCTIONS.md](./FUNCTIONS.md) documents each
+function, with examples.
 
 | Function                                                                                         | In `before.script` |
 | ------------------------------------------------------------------------------------------------ | :----------------: |
@@ -1196,20 +1348,35 @@ row, and teardown, still run.
 
 `gta.date` formats with strftime specifiers: `%Y %y %m %d %e %H %I %M %S %L %p %b %B %a
 %A %j %Z %z %s %F %T %%`. An unrecognized specifier is left in the output, so a typo is
-visible. `timeZone` is `local`, `utc`, an IANA name such as `America/New_York`, or one of
-xtest's military zone letters (`U` is -08:00, not UTC).
+visible. `timeZone` is `local`, `utc`, an IANA name such as `America/New_York`, or a
+military zone letter (`U` is -08:00, not UTC).
 
 ### Other globals
 
-| Global     | What it is                                                                                                                                                              |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `res`      | `tests` only: `status`, `statusText`, `headers` (lower-cased names), `header(name)`, `body` (parsed JSON, converted XML, or text), `text`, `time` (ms), `size` (bytes). |
-| `req`      | `method`, `url`, `headers`, `body`: as sent in `tests`, as written in `before.script`, where a script may change `headers` and `body` (below).                          |
-| `assert`   | Node's strict `assert`, for use inside `gta.test`.                                                                                                                      |
-| `console`  | Captured into the step's result.                                                                                                                                        |
-| `params`   | A request set's params (§2.5), in its own scripts and in the tests of the use step running it.                                                                          |
-| `endpoint` | An endpoint base's `{name}` values (§2.6), in its scripts and in every script of a step under it.                                                                       |
-| `checks`   | The project's check files (below).                                                                                                                                      |
+| Global     | What it is                                                                                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `res`      | `tests` only: `status`, `statusText`, `headers` (lower-cased names), `header(name)`, `body` (parsed JSON, converted XML, an event stream's events, or text), `text`, `time` (ms), `size` (bytes), and for an event stream `stream` (below). |
+| `req`      | `method`, `url`, `headers`, `body`: as sent in `tests`, as written in `before.script`, where a script may change `headers` and `body` (below).                                                                                              |
+| `assert`   | Node's strict `assert`, for use inside `gta.test`.                                                                                                                                                                                          |
+| `console`  | Captured into the step's result.                                                                                                                                                                                                            |
+| `params`   | A request set's params (§2.5), in its own scripts and in the tests of the use step running it.                                                                                                                                              |
+| `endpoint` | An endpoint base's `{name}` values (§2.6), in its scripts and in every script of a step under it.                                                                                                                                           |
+| `checks`   | The project's check files (below).                                                                                                                                                                                                          |
+
+**`res` for an event stream** (§2.3): `res.body` is its list of events, as checks see it
+(§3), `res.text` the stream as received, and `res.time` runs until the reading stopped.
+`res.stream` has the rest, and is absent for any other response:
+
+- `endedBy`: what stopped the reading: `close`, `maxEvents`, `streamTimeout`,
+  `untilEvent`, `limit`, `stopped` (the desktop app's Stop button), or `held` (a step on
+  a connection that waited for nothing, §2.11)
+- `at`: for each event, the milliseconds from the response headers to its arrival
+- `connection`: for a step that opens or reads a connection, `{ name, open }`: its name,
+  and whether it was still open when the step ended
+
+```js
+gta.test('first price within 2s', () => assert.ok(res.stream.at[0] < 2000))
+```
 
 Also available are the language itself and the web-standard globals: timers, `URL`,
 `URLSearchParams`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `structuredClone` and
@@ -1360,7 +1527,8 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 **Steps**
 
 - A step has exactly one method key, out of `GET`, `POST`, `PUT`, `PATCH`, `DELETE`,
-  `HEAD` and `OPTIONS`, in capitals, and its value is a string.
+  `HEAD` and `OPTIONS`, in capitals, and its value is a string. A use step and a step
+  reading a connection have none.
 - A step has no key outside the table in §2.1.
 - A use step has no method key, `headers`, `body`, `settings` or `before`. `with` is used
   only with `use`.
@@ -1369,6 +1537,8 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - `base` is only ever `false`.
 - `forEach` is a string, and a use step has none.
 - `useTests` is only ever `true`, only on a request set's step, and on one step at most.
+- A step reading a connection has no `headers`, `body`, `base` or `forEach`. A step
+  opening one has no `forEach`, and a use step has no `connection` (§2.11).
 
 **Values**
 
@@ -1377,6 +1547,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - A tag matches `^[A-Za-z0-9._:-]+$`.
 - A flag name matches `^[A-Za-z0-9_][A-Za-z0-9_.-]*$`, and a flag value is a string,
   number or boolean.
+- A connection name matches `^[A-Za-z0-9_][A-Za-z0-9_.-]*$`.
 - A `settings` value has its type in §2.3.
 
 **Bodies**
@@ -1394,7 +1565,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - A base collection (`bases/`) has no `steps`, `setup`, `teardown` or `params`, and no
   `extends`.
 - An endpoint (`endpoints/`) has a URL that is a path starting with `/`, and no use
-  steps. An endpoints file has no `setup` or `teardown`.
+  steps or connections. An endpoints file has no `setup` or `teardown`.
 - A check file's name is a JavaScript identifier; if it isn't, the file is not loaded.
 - `collections/`, `requests/`, `endpoints/` and `bases/` hold files at most one directory
   down.
@@ -1430,6 +1601,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
   `gta get` checks these, and the body files named without `{{variables}}`, without
   running anything (§1.3).
 - A step's `forEach` resolves to a JSON array.
+- A step reading a connection finds it open: a step before it in the run opened it.
 - In `{{@name}}`, `name` holds text naming a variable that exists.
 - A `before.script` sets `req.body` to text, and only for a `json`, `xml`, `text` or
   `graphql` body; `req.headers` stays a map.

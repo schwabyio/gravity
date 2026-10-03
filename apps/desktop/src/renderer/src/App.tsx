@@ -13,9 +13,16 @@ import {
   type StepList,
   type VariablePreviews
 } from '@schwabyio/gravity-core/model'
-import type { EndpointView, LibraryFileView, ProjectView, RequestSetView } from '@shared/ipc.js'
+import type {
+  ConnectionView,
+  EndpointView,
+  LibraryFileView,
+  ProjectView,
+  RequestSetView
+} from '@shared/ipc.js'
 import type { SettingsSection } from './components/CollectionSettings.js'
-import CollectionView from './components/CollectionView.js'
+import CollectionView, { connectionNames } from './components/CollectionView.js'
+import type { LiveView } from './components/ResponsePane.js'
 import EnvironmentPicker from './components/EnvironmentPicker.js'
 import EnvironmentsDrawer from './components/EnvironmentsDrawer.js'
 import FlagsDrawer from './components/FlagsDrawer.js'
@@ -61,6 +68,7 @@ const NO_FLAGS = {}
 const NO_SETS: RequestSetView[] = []
 const NO_ENDPOINTS: EndpointView[] = []
 const NO_BASES: LibraryFileView[] = []
+const NO_CONNECTIONS: ConnectionView[] = []
 
 /** A failed call's message, or null — what the sidebar's name forms show. */
 const messageOf = (result: { ok: boolean }) =>
@@ -142,6 +150,10 @@ export default function App() {
   const resultsRunId = useRef<string | null>(null)
   /** Step ids per list, captured when a collection run starts, so progress marks the right row. */
   const runPlan = useRef<RunPlan>({ ids: { setup: [], steps: [], teardown: [] }, list: 'steps' })
+  /** The event stream the run in flight reads now, as it is read; null between streams. */
+  const [live, setLive] = useState<LiveView | null>(null)
+  /** The connections each collection's Sends hold open (SPEC.md §2.11), by its path. */
+  const [held, setHeld] = useState<Record<string, ConnectionView[]>>({})
   /** Tags the step list is filtered to, per collection file. */
   const [tagFilters, setTagFilters] = useState<Record<string, string[]>>({})
   /** The collection settings drawer: closed, or open at a section. */
@@ -541,6 +553,43 @@ export default function App() {
     []
   )
 
+  // An event stream as it is read, for the run in flight: each new stream starts afresh.
+  useEffect(
+    () =>
+      window.desktop.onRunLive(({ runId, live: update }) => {
+        if (runId !== activeRunId.current) return
+        if (update.kind === 'open') {
+          setLive({ status: update.status, statusText: update.statusText, events: [], count: 0 })
+          return
+        }
+        setLive((current) =>
+          current
+            ? {
+                ...current,
+                // The latest events are enough to watch; the result has them all.
+                events: [...current.events, { event: update.event, at: update.at }].slice(-200),
+                count: current.count + 1
+              }
+            : current
+        )
+      }),
+    []
+  )
+  useEffect(
+    () =>
+      window.desktop.onConnections(({ collectionPath: path, connections }) =>
+        setHeld((current) => ({ ...current, [path]: connections }))
+      ),
+    []
+  )
+  // A stream belongs to the step reading it: the next step, or none, starts with nothing.
+  useEffect(() => setLive(null), [runningId])
+
+  /** Stop reading the stream the run in flight reads: its checks run on what came. */
+  const stopStream = () => {
+    if (activeRunId.current) window.desktop.runStop(activeRunId.current)
+  }
+
   const send = useCallback(async () => {
     const id = editor.selectedId
     if (!request || !id || runningId !== null || stepIndex < 0) return
@@ -549,7 +598,7 @@ export default function App() {
     if (request.use !== null || request.forEach.trim() !== '') {
       return void runIndexesOf(stepList, [stepIndex], false)
     }
-    if (request.url.trim() === '') return
+    if (request.reads === null ? request.url.trim() === '' : request.reads === '') return
     const runId = nextRunId()
     activeRunId.current = runId
     resultsRunId.current = runId
@@ -680,7 +729,9 @@ export default function App() {
       collectionPath,
       environment: selectedEnvironment,
       environmentOverrides,
-      ...(everyRow ? { dataRows: everyRow } : { dataRow: dataRowToRun })
+      ...(everyRow ? { dataRows: everyRow } : { dataRow: dataRowToRun }),
+      // Steps run on their own use the connections Sends hold; Run all has its own.
+      keepConnections: !all
     })
 
     if (activeRunId.current !== runId) return
@@ -1062,6 +1113,14 @@ export default function App() {
                   editor.addStep(editor.selectedId, { use: referenceFor(sets, first) }, list)
                 }
               }}
+              onAddRead={(list) => {
+                const [first] = connectionNames(doc)
+                if (first) editor.addStep(editor.selectedId, { connection: first }, list)
+              }}
+              connections={(collectionPath && held[collectionPath]) || NO_CONNECTIONS}
+              onCloseConnection={(name) => {
+                if (collectionPath) window.desktop.closeConnection(collectionPath, name)
+              }}
               childResults={childResults}
               itemResults={itemResults}
               selectedChild={shownChild}
@@ -1153,6 +1212,9 @@ export default function App() {
                   running={runningId !== null && runningId === editor.selectedId}
                   onSend={() => void send()}
                   onCancel={cancel}
+                  live={live}
+                  onStop={stopStream}
+                  connectionNames={connectionNames(doc)}
                   conflict={open.conflict !== null}
                   onReloadFromDisk={editor.reloadFromDisk}
                   onKeepMine={editor.keepMine}

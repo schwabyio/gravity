@@ -212,6 +212,7 @@ export const STEP_KEY_ORDER = [
   'use',
   'with',
   ...HTTP_METHODS,
+  'connection',
   'forEach',
   'tags',
   'flags',

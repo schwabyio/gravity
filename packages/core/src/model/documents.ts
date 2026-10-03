@@ -118,11 +118,17 @@ export type Body = z.infer<typeof BodySchema>
 /* --------------------------------------------------------------- settings -- */
 
 export const SettingsSchema = z.strictObject({
-  /** Milliseconds; 0 means no limit. */
+  /** Milliseconds; 0 means no limit. For an event stream, until its headers arrive. */
   timeout: z.number().nonnegative().optional(),
   followRedirects: z.boolean().optional(),
   maxRedirects: z.number().int().nonnegative().optional(),
-  encodeUrl: z.boolean().optional()
+  encodeUrl: z.boolean().optional(),
+  /** Stop reading an event stream after this many events; 0 means no limit. */
+  maxEvents: z.number().int().nonnegative().optional(),
+  /** Stop reading an event stream this many milliseconds after its headers; 0 means no limit. */
+  streamTimeout: z.number().nonnegative().optional(),
+  /** Stop reading an event stream after the first event of this name: its `event:` line. */
+  untilEvent: z.string().min(1).optional()
 })
 export type Settings = z.infer<typeof SettingsSchema>
 
@@ -130,7 +136,11 @@ export const SETTINGS_DEFAULTS = {
   timeout: 0,
   followRedirects: true,
   maxRedirects: 5,
-  encodeUrl: true
+  encodeUrl: true,
+  maxEvents: 0,
+  streamTimeout: 0,
+  /** None: a name is never empty. */
+  untilEvent: ''
 } as const satisfies Required<Settings>
 
 /* -------------------------------------------------------------- variables -- */
@@ -172,6 +182,9 @@ export const FlagConditionsSchema = z.record(
   FlagValueSchema
 )
 export type FlagConditions = z.infer<typeof FlagConditionsSchema>
+
+/** A connection's name (SPEC.md §2.11): letters, digits and `- _ .`. */
+export const CONNECTION_NAME_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/
 
 export const TAG_PATTERN = /^[A-Za-z0-9._:-]+$/
 export const TagSchema = z
@@ -248,7 +261,16 @@ export const StepSchema = z
     settings: SettingsSchema.optional(),
     before: BeforeSchema.optional(),
     /** Post-response JavaScript: xtest assertions on `gta`, and any other code. */
-    tests: z.string().optional()
+    tests: z.string().optional(),
+    /**
+     * A connection (SPEC.md §2.11). With a method key, the event stream the
+     * request opens stays open under this name for later steps; on its own, the
+     * step sends nothing and reads the events that connection holds.
+     */
+    connection: z
+      .string()
+      .regex(CONNECTION_NAME_PATTERN, 'a connection name is letters, digits and - _ .')
+      .optional()
   })
   .superRefine((step, ctx) => {
     // The object is loose only because the method key varies. Any other key is
@@ -277,7 +299,10 @@ export const StepSchema = z
         })
       }
       // A use step runs the set's requests, so it has none of its own.
-      const own = [...methods, ...USE_FORBIDDEN.filter((key) => key in step)]
+      const own = [
+        ...methods,
+        ...[...USE_FORBIDDEN, 'connection' as const].filter((key) => key in step)
+      ]
       for (const key of own) {
         ctx.addIssue({
           code: 'custom',
@@ -297,9 +322,20 @@ export const StepSchema = z
     if (methods.length === 0) {
       // A method written in lower case has been reported already, more usefully.
       if (Object.keys(step).some((key) => HTTP_METHODS.find((m) => m === key.toUpperCase()))) return
+      // A step reading a connection sends nothing, so it has no request of its own.
+      if ('connection' in step) {
+        for (const key of READ_FORBIDDEN.filter((key) => key in step)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [key],
+            message: `a step that reads a connection sends nothing, so it cannot have ${key} (SPEC.md §2.11)`
+          })
+        }
+        return
+      }
       ctx.addIssue({
         code: 'custom',
-        message: `step must declare one method key (${HTTP_METHODS.join(', ')})`
+        message: `step must declare one method key (${HTTP_METHODS.join(', ')}), or read a connection with connection: alone`
       })
       return
     }
@@ -313,6 +349,14 @@ export const StepSchema = z
     const method = methods[0] as HttpMethod
     if (typeof step[method] !== 'string') {
       ctx.addIssue({ code: 'custom', message: `step.${method} must be the URL, as a string` })
+    }
+    if ('connection' in step && 'forEach' in step) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['forEach'],
+        message:
+          'forEach sends the request once for each item, so a step opening a connection cannot have it (SPEC.md §2.11)'
+      })
     }
   })
 export type Step = z.infer<typeof StepSchema>
@@ -332,16 +376,28 @@ const STEP_KEYS: ReadonlySet<string> = new Set([
   'forEach',
   'useTests',
   'base',
-  'docs'
+  'docs',
+  'connection'
 ])
 
 /** What a use step may not have: those belong to the set's own requests. */
 const USE_FORBIDDEN = ['headers', 'body', 'settings', 'before'] as const
 
+/** What a step reading a connection may not have: it sends no request. */
+const READ_FORBIDDEN = ['headers', 'body', 'base', 'forEach'] as const
+
 /** A step that runs a request set: `use:` and the values it passes `with:`. */
 export type UseStep = Step & { use: string }
 
 export const isUseStep = (step: Step): step is UseStep => typeof step.use === 'string'
+
+/** A step that reads a connection's events (SPEC.md §2.11): `connection:` and no method key. */
+export type ReadStep = Step & { connection: string }
+
+export const isReadStep = (step: Step): step is ReadStep =>
+  typeof step.connection === 'string' &&
+  !isUseStep(step) &&
+  !HTTP_METHODS.some((method) => method in step)
 
 /**
  * One input of a request set: a plain default, or `{ required, default,
@@ -404,8 +460,9 @@ export function stepsForTags(
 }
 
 /**
- * Pull the single method key and its URL back out of a step. A use step has
- * neither: callers check `isUseStep` first.
+ * Pull the single method key and its URL back out of a step. A use step and a
+ * step reading a connection have neither: callers check `isUseStep` and
+ * `isReadStep` first.
  */
 export function readRequestLine(step: Step): { method: HttpMethod; url: string } {
   const method = HTTP_METHODS.find((m) => m in step) as HttpMethod
@@ -416,6 +473,7 @@ export function readRequestLine(step: Step): { method: HttpMethod; url: string }
 export function stepLabel(step: Step): string {
   if (step.name && step.name.trim() !== '') return step.name
   if (isUseStep(step)) return step.use
+  if (isReadStep(step)) return `read ${step.connection}`
   const { method, url } = readRequestLine(step)
   return `${method} ${url}`
 }

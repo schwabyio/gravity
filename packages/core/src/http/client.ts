@@ -2,6 +2,15 @@ import { Buffer } from 'node:buffer'
 import { Agent, interceptors, request as undiciRequest, type Dispatcher } from 'undici'
 import type { BodyKind, HeaderEntry, ReceivedResponse, SentRequest } from '../model/run.js'
 import { SETTINGS_DEFAULTS, type Settings } from '../model/documents.js'
+import { isEventStream } from '../model/eventStream.js'
+import {
+  EventStreamPump,
+  OpenStream,
+  readStream,
+  waitsForEvents,
+  type StreamRead,
+  type StreamWatch
+} from './stream.js'
 import {
   clearSecureContexts,
   isUntrustedCertificate,
@@ -28,6 +37,16 @@ export interface SendOptions {
    * multipart body, which `spec.body` only shows (SPEC.md §2.2).
    */
   payload?: Uint8Array | null
+  /** For an event stream: the app's live view of its events, and its Stop button. */
+  watch?: StreamWatch
+  /**
+   * For a step that opens a connection (SPEC.md §2.11): an event stream is
+   * handed over here once the step's reading stops, open unless the server
+   * closed it, with the events the step did not read. With none of
+   * `maxEvents`, `streamTimeout` or `untilEvent` set, the step reads none of
+   * its events: later steps do.
+   */
+  keep?: (stream: OpenStream) => void
 }
 
 export interface SendFailure {
@@ -75,6 +94,7 @@ export async function closeHttpClients(): Promise<void> {
  */
 export function classifyBody(contentType: string | undefined, body: string): BodyKind {
   if (body.length === 0) return 'empty'
+  if (isEventStream(contentType)) return 'events'
   const type = (contentType ?? '').toLowerCase()
   if (type.includes('json') || type.includes('+json')) return 'json'
   if (type.includes('xml') || type.includes('+xml')) return 'xml'
@@ -120,6 +140,10 @@ function headerRecord(headers: HeaderEntry[]): Record<string, string> {
  * `{ ok: false, error }` so the caller always has the request it attempted.
  * Unlike a runner built on someone else's CLI, `settings.timeout` is honored
  * here, in our own client.
+ *
+ * A `text/event-stream` response is read as it arrives, until the server
+ * closes it or `maxEvents`, `streamTimeout` or `EVENT_STREAM_LIMITS` stops it
+ * (SPEC.md §2.3); `settings.timeout` covers only the wait for its headers.
  */
 export async function sendHttpRequest(
   spec: SentRequest,
@@ -132,11 +156,19 @@ export async function sendHttpRequest(
   const startedAt = Date.now()
   const startedHr = performance.now()
 
-  // settings.timeout of 0 means "no limit", the default.
+  // settings.timeout of 0 means "no limit", the default. It is one timer of
+  // ours, not undici's headers and body timers: those can't be lifted once the
+  // headers show an event stream, and they apply 5 minutes when given none.
   const timeoutMs = settings.timeout > 0 ? settings.timeout : undefined
-  const signals: AbortSignal[] = []
-  if (options.signal) signals.push(options.signal)
-  if (timeoutMs !== undefined) signals.push(AbortSignal.timeout(timeoutMs))
+  const timeout = new AbortController()
+  const timer =
+    timeoutMs === undefined
+      ? undefined
+      : setTimeout(
+          () => timeout.abort(new DOMException('The operation timed out.', 'TimeoutError')),
+          timeoutMs
+        )
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout.signal]) : timeout.signal
 
   const dispatcher = dispatcherFor(
     settings.followRedirects ? settings.maxRedirects : 0,
@@ -144,51 +176,143 @@ export async function sendHttpRequest(
   )
 
   try {
+    const method = sent.method.toUpperCase() as Dispatcher.HttpMethod
     const response = await undiciRequest(url, {
-      method: sent.method.toUpperCase() as Dispatcher.HttpMethod,
+      method,
       headers: headerRecord(sent.headers),
       body: options.payload ?? sent.body ?? undefined,
       dispatcher,
-      ...(signals.length > 0 ? { signal: AbortSignal.any(signals) } : {}),
-      ...(timeoutMs !== undefined ? { headersTimeout: timeoutMs, bodyTimeout: timeoutMs } : {})
+      signal,
+      headersTimeout: 0,
+      bodyTimeout: 0
     })
 
     const ttfbMs = performance.now() - startedHr
+    const headers = toHeaderEntries(response.headers)
+    const contentType = headers.find((h) => h.name.toLowerCase() === 'content-type')?.value
+    // The redirect interceptor records the whole chain, starting with the URL asked for.
+    const history = (response.context as ContextWithHistory | undefined)?.history ?? []
+    const received = {
+      status: response.statusCode,
+      statusText: statusTextFor(response.statusCode),
+      url: history.length > 0 ? String(history[history.length - 1]) : url,
+      headers,
+      redirectCount: Math.max(0, history.length - 1)
+    }
+
+    const bodyless = method === 'HEAD' || BODYLESS_STATUSES.has(response.statusCode)
+    if (isEventStream(contentType) && !bodyless) {
+      clearTimeout(timer)
+      const pump = new EventStreamPump(response.body)
+      let read: StreamRead
+      try {
+        read = await readStream(pump, settings, {
+          // A step opening a connection waits only for what it says to; later steps read the rest.
+          wait: !options.keep || waitsForEvents(settings),
+          signal,
+          ...streamWatching(options.watch, received)
+        })
+      } catch (cause) {
+        pump.close()
+        throw cause
+      }
+      // Kept even once ended: what it still holds is for the steps that read it.
+      if (options.keep) options.keep(new OpenStream(sent, received, pump))
+      else pump.close()
+      return {
+        ok: true,
+        request: sent,
+        response: {
+          ...eventsResponse(received, read),
+          timings: { startedAt, ttfbMs, totalMs: performance.now() - startedHr }
+        }
+      }
+    }
 
     const buffer = BODYLESS_STATUSES.has(response.statusCode)
       ? Buffer.alloc(0)
       : Buffer.from(await response.body.arrayBuffer())
     const totalMs = performance.now() - startedHr
-
-    const headers = toHeaderEntries(response.headers)
-    const contentType = headers.find((h) => h.name.toLowerCase() === 'content-type')?.value
     const body = buffer.toString('utf8')
-
-    // The redirect interceptor records the whole chain, starting with the URL asked for.
-    const history = (response.context as ContextWithHistory | undefined)?.history ?? []
 
     return {
       ok: true,
       request: sent,
       response: {
-        status: response.statusCode,
-        statusText: statusTextFor(response.statusCode),
-        url: history.length > 0 ? String(history[history.length - 1]) : url,
-        headers,
+        ...received,
         body,
         bodyKind: classifyBody(contentType, body),
         sizeBytes: buffer.byteLength,
-        redirectCount: Math.max(0, history.length - 1),
         timings: { startedAt, ttfbMs, totalMs }
       }
     }
   } catch (cause) {
     return { ok: false, request: sent, error: describeFailure(cause, timeoutMs) }
+  } finally {
+    clearTimeout(timer)
   }
 }
 
 interface ContextWithHistory {
   history?: Array<URL | string>
+}
+
+/** The watch's part in one step's reading: its events, and the signal its Stop fires. */
+function streamWatching(
+  watch: StreamWatch | undefined,
+  head: Pick<ReceivedResponse, 'status' | 'statusText'>
+): { watch?: StreamWatch; stop?: AbortSignal } {
+  if (!watch) return {}
+  const stop = watch.open?.({ status: head.status, statusText: head.statusText })
+  return { watch, ...(stop ? { stop } : {}) }
+}
+
+/** A response whose body is the events a step read. */
+function eventsResponse(
+  head: Omit<ReceivedResponse, 'body' | 'bodyKind' | 'sizeBytes' | 'timings' | 'stream'>,
+  read: StreamRead
+): Omit<ReceivedResponse, 'timings'> {
+  return {
+    ...head,
+    body: read.text,
+    bodyKind: 'events',
+    sizeBytes: Buffer.byteLength(read.text),
+    stream: { endedBy: read.endedBy, at: read.at }
+  }
+}
+
+/**
+ * Read the events a connection holds, and more as they arrive, for a step
+ * reading it (SPEC.md §2.11). Its status and headers are those of the
+ * response that opened it; `at` counts from that response's headers.
+ *
+ * With none of `maxEvents`, `streamTimeout` or `untilEvent` set, it takes the
+ * events already held and ends. It never closes the connection.
+ */
+export async function readConnection(
+  stream: OpenStream,
+  options: { settings?: Settings; signal?: AbortSignal; watch?: StreamWatch } = {}
+): Promise<SendOutcome> {
+  const settings = { ...SETTINGS_DEFAULTS, ...options.settings }
+  const startedAt = Date.now()
+  const startedHr = performance.now()
+  try {
+    const read = await readStream(stream.pump, settings, {
+      wait: waitsForEvents(settings),
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...streamWatching(options.watch, stream.head)
+    })
+    return {
+      ok: true,
+      request: stream.request,
+      response: {
+        ...eventsResponse(stream.head, read),
+        timings: { startedAt, ttfbMs: 0, totalMs: performance.now() - startedHr }
+      }
+    }
+  } catch (cause) {
+    return { ok: false, request: stream.request, error: describeFailure(cause, undefined) }
+  }
 }
 
 function describeFailure(cause: unknown, timeoutMs: number | undefined): SendFailure {

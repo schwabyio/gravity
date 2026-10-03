@@ -278,7 +278,8 @@ export function registerIpc(projects: ProjectService): void {
           ...(payload?.dataRow !== undefined ? { dataRow: dataRowOf(payload.dataRow)! } : {}),
           ...(payload?.dataRows !== undefined
             ? { dataRows: z.array(DataRowSchema).min(1).parse(payload.dataRows) }
-            : {})
+            : {}),
+          ...(payload?.keepConnections === true ? { keepConnections: true } : {})
         })
       }
     })
@@ -405,6 +406,15 @@ export function registerIpc(projects: ProjectService): void {
 
   ipcMain.on(IpcChannel.runCancel, (_event, runId: unknown) => {
     if (typeof runId === 'string' && runId !== '') runSupervisor.cancel(runId)
+  })
+
+  ipcMain.on(IpcChannel.runStop, (_event, runId: unknown) => {
+    if (typeof runId === 'string' && runId !== '') runSupervisor.stop(runId)
+  })
+
+  ipcMain.on(IpcChannel.connectionClose, (_event, collectionPath: unknown, name: unknown) => {
+    if (typeof collectionPath !== 'string' || collectionPath === '') return
+    runSupervisor.closeConnection(collectionPath, typeof name === 'string' ? name : undefined)
   })
 
   /* ---------------------------------------------------------- workspaces -- */
@@ -878,16 +888,29 @@ export function broadcastSettings(): () => void {
   })
 }
 
-/** Push per-step results to every open window as a collection run proceeds. */
+/**
+ * Push per-step results to every open window as a collection run proceeds,
+ * with the events of a stream as it is read and the connections Sends hold.
+ */
 export function broadcastRunProgress(): () => void {
-  return runSupervisor.onProgress((runId, index, result, iteration) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send(IpcChannel.eventRunProgress, {
+  const toWindows = (channel: string, payload: unknown) => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send(channel, payload)
+  }
+  const unsubscribe = [
+    runSupervisor.onProgress((runId, index, result, iteration) =>
+      toWindows(IpcChannel.eventRunProgress, {
         runId,
         index,
         result,
         ...(iteration ? { iteration } : {})
       })
-    }
-  })
+    ),
+    runSupervisor.onLive((runId, live) => toWindows(IpcChannel.eventRunLive, { runId, live })),
+    runSupervisor.onConnections((collectionPath, connections) =>
+      toWindows(IpcChannel.eventConnections, { collectionPath, connections })
+    )
+  ]
+  return () => {
+    for (const undo of unsubscribe) undo()
+  }
 }

@@ -22,7 +22,7 @@ const ROWS: Array<{
   key: Key
   label: string
   help: string
-  kind: 'number' | 'boolean'
+  kind: 'number' | 'boolean' | 'text'
   /** Whole numbers only. */
   integer?: boolean
   unit?: string
@@ -30,7 +30,7 @@ const ROWS: Array<{
   {
     key: 'timeout',
     label: 'Timeout',
-    help: 'How long to wait for the whole response. 0 waits for ever.',
+    help: 'How long to wait for the whole response, or for an event stream’s headers. 0 waits for ever.',
     kind: 'number',
     unit: 'ms'
   },
@@ -52,11 +52,31 @@ const ROWS: Array<{
     label: 'Encode URL',
     help: 'Percent-encode characters in the URL that need it before sending.',
     kind: 'boolean'
+  },
+  {
+    key: 'maxEvents',
+    label: 'Max events',
+    help: 'For an event stream: stop reading after this many events. 0 reads until it ends, up to 1,000.',
+    kind: 'number',
+    integer: true
+  },
+  {
+    key: 'streamTimeout',
+    label: 'Stream timeout',
+    help: 'For an event stream: stop reading this long after its headers arrive. 0 reads until it ends.',
+    kind: 'number',
+    unit: 'ms'
+  },
+  {
+    key: 'untilEvent',
+    label: 'Until event',
+    help: 'For an event stream: stop reading after the first event with this name, its event: line.',
+    kind: 'text'
   }
 ]
 
 const show = (value: unknown): string =>
-  typeof value === 'boolean' ? (value ? 'On' : 'Off') : String(value)
+  typeof value === 'boolean' ? (value ? 'On' : 'Off') : value === '' ? 'none' : String(value)
 
 /** Settings in their documented order, dropping any left to inherit. */
 function tidy(settings: Settings): Settings {
@@ -124,12 +144,28 @@ export default function SettingsTab({ level, own, inherited = {}, onChange }: Pr
 
 function SettingField(props: {
   row: (typeof ROWS)[number]
-  value: number | boolean | undefined
-  inherited: number | boolean
+  value: number | boolean | string | undefined
+  inherited: number | boolean | string
   label: string
-  onChange: (value: number | boolean | undefined) => void
+  onChange: (value: number | boolean | string | undefined) => void
 }) {
   const { row, value, inherited, label } = props
+
+  if (row.kind === 'text') {
+    return (
+      <span className="setting-text">
+        <input
+          type="text"
+          aria-label={label}
+          placeholder={`Inherit (${show(inherited)})`}
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) =>
+            props.onChange(e.target.value.trim() === '' ? undefined : e.target.value)
+          }
+        />
+      </span>
+    )
+  }
 
   if (row.kind === 'boolean') {
     return (

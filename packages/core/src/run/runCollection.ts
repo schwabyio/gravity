@@ -1,5 +1,6 @@
 import path from 'node:path'
 import {
+  isReadStep,
   isUseStep,
   readRequestLine,
   stepLabel,
@@ -18,6 +19,8 @@ import { planSteps, resolveParams, type PlannedSet } from './plan.js'
 import { buildScope, type ScopeContext } from '../vars/resolve.js'
 import { VariableScope } from '../vars/scope.js'
 import { runRequest } from './runRequest.js'
+import type { Connections } from './connections.js'
+import type { StreamWatch } from '../http/stream.js'
 
 export interface CollectionRunOptions {
   collection: Collection
@@ -47,6 +50,13 @@ export interface CollectionRunOptions {
   stage?: 'steps' | Stage
   /** What lasts the whole collection run, across data rows (`ScopeContext.run`). */
   run?: ScopeContext['run']
+  /**
+   * The connections steps open and read (SPEC.md §2.11). Absent, a step can
+   * open none for later steps; whoever passes them closes them.
+   */
+  connections?: Connections
+  /** For an event stream: the app's live view of its events, and its Stop button. */
+  watch?: StreamWatch
 }
 
 /**
@@ -207,6 +217,8 @@ export async function runCollection(options: CollectionRunOptions): Promise<Coll
         endpoints,
         base,
         control,
+        ...(options.connections ? { connections: options.connections } : {}),
+        ...(options.watch ? { watch: options.watch } : {}),
         ...(library ? { tls: library.tls } : {}),
         ...(each ? { item: { value: each.value, index, of: items.length } } : {}),
         ...(set
@@ -363,7 +375,7 @@ const skipped = (step: Step, reason: string, collectionPath: string | null): Run
 const notRun = (step: Step, collectionPath: string | null): RunResult => ({
   item: { path: collectionPath, name: stepLabel(step), seq: null },
   request: {
-    method: isUseStep(step) ? 'USE' : readRequestLine(step).method,
+    method: isUseStep(step) ? 'USE' : isReadStep(step) ? 'READ' : readRequestLine(step).method,
     url: '',
     headers: [],
     body: null

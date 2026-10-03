@@ -17,6 +17,7 @@ import {
   PROJECT_FILE,
   GitRepo,
   REQUESTS_DIR,
+  isReadStep,
   isUseStep,
   listRequestSets,
   loadChecks,
@@ -512,7 +513,7 @@ export class ProjectService {
         params: set.doc?.params ?? {},
         steps: (set.doc?.steps ?? []).map((step) => ({
           label: stepLabel(step),
-          method: isUseStep(step) ? 'USE' : readRequestLine(step).method
+          method: isUseStep(step) ? 'USE' : isReadStep(step) ? 'READ' : readRequestLine(step).method
         })),
         problem:
           set.problem ??

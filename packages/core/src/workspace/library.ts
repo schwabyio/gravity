@@ -9,6 +9,7 @@ import {
 } from '../format/constants.js'
 import { parseCollection } from '../format/index.js'
 import {
+  isReadStep,
   isUseStep,
   readRequestLine,
   type Collection,
@@ -251,7 +252,7 @@ export async function loadEndpoints(
     // One that will not parse, or whose id is wrong, is shown with its problem, not used.
     if (!file.doc || file.problem) continue
     for (const step of file.doc.steps) {
-      if (isUseStep(step)) continue
+      if (isUseStep(step) || isReadStep(step)) continue
       const { method, url } = readRequestLine(step)
       const base: EndpointBase = {
         method,
@@ -275,6 +276,10 @@ export function endpointProblem(doc: Collection): string | undefined {
   if (doc.setup || doc.teardown) return 'an endpoints file has no setup or teardown'
   for (const step of doc.steps) {
     if (isUseStep(step)) return 'an endpoint is a method and a path, not a use: step'
+    if (isReadStep(step)) {
+      return 'an endpoint is a method and a path, not a step reading a connection'
+    }
+    if (step.connection !== undefined) return 'an endpoint opens no connection'
     const { method, url } = readRequestLine(step)
     if (!url.startsWith('/'))
       return `${method} ${url}: an endpoint's URL is its path, like /users/{id}`

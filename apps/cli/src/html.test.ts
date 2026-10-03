@@ -268,6 +268,31 @@ describe('htmlReport', () => {
     expect(page).toContain('http://x/?a=1&amp;b=2')
   })
 
+  it('shows an event stream as its events, with how many and what stopped it', () => {
+    const stream = 'event: price\ndata: {"price":100}\n\n: heartbeat\n\ndata: [DONE]\n\n'
+    const page = pages(
+      run(
+        collection('a', [
+          result('prices', {
+            response: {
+              ...result('r').response!,
+              headers: [{ name: 'content-type', value: 'text/event-stream' }],
+              body: stream,
+              bodyKind: 'events',
+              sizeBytes: stream.length,
+              stream: { endedBy: 'maxEvents', at: [3, 9] }
+            }
+          })
+        ])
+      )
+    ).get('a.html')!
+    expect(page).toContain('<div class="label">Response Events</div>')
+    expect(page).toContain(
+      '[\n  {\n    &quot;event&quot;: &quot;price&quot;,\n    &quot;data&quot;: {\n      &quot;price&quot;: 100'
+    )
+    expect(page).toContain('2 events, stopped at maxEvents')
+  })
+
   it('says why a collection did not run', () => {
     const page = pages(
       run({

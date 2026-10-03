@@ -71,12 +71,16 @@ export function checkedBody(
 
 /**
  * Whether "as checked" differs from what the server sent, so the Body tab
- * should offer both. Only conversion and sorting change what is shown.
+ * should offer both. Only conversion — XML, or an event stream read as its
+ * events — and sorting change what is shown.
  */
 export const checkedDiffersFromRaw = (
   response: Pick<ReceivedResponse, 'bodyKind'>,
   sortedBy: string[] | undefined
-): boolean => response.bodyKind === 'xml' || (sortedBy !== undefined && sortedBy.length > 0)
+): boolean =>
+  response.bodyKind === 'xml' ||
+  response.bodyKind === 'events' ||
+  (sortedBy !== undefined && sortedBy.length > 0)
 
 export interface Marked {
   /** Indexes of the checks about this line or row. */

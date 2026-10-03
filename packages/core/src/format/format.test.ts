@@ -123,11 +123,43 @@ describe('validation', () => {
     expect(() => parseCollection('steps:\n  - name: x\n', 'a.yml')).toThrow(/one method key/)
   })
 
+  it('takes a step with connection: and no method as one reading that connection', () => {
+    const { data } = parseCollection(
+      'steps:\n  - GET: "http://x/events"\n    connection: orders\n  - connection: orders\n    settings:\n      untilEvent: order.created\n'
+    )
+    expect(stepLabel(data.steps[1]!)).toBe('read orders')
+    for (const key of [
+      'headers:\n      A: b',
+      'body:\n      json: "{}"',
+      'base: false',
+      "forEach: '[1]'"
+    ]) {
+      expect(() =>
+        parseCollection(`steps:\n  - connection: orders\n    ${key}\n`, 'a.yml')
+      ).toThrow(/a step that reads a connection sends nothing, so it cannot have/)
+    }
+  })
+
+  it('rejects a connection on a use step, or beside forEach, and a name with spaces', () => {
+    expect(() =>
+      parseCollection('steps:\n  - use: login\n    connection: orders\n', 'a.yml')
+    ).toThrow(/a use: step runs a request set, so it cannot have connection/)
+    expect(() =>
+      parseCollection(
+        'steps:\n  - GET: "http://x"\n    connection: orders\n    forEach: "[1]"\n',
+        'a.yml'
+      )
+    ).toThrow(/a step opening a connection cannot have it/)
+    expect(() =>
+      parseCollection('steps:\n  - GET: "http://x"\n    connection: my orders\n', 'a.yml')
+    ).toThrow(/a connection name is letters, digits/)
+  })
+
   it('rejects a key a step does not have, rather than ignoring it', () => {
     expect(() =>
       parseCollection('steps:\n  - GET: "http://x"\n    heders:\n      Accept: x\n', 'a.yml')
     ).toThrow(
-      'unknown key "heders" on a step; a step holds a method (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) or use and with, and name, headers, body, settings, before, tests, tags, flags, forEach, useTests, base, docs (SPEC.md §2.1)'
+      'unknown key "heders" on a step; a step holds a method (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) or use and with, and name, headers, body, settings, before, tests, tags, flags, forEach, useTests, base, docs, connection (SPEC.md §2.1)'
     )
     // On a use step too.
     expect(() =>

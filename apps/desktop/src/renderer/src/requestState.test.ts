@@ -104,3 +104,42 @@ describe('useTests in the editor', () => {
     expect(mergeIntoStep(plain, { ...fromStep(plain), useTests: true }).useTests).toBe(true)
   })
 })
+
+describe('connections in the editor', () => {
+  it('reads and writes the connection a request opens, and removes an emptied one', () => {
+    const original = StepSchema.parse({ GET: 'http://x/events', connection: 'orders' })
+    const state = fromStep(original)
+    expect(state.connection).toBe('orders')
+    expect(state.reads).toBeNull()
+    expect(mergeIntoStep(original, state)).toEqual(original)
+    expect(mergeIntoStep(original, { ...state, connection: 'feed' })).toEqual({
+      GET: 'http://x/events',
+      connection: 'feed'
+    })
+    expect(mergeIntoStep(original, { ...state, connection: '' })).toEqual({
+      GET: 'http://x/events'
+    })
+  })
+
+  it('keeps a step reading a connection one, with no request of its own', () => {
+    const original = StepSchema.parse({
+      name: 'order created',
+      connection: 'orders',
+      settings: { untilEvent: 'order.created', streamTimeout: 5000 },
+      before: { script: "gta.set('a', 1)" },
+      tests: "gta.expectResponseBodyToHaveProperty('[0].event', 'order.created')",
+      docs: 'Waits for the order.'
+    })
+    const state = fromStep(original)
+    expect(state.reads).toBe('orders')
+    expect(state.url).toBe('')
+    expect(mergeIntoStep(original, state)).toEqual(original)
+    expect(mergeIntoStep(original, { ...state, reads: 'feed', settings: {} })).toEqual({
+      name: 'order created',
+      connection: 'feed',
+      docs: 'Waits for the order.',
+      before: { script: "gta.set('a', 1)" },
+      tests: "gta.expectResponseBodyToHaveProperty('[0].event', 'order.created')"
+    })
+  })
+})

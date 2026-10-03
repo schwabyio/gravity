@@ -25,7 +25,12 @@ const api: DesktopApi = {
   runStart: (request: RunStartRequest) => ipcRenderer.invoke(IpcChannel.runStart, request),
   runCollection: (request) => ipcRenderer.invoke(IpcChannel.runCollection, request),
   runCancel: (runId: string) => ipcRenderer.send(IpcChannel.runCancel, runId),
+  runStop: (runId: string) => ipcRenderer.send(IpcChannel.runStop, runId),
   onRunProgress: (callback) => subscribe(IpcChannel.eventRunProgress, callback),
+  onRunLive: (callback) => subscribe(IpcChannel.eventRunLive, callback),
+  closeConnection: (collectionPath: string, name?: string) =>
+    ipcRenderer.send(IpcChannel.connectionClose, collectionPath, name),
+  onConnections: (callback) => subscribe(IpcChannel.eventConnections, callback),
 
   workspaces: {
     list: () => ipcRenderer.invoke(IpcChannel.workspacesList),

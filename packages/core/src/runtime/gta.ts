@@ -421,6 +421,14 @@ export function preRequestGta(scope: VariableScope, control: StepControl = newSt
     expectResponseStatusCodeToBe: notHere('expectResponseStatusCodeToBe'),
     expectResponseToHaveHeader: notHere('expectResponseToHaveHeader'),
     expectResponseBodyToHaveProperty: notHere('expectResponseBodyToHaveProperty'),
+    expectResponseBodyToHaveUnorderedArray: notHere('expectResponseBodyToHaveUnorderedArray'),
+    expectResponseBodyToHaveUnorderedArrayNotThisItem: notHere(
+      'expectResponseBodyToHaveUnorderedArrayNotThisItem'
+    ),
+    sortResponseBodyArrays: notHere('sortResponseBodyArrays'),
+    useStrictValidation: notHere('useStrictValidation'),
+    ignoreResponseBodyProperty: notHere('ignoreResponseBodyProperty'),
+    ignoreResponseBodyArrayObjectProperty: notHere('ignoreResponseBodyArrayObjectProperty'),
     test: notHere('test')
   }
 }
@@ -564,8 +572,9 @@ export const requestView = (request: SentRequest, adopt: Adopt) =>
 
 /**
  * What `tests` sees of the response. `body` is parsed — JSON as itself, XML
- * converted as the assertions see it, text as the string — and `text` is the
- * body exactly as received.
+ * converted as the assertions see it, an event stream as its events, text as
+ * the string — and `text` is the body exactly as received. `stream`, for an
+ * event stream only, says why the reading stopped and when each event came.
  */
 export function responseView(response: ReceivedResponse, adopt: Adopt) {
   const headers: Record<string, string> = {}
@@ -587,6 +596,7 @@ export function responseView(response: ReceivedResponse, adopt: Adopt) {
           : undefined,
     text: response.body,
     time: response.timings.totalMs,
-    size: response.sizeBytes
+    size: response.sizeBytes,
+    stream: response.stream ? adopt(response.stream) : undefined
   }
 }

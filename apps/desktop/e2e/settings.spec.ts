@@ -82,7 +82,7 @@ test('with nothing set, every setting shows its default', async () => {
 test('a collection setting is saved at the top, and the step inherits it', async () => {
   await page.getByRole('button', { name: 'Collection settings' }).click()
   const drawer = page.getByRole('dialog', { name: 'Collection settings' })
-  await drawer.getByLabel('Timeout for the whole collection').fill('4000')
+  await drawer.getByLabel('Timeout for the whole collection', { exact: true }).fill('4000')
   await expect
     .poll(onDisk, { timeout: 5_000 })
     .toContain('id: moves\nsettings:\n  timeout: 4000\nsteps:')
@@ -92,9 +92,9 @@ test('a collection setting is saved at the top, and the step inherits it', async
   await drawer.getByRole('button', { name: 'Close' }).click()
 
   // The step tab has only the step's own fields, showing what they inherit.
-  await expect(page.getByLabel('Timeout for the whole collection')).toHaveCount(0)
+  await expect(page.getByLabel('Timeout for the whole collection', { exact: true })).toHaveCount(0)
   await expect(used('Timeout')).toHaveText('4000 mscollection')
-  await expect(page.getByLabel('Timeout for this step')).toHaveAttribute(
+  await expect(page.getByLabel('Timeout for this step', { exact: true })).toHaveAttribute(
     'placeholder',
     'Inherit (4000)'
   )
@@ -126,7 +126,7 @@ test('an invalid number is shown as such and never written', async () => {
 
   await page.getByLabel('Max redirects for this step').fill('')
   await page.getByRole('button', { name: 'Collection settings' }).click()
-  await page.getByLabel('Timeout for the whole collection').fill('')
+  await page.getByLabel('Timeout for the whole collection', { exact: true }).fill('')
   await expect.poll(onDisk, { timeout: 5_000 }).not.toContain('settings')
   await page.keyboard.press('Escape')
 })

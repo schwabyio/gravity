@@ -1,11 +1,12 @@
+import { parseEventStream } from './eventStream.js'
 import type { ReceivedResponse } from './run.js'
 
 /**
  * A response body as the object `expect.body` paths address (SPEC.md §3).
  *
- * JSON as itself, XML converted the way xtest converted it, and text as the
- * single property `plaintext`. Pure, so the renderer shows exactly the object the
- * engine asserted against.
+ * JSON as itself, XML converted the way xtest converted it, an event stream
+ * as its list of events, and text as the single property `plaintext`. Pure, so
+ * the renderer shows exactly the object the engine asserted against.
  */
 export type BodyObject = { ok: true; body: unknown } | { ok: false; message: string }
 
@@ -26,6 +27,8 @@ export function bodyAsObject(response: Pick<ReceivedResponse, 'body' | 'bodyKind
       } catch (cause) {
         return { ok: false, message: `The XML body does not parse: ${(cause as Error).message}` }
       }
+    case 'events':
+      return { ok: true, body: parseEventStream(response.body) }
     case 'text':
     case 'html':
       return { ok: true, body: { plaintext: response.body } }

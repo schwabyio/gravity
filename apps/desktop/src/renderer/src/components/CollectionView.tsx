@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import {
+  isReadStep,
   isUseStep,
   readRequestLine,
   stepLabel,
@@ -16,7 +17,7 @@ import {
   type VariablePreviews,
   type Vars
 } from '@schwabyio/gravity-core/model'
-import type { LibraryFileView, RequestSetView } from '@shared/ipc.js'
+import type { ConnectionView, LibraryFileView, RequestSetView } from '@shared/ipc.js'
 import { stepsOf } from '../hooks/useCollectionEditor.js'
 import { usePaneWidth } from '../hooks/usePaneWidth.js'
 import { filterSteps, stepTagsIn } from '../tagFilter.js'
@@ -72,6 +73,11 @@ interface Props {
   /** Request sets a use step can run. */
   sets: RequestSetView[]
   onAddUse: (list: ListName) => void
+  /** Add a step reading a connection the collection's steps open (SPEC.md §2.11). */
+  onAddRead: (list: ListName) => void
+  /** The connections this collection's Sends hold open, and a way to close them. */
+  connections: ConnectionView[]
+  onCloseConnection: (name: string) => void
   childResults: Record<ListName, Record<number, Array<RunResult | undefined>>>
   /** Each list's `forEach` steps' results, one per item. */
   itemResults: Record<ListName, Record<number, RunResult[]>>
@@ -155,8 +161,12 @@ export default function CollectionView(props: Props) {
   const selectedMethod = selectedStep
     ? isUseStep(selectedStep)
       ? 'USE'
-      : readRequestLine(selectedStep).method
+      : isReadStep(selectedStep)
+        ? 'READ'
+        : readRequestLine(selectedStep).method
     : ''
+  // The connections the collection's steps open, for steps to read.
+  const opened = connectionNames(props.collection)
 
   // The id a file must have is its name; `id:` in the editor may still say otherwise.
   const fileId = props.relativePath
@@ -181,6 +191,17 @@ export default function CollectionView(props: Props) {
     props.sets.length > 0
       ? `Run a request set here${where}, with values of your own`
       : 'No request sets yet: make one from the project’s ⋯ menu'
+  /** Once a step opens a connection: a step reading it. */
+  const readFor = (list: ListName): AddAction[] =>
+    opened.length > 0
+      ? [
+          {
+            label: '+ Read a connection',
+            onClick: () => props.onAddRead(list),
+            tooltip: 'A step that sends nothing: it checks the events a connection holds'
+          }
+        ]
+      : []
   /** The buttons under each list that add to it. */
   const addsFor = (list: ListName): AddAction[] => {
     if (list !== 'steps') {
@@ -191,7 +212,8 @@ export default function CollectionView(props: Props) {
           onClick: () => props.onAddUse(list),
           disabled: props.sets.length === 0,
           tooltip: useSetTooltip(` in ${list}`)
-        }
+        },
+        ...readFor(list)
       ]
     }
     return [
@@ -202,6 +224,7 @@ export default function CollectionView(props: Props) {
         disabled: props.sets.length === 0,
         tooltip: useSetTooltip('')
       },
+      ...readFor('steps'),
       // A list with steps has its own add buttons, above or below.
       ...(canHaveStages && setupSteps.length === 0
         ? [
@@ -417,15 +440,19 @@ export default function CollectionView(props: Props) {
               />
             </details>
           )}
-          {selectedStep && !isUseStep(selectedStep) && props.library === null && (
-            <ForEachEditor
-              key={`${props.selectedList}:${props.selectedIndex}`}
-              value={props.stepForEach}
-              onChange={props.onStepForEach}
-              previews={props.previews}
-              onCopyVariable={props.onCopyVariable}
-            />
-          )}
+          {selectedStep &&
+            !isUseStep(selectedStep) &&
+            !isReadStep(selectedStep) &&
+            selectedStep.connection === undefined &&
+            props.library === null && (
+              <ForEachEditor
+                key={`${props.selectedList}:${props.selectedIndex}`}
+                value={props.stepForEach}
+                onChange={props.onStepForEach}
+                previews={props.previews}
+                onCopyVariable={props.onCopyVariable}
+              />
+            )}
           {selectedStep && props.collection.params && props.selectedList === 'steps' && (
             <UseTestsToggle
               on={props.stepUseTests}
@@ -525,6 +552,25 @@ export default function CollectionView(props: Props) {
               away with the steps and only be as tall as their content. */}
           <Resizer pane={steps} label="Resize the steps pane" offset={steps.width} />
           <aside className="steps-column">
+            {props.connections.length > 0 && (
+              <div className="connections-bar" role="status" aria-label="Open connections">
+                {props.connections.map((connection) => (
+                  <span key={connection.name} className="connection">
+                    <strong>{connection.name}</strong>
+                    <span className="connection-state">
+                      {connection.open ? 'open' : 'closed by the server'} · {connection.held} held
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => props.onCloseConnection(connection.name)}
+                      aria-label={`Close connection ${connection.name}`}
+                    >
+                      Close
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {allTags.length > 0 && (
               <div className="tag-filter" role="group" aria-label="Filter steps by tag">
                 {allTags.map((tag) => {
@@ -783,4 +829,14 @@ function IterationStrip(props: {
       ))}
     </div>
   )
+}
+
+/** The names a collection's steps open connections as, in the order they first appear. */
+export function connectionNames(collection: Collection): string[] {
+  const names = STEP_LISTS.flatMap((list) =>
+    stepsOf(collection, list).flatMap((step) =>
+      step.connection !== undefined && !isReadStep(step) ? [step.connection] : []
+    )
+  )
+  return [...new Set(names)]
 }
