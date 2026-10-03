@@ -80,7 +80,7 @@ describe('dist/gta.js', () => {
     expect(stderr).toContain('limitConcurrency (from --limitConcurrency)')
   })
 
-  it('ships SPEC.md and the licenses of the packages it bundles', async () => {
+  it('ships SPEC.md, FUNCTIONS.md and the licenses of the packages it bundles', async () => {
     const dist = path.join(cliRoot, 'dist')
     const notices = await fs.readFile(path.join(dist, 'THIRD_PARTY_NOTICES.txt'), 'utf8')
     for (const name of ['undici', 'yaml', 'zod']) {
@@ -88,5 +88,7 @@ describe('dist/gta.js', () => {
     }
     const spec = await fs.readFile(path.join(dist, 'SPEC.md'), 'utf8')
     expect(spec).toMatch(/^# The Gravity file format/)
+    const functions = await fs.readFile(path.join(dist, 'FUNCTIONS.md'), 'utf8')
+    expect(functions).toMatch(/^# The `gta` functions/)
   })
 })

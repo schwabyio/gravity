@@ -4,8 +4,8 @@
  *
  * Everything is bundled — the core, undici, yaml, zod — so a global install is
  * a folder with no dependencies to resolve, and it runs wherever Node does.
- * Beside the code go SPEC.md, which gta's messages cite, and the licenses of
- * the packages the bundle took in.
+ * Beside the code go SPEC.md, which gta's messages cite, FUNCTIONS.md, which
+ * SPEC.md links to, and the licenses of the packages the bundle took in.
  */
 import { chmod, copyFile, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -43,7 +43,9 @@ const { metafile } = await build({
 // npm never marks the bin executable: the build does, every time it rewrites it.
 await chmod(path.join(outdir, 'gta.js'), 0o755)
 
-await copyFile(path.join(here, '..', '..', 'SPEC.md'), path.join(outdir, 'SPEC.md'))
+for (const doc of ['SPEC.md', 'FUNCTIONS.md']) {
+  await copyFile(path.join(here, '..', '..', doc), path.join(outdir, doc))
+}
 await writeFile(path.join(outdir, 'THIRD_PARTY_NOTICES.txt'), await notices(metafile))
 
 /**
