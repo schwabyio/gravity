@@ -75,7 +75,7 @@ export default function ProjectHeading(props: Props) {
 
       {project.scratch && (
         <Tooltip text="A scratch pad: kept in the app’s own data folder, with no git">
-          <span className="scratch-tag">scratch</span>
+          <span className="scratch-tag">scratch pad</span>
         </Tooltip>
       )}
 

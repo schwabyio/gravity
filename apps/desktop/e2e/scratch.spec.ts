@@ -102,7 +102,7 @@ test('+ Scratch pad makes a project in the app’s data folder, marked, with no 
   await name.press('Enter')
 
   const scratch = project('Scratch pad')
-  await expect(scratch.locator('.scratch-tag')).toHaveText('scratch')
+  await expect(scratch.locator('.scratch-tag')).toHaveText('scratch pad')
   await expect(scratch.locator('.repo-branch')).toHaveCount(0)
   // The project in a repository shows its branch; the scratch pad has none to show.
   await expect(project('shop-api').locator('.repo-branch')).toHaveText('main')
@@ -322,7 +322,7 @@ test('a scratch pad is renamed from its menu, its folder too, and an open collec
 
   await rename('Scratch pad', 'Spike')
   const spike = path.join(userData, 'Scratch pads', 'Spike')
-  await expect(project('Spike').locator('.scratch-tag')).toHaveText('scratch')
+  await expect(project('Spike').locator('.scratch-tag')).toHaveText('scratch pad')
   expect(exists(pad())).toBe(false)
   expect(exists(path.join(spike, 'collections', 'ping-check.yml'))).toBe(true)
   // Its uses: still reaches the global project, from a folder beside the old one.
@@ -476,7 +476,7 @@ test('a scratch pad is still one after a restart', async () => {
   await app.close()
   await launch()
   const scratch = project('Scratch pad')
-  await expect(scratch.locator('.scratch-tag')).toHaveText('scratch')
+  await expect(scratch.locator('.scratch-tag')).toHaveText('scratch pad')
   await expect(scratch.locator('.collection-row')).toHaveText(['ping-check'])
 })
 
@@ -503,7 +503,7 @@ test('deleting a workspace puts its scratch pads in the Trash', async () => {
   await page.getByLabel('New workspace name').press('Enter')
   await page.getByRole('button', { name: '+ Scratch pad' }).click()
   await page.getByLabel('New scratch pad name').press('Enter')
-  await expect(project('Scratch pad').locator('.scratch-tag')).toHaveText('scratch')
+  await expect(project('Scratch pad').locator('.scratch-tag')).toHaveText('scratch pad')
 
   page.once('dialog', (dialog) => {
     expect(dialog.message()).toBe(

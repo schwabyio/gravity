@@ -694,6 +694,11 @@ button:disabled {
   font: inherit;
 }
 
+/* A badge beside the name — scratch pad, uses … — keeps its width; the name gives way. */
+.repo-head > .tooltip-trigger {
+  flex: none;
+}
+
 .repo-toggle:hover .repo-name {
   color: var(--text);
 }
