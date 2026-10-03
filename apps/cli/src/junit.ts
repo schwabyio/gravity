@@ -166,11 +166,16 @@ function testcase(classname: string, name: string, durationMs: number, body: str
   return [`${open}>`, ...body.map((line) => `      ${line}`), '    </testcase>']
 }
 
-/** A step's name, and for a request a use step ran, which one of its set it was. */
+/**
+ * A step's name as every report gives it (`resultName`) — a setup or teardown
+ * step saying so, one of a `forEach` saying which item, so no two cases share
+ * a name for CI to merge — and for a request a use step ran, which one of its
+ * set it was.
+ */
 const caseName = (result: RunResult): string =>
   result.use
     ? `${resultName(result)} [${result.use.set} ${result.use.child + 1}/${result.use.of}]`
-    : result.item.name
+    : resultName(result)
 
 const summarize = (a: AssertionResult): string => (a.message ? `${a.name}: ${a.message}` : a.name)
 

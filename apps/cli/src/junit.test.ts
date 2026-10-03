@@ -130,6 +130,23 @@ describe('junitReport', () => {
     expect(xml).toContain('name="user 1 › get profile [create-user 2/3]"')
   })
 
+  it('names each item of a forEach step, and a setup or teardown step, as the HTML report does', () => {
+    const each = (index: number) =>
+      result('grant role', { forEach: { index, of: 2, item: `role-${index}` } })
+    const xml = report(
+      ran('roles', [
+        result('sign in', { stage: 'setup' }),
+        each(0),
+        each(1),
+        result('clean up', { stage: 'teardown' })
+      ])
+    )
+    expect(xml).toContain('name="setup › sign in"')
+    expect(xml).toContain('name="grant role (item 1 of 2)"')
+    expect(xml).toContain('name="grant role (item 2 of 2)"')
+    expect(xml).toContain('name="teardown › clean up"')
+  })
+
   it('counts steps a bail left unrun as skipped', () => {
     const xml = report(ran('a', [result('one', { status: 'fail', assertions: [failed] })], 2))
     expect(xml).toContain('tests="2" failures="1" errors="0" skipped="1"')

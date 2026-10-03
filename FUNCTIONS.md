@@ -216,8 +216,11 @@ gta.expectResponseBodyToHaveUnorderedArray('users', [{ name: 'Ada' }, { name: /^
 ```
 
 An object in the list matches an item holding each of its properties with that value, or
-matching it when the value is a `RegExp`. The item may have others. A pattern is tested
-against the value as text, so it never matches an item that is an object or an array.
+matching it when the value is a `RegExp`. The item may have others. A property that is
+itself an object is matched the same way, so `{ data: { status: 'reversed' } }` finds an
+item whose `data` has that status, whatever else `data` holds. An array compares whole.
+A pattern is tested against the value as text, so it never matches an item that is an
+object or an array.
 
 **A list of `{ pathToProperty, expectedValue, specialHandling? }` entries.** Together
 they describe **one** item, property by property, and some item must match every entry.

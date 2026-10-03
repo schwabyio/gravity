@@ -127,9 +127,14 @@ function toHeaderEntries(headers: Record<string, string | string[] | undefined>)
   return entries
 }
 
-function headerRecord(headers: HeaderEntry[]): Record<string, string> {
-  const record: Record<string, string> = {}
-  for (const { name, value } of headers) record[name] = value
+/** Headers as undici takes them: a header given more than once is sent once per value. */
+function headerRecord(headers: HeaderEntry[]): Record<string, string | string[]> {
+  const record: Record<string, string | string[]> = {}
+  for (const { name, value } of headers) {
+    const before = record[name]
+    record[name] =
+      before === undefined ? value : [...(Array.isArray(before) ? before : [before]), value]
+  }
   return record
 }
 

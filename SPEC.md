@@ -1167,6 +1167,10 @@ saying so, and the checks after it still run.
 every item of a simple `list`, in any order. A `RegExp` in the list is a pattern some item
 must match as text, and so is one held by an object in the list:
 `[/^admin/, { name: /^Grace/ }]`. A pattern never matches an object or array item.
+An object in the list matches an item holding each of its properties, and the item may
+have others; a property that is itself an object is matched the same way, so
+`{ data: { status: 'reversed' } }` finds an item whose `data` has that `status` among
+other properties. An array compares whole.
 
 A list of `{ pathToProperty, expectedValue, specialHandling? }` objects describes **one**
 item, property by property; call it once per item. A property may appear twice, once to
@@ -1410,7 +1414,10 @@ delete req.headers['X-Debug']
 
 - `req.body` is text, and can be changed for a `json`, `xml`, `text` or `graphql` body.
   A form, multipart or file body is built from its parts, so it cannot.
-- `req.headers` is a map of names to values: add, change or delete them.
+- `req.headers` is a map of names to values: add, change or delete them. A header sent
+  more than once reads as its values joined with `, `, as `res.headers` does, and is
+  still sent once per value unless the script changes it. Set an array to send one
+  header per value.
 - Variables in what the script writes resolve afterwards, as in the file.
 - Anything else is a pre-request error, and nothing is sent.
 

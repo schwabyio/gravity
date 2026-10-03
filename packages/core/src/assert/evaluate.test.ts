@@ -171,6 +171,54 @@ describe('body', () => {
     expect(found.assertions[0]?.message).toBe('Must not contain: /^view/')
   })
 
+  it('matches a nested object in an unordered item by its properties, as the item itself', () => {
+    const events = {
+      events: [
+        { event: 'payment', data: { status: 'settled', amount: 5, at: '2026-10-03' } },
+        { event: 'refund', data: { status: 'reversed', amount: 5, reason: { code: 'dup' } } }
+      ]
+    }
+    const { assertions } = run(
+      {
+        body: {
+          events: {
+            unordered: [
+              { data: { status: 'reversed' } },
+              { event: 'payment', data: { status: /^sett/ } },
+              { data: { reason: { code: 'dup' } } }
+            ]
+          }
+        }
+      },
+      events
+    )
+    expect(assertions[0]).toMatchObject({ status: 'pass' })
+
+    const missing = run(
+      { body: { events: { unordered: [{ data: { status: 'reversed', amount: 6 } }] } } },
+      events
+    )
+    expect(missing.assertions[0]).toMatchObject({ status: 'fail' })
+    // An array compares whole.
+    const arrays = run(
+      { body: { list: { unordered: [{ tags: ['a'] }] } } },
+      { list: [{ tags: ['a', 'b'] }] }
+    )
+    expect(arrays.assertions[0]).toMatchObject({ status: 'fail' })
+    // Not this item: none may hold what a nested description says.
+    const none = run(
+      { body: { events: { unorderedNot: [{ data: { status: 'reversed' } }] } } },
+      events
+    )
+    expect(none.assertions[0]).toMatchObject({ status: 'fail' })
+  })
+
+  it('names a check on the whole body for the response body, not a blank', () => {
+    const { assertions } = run({ body: { '': { isArray: 'empty' } } }, [])
+    expect(assertions[0]?.name).toBe('response body is an empty array')
+    expect(assertions[0]?.path).toBe('')
+  })
+
   it('compares epoch dates by calendar day, with a number as an offset from now', () => {
     const noon = new Date(2026, 8, 23, 12).getTime()
     const { assertions } = run(

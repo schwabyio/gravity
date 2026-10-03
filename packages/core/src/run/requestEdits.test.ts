@@ -7,14 +7,14 @@ import { runRequest } from './runRequest.js'
 
 let server: http.Server
 let origin: string
-let received: { headers: http.IncomingHttpHeaders; body: string } | null = null
+let received: { headers: http.IncomingHttpHeaders; raw: string[]; body: string } | null = null
 
 beforeAll(async () => {
   server = http.createServer((req, res) => {
     let body = ''
     req.on('data', (chunk: Buffer) => (body += chunk.toString()))
     req.on('end', () => {
-      received = { headers: req.headers, body }
+      received = { headers: req.headers, raw: req.rawHeaders, body }
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end('{}')
     })
@@ -35,6 +35,55 @@ async function send(doc: Partial<Collection> & { steps: unknown[] }, vars = {}) 
     scope: new VariableScope([{ source: 'test', vars }])
   })
 }
+
+/** The values a header arrived with, one per time it was sent. */
+const sent = (name: string): string[] =>
+  (received?.raw ?? []).flatMap((entry, i, all) =>
+    i % 2 === 0 && entry.toLowerCase() === name.toLowerCase() ? [all[i + 1]!] : []
+  )
+
+describe('a header sent more than once', () => {
+  const step = (script: string, tests?: string) => ({
+    steps: [
+      {
+        GET: `${origin}/forwarded`,
+        headers: { 'X-Forwarded-For': ['10.0.0.1', '10.0.0.2'] },
+        before: { script },
+        ...(tests ? { tests } : {})
+      }
+    ]
+  })
+
+  it('is sent once per value, and reads as every value joined', async () => {
+    const result = await send(
+      step(
+        "gta.set('seen', req.headers['X-Forwarded-For'])",
+        [
+          "gta.test('the script saw every value', () => assert.equal(gta.get('seen'), '10.0.0.1, 10.0.0.2'))",
+          "gta.test('tests see every value', () => assert.equal(req.headers['X-Forwarded-For'], '10.0.0.1, 10.0.0.2'))"
+        ].join('\n')
+      )
+    )
+    expect(result.assertions.map((a) => [a.name, a.status])).toEqual([
+      ['the script saw every value', 'pass'],
+      ['tests see every value', 'pass']
+    ])
+    expect(sent('X-Forwarded-For')).toEqual(['10.0.0.1', '10.0.0.2'])
+  })
+
+  it('is left as it was when the script changes another header', async () => {
+    await send(step("req.headers['X-Trace'] = 't1'"))
+    expect(sent('X-Forwarded-For')).toEqual(['10.0.0.1', '10.0.0.2'])
+    expect(sent('X-Trace')).toEqual(['t1'])
+  })
+
+  it('takes an array as one header per value, and a string as one header', async () => {
+    await send(step("req.headers['X-Forwarded-For'] = ['10.0.0.3', '10.0.0.4', '10.0.0.5']"))
+    expect(sent('X-Forwarded-For')).toEqual(['10.0.0.3', '10.0.0.4', '10.0.0.5'])
+    await send(step("req.headers['X-Forwarded-For'] = '10.0.0.9'"))
+    expect(sent('X-Forwarded-For')).toEqual(['10.0.0.9'])
+  })
+})
 
 describe('before.script changing the request it is about to send', () => {
   it('leaves a member out of a JSON body, before its {{variables}} resolve', async () => {

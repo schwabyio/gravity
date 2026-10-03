@@ -561,12 +561,23 @@ export function zoneFor(timeZone: string): string {
 
 /* ------------------------------------------------------------ req / res -- */
 
+/**
+ * Headers as a script sees them, by name: a header sent more than once reads
+ * as its values joined with `, `, as `res.headers` does — `X-Forwarded-For:
+ * [10.0.0.1, 10.0.0.2]` reads `10.0.0.1, 10.0.0.2`, not only the last.
+ */
+export function headerMap(headers: ReadonlyArray<{ name: string; value: string }>) {
+  const map: Record<string, string> = {}
+  for (const { name, value } of headers) map[name] = name in map ? `${map[name]}, ${value}` : value
+  return map
+}
+
 /** What a script sees of the request: as sent, or for `before.script`, as written. */
 export const requestView = (request: SentRequest, adopt: Adopt) =>
   adopt({
     method: request.method,
     url: request.url,
-    headers: Object.fromEntries(request.headers.map((h) => [h.name, h.value])),
+    headers: headerMap(request.headers),
     body: request.body
   })
 

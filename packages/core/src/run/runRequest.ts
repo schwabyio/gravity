@@ -23,6 +23,7 @@ import {
 import {
   newStepControl,
   preRequestGta,
+  headerMap,
   requestView,
   responseView,
   testsGta,
@@ -562,7 +563,7 @@ function changedRequest(
     }
     next = { ...shown, body: view.body }
   }
-  const was = Object.fromEntries(shown.headers.map((header) => [header.name, header.value]))
+  const was = headerMap(shown.headers)
   if (JSON.stringify(view.headers) !== JSON.stringify(was)) {
     const headers = view.headers
     if (headers === null || typeof headers !== 'object' || Array.isArray(headers)) {
@@ -572,7 +573,15 @@ function changedRequest(
       ...(next ?? shown),
       headers: Object.entries(headers)
         .filter(([, value]) => value !== undefined && value !== null)
-        .map(([name, value]) => ({ name, value: String(value) }))
+        .flatMap(([name, value]) =>
+          // Left as it read: sent as it was, a repeated header still once per value.
+          value === was[name]
+            ? shown.headers.filter((header) => header.name === name)
+            : // An array: one header per value.
+              Array.isArray(value)
+              ? value.map((each) => ({ name, value: String(each) }))
+              : [{ name, value: String(value) }]
+        )
     }
   }
   return next

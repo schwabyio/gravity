@@ -148,7 +148,8 @@ export function checkBody(
   context: CheckContext
 ): { assertion: AssertionResult; covered: Coverage[] } {
   const base = { target: 'body', path, expected: describe(wanted) } as const
-  const name = `${path} ${describe(wanted, { brief: true })}`
+  // The path '' is the whole body: named for it, not left blank.
+  const name = `${path === '' ? 'response body' : path} ${describe(wanted, { brief: true })}`
   const fanOut = segments.some((s) => s.kind === 'each')
   const actual =
     located.length === 0
@@ -429,9 +430,12 @@ interface ItemMatch {
  *
  * A scalar entry compares by value, and a RegExp entry is a pattern the item
  * must match as text. An object entry lists properties the item must have,
- * keyed by path (`id.value`), each a literal, a RegExp or a matcher, so
+ * keyed by path (`id.value`), each a literal, a RegExp, a matcher or a nested
+ * object matched the same way — `{ data: { status: 'reversed' } }` finds an
+ * item whose `data` has that status among others — so
  * `{ id.value: { into: accountId } }` both finds the item and captures from it.
- * An empty object matches only an empty object, never every item.
+ * An array compares whole. An empty object matches only an empty object, never
+ * every item.
  */
 function matchItem(item: unknown, expected: unknown, context: CheckContext): ItemMatch | null {
   const noop = () => {}
@@ -472,11 +476,31 @@ function matchItem(item: unknown, expected: unknown, context: CheckContext): Ite
       captures.push(() => capture(want, located[0]!.value, context.scope))
       continue
     }
-    if (located.length === 0 || !located.every((l) => deepEqual(l.value, want))) return null
+    if (located.length === 0) return null
+    // A nested object is a description too, matched the same way: the item's
+    // value holds each of its properties, and may have others.
+    if (isDescription(want)) {
+      for (const { path: at, value } of located) {
+        const inner = matchItem(value, want, context)
+        if (!inner) return null
+        covered.push(...inner.covered.map((c) => ({ pattern: [...at, ...c.pattern] })))
+        captures.push(inner.capture)
+      }
+      continue
+    }
+    if (!located.every((l) => deepEqual(l.value, want))) return null
     covered.push(...located.map((l) => ({ pattern: l.path })))
   }
   return { covered, capture: () => captures.forEach((run) => run()) }
 }
+
+/** A plain object with properties: one item, or part of one, described rather than given whole. */
+const isDescription = (value: unknown): value is Record<string, unknown> =>
+  value !== null &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  !isRegExp(value) &&
+  Object.keys(value).length > 0
 
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
