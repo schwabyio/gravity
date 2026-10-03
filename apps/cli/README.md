@@ -159,6 +159,10 @@ every key, and every rule that makes a file invalid. It is written for people an
 agents alike, and ends with a complete project to start from. It also ships in this
 package as `dist/SPEC.md`, and `gta`'s messages cite its sections, as in "(SPEC.md §2.5)".
 
+[FUNCTIONS.md](https://github.com/schwabyio/gravity/blob/main/FUNCTIONS.md) documents every
+`gta` function that `tests` and `before.script` can call, with examples. It ships as
+`dist/FUNCTIONS.md`.
+
 ## License
 
 MIT. The packages bundled into `gta` keep their own licenses, collected in

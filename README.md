@@ -108,6 +108,9 @@ npm install -g ./apps/cli
 that makes a file invalid. It is written for people and coding agents alike, and ends
 with a complete project to start from.
 
+[FUNCTIONS.md](./FUNCTIONS.md) documents every `gta` function that `tests` and
+`before.script` can call, with examples.
+
 ## Development
 
 | Command                                          | What it does                                    |
