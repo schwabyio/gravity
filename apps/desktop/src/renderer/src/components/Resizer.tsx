@@ -11,13 +11,21 @@ interface Props {
   offset?: number
   /**
    * Which edge of its pane the divider sits on. On the left edge — a pane
-   * docked to the right — dragging left widens the pane.
+   * docked to the right — dragging left widens the pane; on the top edge — a
+   * pane docked to the bottom, whose `width` is its height — dragging up
+   * makes it taller.
    */
-  edge?: 'right' | 'left'
+  edge?: 'right' | 'left' | 'top'
 }
 
 /** How far an arrow key moves the divider. */
 const STEP = 16
+
+/** The arrow keys that move a divider, by which way it moves, and how far. */
+const ARROWS: Record<'columns' | 'rows', Partial<Record<string, number>>> = {
+  columns: { ArrowLeft: -STEP, ArrowRight: STEP },
+  rows: { ArrowUp: -STEP, ArrowDown: STEP }
+}
 
 /**
  * A draggable divider between two panes.
@@ -31,34 +39,37 @@ const STEP = 16
  * useless width should not need a fresh install to undo.
  */
 export default function Resizer({ pane, label, offset, edge = 'right' }: Props) {
-  const sign = edge === 'left' ? -1 : 1
-  const origin = useRef<{ x: number; width: number } | null>(null)
+  const sign = edge === 'right' ? 1 : -1
+  const rows = edge === 'top'
+  const origin = useRef<{ at: number; width: number } | null>(null)
+  const at = (event: React.PointerEvent) => (rows ? event.clientY : event.clientX)
 
   // While dragging, the whole window shows the resize cursor and stops
   // selecting text — otherwise a drag across the editor highlights it.
-  useEffect(() => () => document.body.classList.remove('resizing'), [])
+  useEffect(() => () => document.body.classList.remove('resizing', 'resizing-rows'), [])
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
-    origin.current = { x: event.clientX, width: pane.width }
+    origin.current = { at: at(event), width: pane.width }
     event.currentTarget.setPointerCapture(event.pointerId)
     document.body.classList.add('resizing')
+    if (rows) document.body.classList.add('resizing-rows')
   }
 
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!origin.current) return
-    pane.setWidth(origin.current.width + sign * (event.clientX - origin.current.x))
+    pane.setWidth(origin.current.width + sign * (at(event) - origin.current.at))
   }
 
   const end = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!origin.current) return
     origin.current = null
     event.currentTarget.releasePointerCapture(event.pointerId)
-    document.body.classList.remove('resizing')
+    document.body.classList.remove('resizing', 'resizing-rows')
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const move = { ArrowLeft: -STEP, ArrowRight: STEP }[event.key]
+    const move = ARROWS[rows ? 'rows' : 'columns'][event.key]
     if (move !== undefined) {
       event.preventDefault()
       pane.setWidth(pane.width + sign * move)
@@ -76,10 +87,10 @@ export default function Resizer({ pane, label, offset, edge = 'right' }: Props) 
 
   return (
     <div
-      className={`resizer${offset === undefined ? '' : ' resizer-offset'}${edge === 'left' ? ' resizer-left' : ''}`}
+      className={`resizer${offset === undefined ? '' : ' resizer-offset'}${edge === 'right' ? '' : ` resizer-${edge}`}`}
       style={offset === undefined ? undefined : { left: offset - 3 }}
       role="separator"
-      aria-orientation="vertical"
+      aria-orientation={rows ? 'horizontal' : 'vertical'}
       aria-label={label}
       aria-valuenow={pane.width}
       aria-valuemin={pane.min}

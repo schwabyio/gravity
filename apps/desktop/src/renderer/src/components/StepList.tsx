@@ -11,6 +11,7 @@ import {
 import type { RequestSetView } from '@shared/ipc.js'
 import { resolveSet } from '../reuse.js'
 import type { FlagState } from '../flagState.js'
+import { formatMs } from '../format.js'
 import Tooltip from './Tooltip.js'
 
 /** A button under the list that adds a step. */
@@ -74,9 +75,6 @@ function setStatusClass(ran: RunResult[], count: number): string {
   if (ran.some((result) => result.status === 'fail')) return 'client'
   return ran.length === count ? 'ok' : 'idle'
 }
-
-const formatMs = (ms: number): string =>
-  ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(2)} s`
 
 /**
  * The steps of a collection: each runnable on its own, and the place to add,

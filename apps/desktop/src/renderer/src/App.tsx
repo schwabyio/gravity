@@ -23,6 +23,7 @@ import type {
 import type { SettingsSection } from './components/CollectionSettings.js'
 import CollectionView, { connectionNames } from './components/CollectionView.js'
 import type { LiveView } from './components/ResponsePane.js'
+import BottomPanel from './components/BottomPanel.js'
 import EnvironmentPicker from './components/EnvironmentPicker.js'
 import EnvironmentsDrawer from './components/EnvironmentsDrawer.js'
 import FlagsDrawer from './components/FlagsDrawer.js'
@@ -1236,6 +1237,8 @@ export default function App() {
           )}
         </main>
       </div>
+
+      <BottomPanel />
 
       {settingsOpen && (
         <SettingsPage

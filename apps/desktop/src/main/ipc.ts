@@ -33,14 +33,19 @@ import {
   createDataFile,
   DOC_EXTENSION,
   findDataFile,
+  idOfFile,
   readDataTable,
   VarValueSchema,
+  type CollectionRunSummary,
+  type RunResult,
   type ScopeContext,
   type VariablePreviews
 } from '@schwabyio/gravity-core'
 import {
   IpcChannel,
   type AddProjectsOutcome,
+  type ConsoleEvent,
+  type ConsoleRunKind,
   type PreviewRequest,
   type Result,
   type RunCollectionRequest,
@@ -239,23 +244,25 @@ export function registerIpc(projects: ProjectService): void {
   ipcMain.handle(
     IpcChannel.runStart,
     guard(async (_event, payload: RunStartRequest) => {
-      const step = StepSchema.parse(payload?.step)
       const runId = String(payload?.runId ?? '')
       if (runId === '') throw new Error('Missing runId')
-      const collection = payload?.collection ? CollectionSchema.parse(payload.collection) : null
-      const collectionPath =
-        typeof payload?.collectionPath === 'string'
-          ? assertInProjects(payload.collectionPath)
-          : null
-      return {
-        result: await runSupervisor.run(runId, step, collection, collectionPath, {
+      return consoleRun(runId, 'send', payload, async () => {
+        const step = StepSchema.parse(payload?.step)
+        const collection = payload?.collection ? CollectionSchema.parse(payload.collection) : null
+        const collectionPath =
+          typeof payload?.collectionPath === 'string'
+            ? assertInProjects(payload.collectionPath)
+            : null
+        const result = await runSupervisor.run(runId, step, collection, collectionPath, {
           environment: optionalString(payload?.environment),
           environmentOverrides: environmentOverridesOf(payload?.environmentOverrides),
           projectVars: projectVarsOf(payload?.projectVars),
           flags: await flagsForRun(collectionPath, payload),
           ...(payload?.dataRow !== undefined ? { dataRow: dataRowOf(payload.dataRow)! } : {})
         })
-      }
+        tellConsole({ kind: 'result', runId, at: Date.now(), result })
+        return { result }
+      })
     })
   )
 
@@ -264,24 +271,29 @@ export function registerIpc(projects: ProjectService): void {
     guard(async (_event, payload: RunCollectionRequest) => {
       const runId = String(payload?.runId ?? '')
       if (runId === '') throw new Error('Missing runId')
-      const collection = CollectionSchema.parse(payload?.collection)
-      const collectionPath =
-        typeof payload?.collectionPath === 'string'
-          ? assertInProjects(payload.collectionPath)
-          : null
-      return {
-        summary: await runSupervisor.runCollection(runId, collection, collectionPath, {
-          environment: optionalString(payload?.environment),
-          environmentOverrides: environmentOverridesOf(payload?.environmentOverrides),
-          projectVars: projectVarsOf(payload?.projectVars),
-          flags: await flagsForRun(collectionPath, payload),
-          ...(payload?.dataRow !== undefined ? { dataRow: dataRowOf(payload.dataRow)! } : {}),
-          ...(payload?.dataRows !== undefined
-            ? { dataRows: z.array(DataRowSchema).min(1).parse(payload.dataRows) }
-            : {}),
-          ...(payload?.keepConnections === true ? { keepConnections: true } : {})
-        })
-      }
+      // Steps run on their own keep the connections Sends hold; Run all does not.
+      const run = payload?.keepConnections === true ? 'steps' : 'all'
+      return consoleRun(runId, run, payload, async () => {
+        const collection = CollectionSchema.parse(payload?.collection)
+        const collectionPath =
+          typeof payload?.collectionPath === 'string'
+            ? assertInProjects(payload.collectionPath)
+            : null
+        // Its results reach the console as they land, through `broadcastRunProgress`.
+        return {
+          summary: await runSupervisor.runCollection(runId, collection, collectionPath, {
+            environment: optionalString(payload?.environment),
+            environmentOverrides: environmentOverridesOf(payload?.environmentOverrides),
+            projectVars: projectVarsOf(payload?.projectVars),
+            flags: await flagsForRun(collectionPath, payload),
+            ...(payload?.dataRow !== undefined ? { dataRow: dataRowOf(payload.dataRow)! } : {}),
+            ...(payload?.dataRows !== undefined
+              ? { dataRows: z.array(DataRowSchema).min(1).parse(payload.dataRows) }
+              : {}),
+            ...(payload?.keepConnections === true ? { keepConnections: true } : {})
+          })
+        }
+      })
     })
   )
 
@@ -851,6 +863,10 @@ export function registerIpc(projects: ProjectService): void {
     }
   )
 
+  ipcMain.on(IpcChannel.appCopyText, (_event, text: unknown) => {
+    if (typeof text === 'string') clipboard.writeText(text)
+  })
+
   // Parse only, never run: compiling a script executes none of it.
   ipcMain.handle(IpcChannel.scriptCheck, (_event, code: unknown) =>
     typeof code === 'string' ? checkScriptSyntax(code) : null
@@ -888,23 +904,72 @@ export function broadcastSettings(): () => void {
   })
 }
 
+const toWindows = (channel: string, payload: unknown) => {
+  for (const window of BrowserWindow.getAllWindows()) window.webContents.send(channel, payload)
+}
+
+const tellConsole = (event: ConsoleEvent) => toWindows(IpcChannel.eventConsole, event)
+
+/**
+ * A run as the console tells it (`ConsoleEvent`): its start, then its end —
+ * with why, when it could not run. Its results land in between.
+ */
+async function consoleRun<T extends { summary: CollectionRunSummary } | { result: RunResult }>(
+  runId: string,
+  run: ConsoleRunKind,
+  payload: { collectionPath?: unknown; environment?: unknown; dataRows?: unknown } | undefined,
+  body: () => Promise<T>
+): Promise<T> {
+  tellConsole({
+    kind: 'start',
+    runId,
+    at: Date.now(),
+    run,
+    collection:
+      typeof payload?.collectionPath === 'string' ? idOfFile(payload.collectionPath) : null,
+    environment: optionalString(payload?.environment),
+    ...(Array.isArray(payload?.dataRows) ? { rows: payload.dataRows.length } : {})
+  })
+  try {
+    const value = await body()
+    const totals = 'summary' in value ? totalsOf(value.summary) : null
+    tellConsole({ kind: 'end', runId, at: Date.now(), ...(totals ? { totals } : {}) })
+    return value
+  } catch (cause) {
+    tellConsole({
+      kind: 'end',
+      runId,
+      at: Date.now(),
+      failure: cause instanceof Error ? cause.message : String(cause)
+    })
+    throw cause
+  }
+}
+
+/** A summary without its results, which the console has had one by one. */
+const totalsOf = ({ results: _results, ...totals }: CollectionRunSummary) => totals
+
 /**
  * Push per-step results to every open window as a collection run proceeds,
  * with the events of a stream as it is read and the connections Sends hold.
  */
 export function broadcastRunProgress(): () => void {
-  const toWindows = (channel: string, payload: unknown) => {
-    for (const window of BrowserWindow.getAllWindows()) window.webContents.send(channel, payload)
-  }
   const unsubscribe = [
-    runSupervisor.onProgress((runId, index, result, iteration) =>
+    runSupervisor.onProgress((runId, index, result, iteration) => {
       toWindows(IpcChannel.eventRunProgress, {
         runId,
         index,
         result,
         ...(iteration ? { iteration } : {})
       })
-    ),
+      tellConsole({
+        kind: 'result',
+        runId,
+        at: Date.now(),
+        result,
+        ...(iteration ? { iteration } : {})
+      })
+    }),
     runSupervisor.onLive((runId, live) => toWindows(IpcChannel.eventRunLive, { runId, live })),
     runSupervisor.onConnections((collectionPath, connections) =>
       toWindows(IpcChannel.eventConnections, { collectionPath, connections })

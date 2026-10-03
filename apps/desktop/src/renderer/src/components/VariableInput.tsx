@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { VariablePreview, VariablePreviews } from '@schwabyio/gravity-core/model'
+import CopyButton from './CopyButton.js'
 
 interface Props {
   value: string
@@ -60,7 +61,6 @@ export default function VariableInput({
   const inputRef = useRef<HTMLInputElement>(null)
   const mirrorRef = useRef<HTMLDivElement>(null)
   const [hovered, setHovered] = useState<{ name: string; left: number } | null>(null)
-  const [copied, setCopied] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // The mirror has to follow the input when a long value scrolls sideways.
@@ -92,7 +92,6 @@ export default function VariableInput({
 
   const openTooltip = (name: string, element: HTMLElement) => {
     clearTimeout(closeTimer.current)
-    setCopied(false)
     setHovered({ name, left: element.offsetLeft - (mirrorRef.current?.scrollLeft ?? 0) })
   }
 
@@ -100,7 +99,7 @@ export default function VariableInput({
    * Close only once the pointer leaves the whole field.
    *
    * Closing when it leaves the *token* left a dead zone: the card sits below the
-   * input, so travelling to its Copy button crossed input area that is not the
+   * input, so travelling to its copy button crossed input area that is not the
    * token, and the card vanished before it could be clicked. The card lives
    * inside this container, so a trip from token to button never leaves it.
    */
@@ -110,11 +109,6 @@ export default function VariableInput({
   }
 
   const preview = hovered ? previews[hovered.name] : undefined
-
-  const copy = async () => {
-    if (!hovered) return
-    if (await onCopy(hovered.name)) setCopied(true)
-  }
 
   return (
     <div
@@ -154,23 +148,31 @@ export default function VariableInput({
         <div className="var-card" role="tooltip" style={{ left: Math.max(0, hovered.left) }}>
           <div className="var-card-name">{hovered.name}</div>
 
-          {preview === undefined ? (
-            <div className="var-card-value unresolved">Not defined in this environment</div>
-          ) : preview.kind === 'dynamic' ? (
-            <div className="var-card-value muted">Generated for each request</div>
-          ) : preview.kind === 'secret' ? (
-            <div className="var-card-value muted">Secret — hidden here; Copy still works</div>
-          ) : (
-            <div className="var-card-value">{preview.value === '' ? '(empty)' : preview.value}</div>
-          )}
+          {/* The copy icon beside the value it copies, not beside where it came from. */}
+          <div className="var-card-value-row">
+            {preview === undefined ? (
+              <div className="var-card-value unresolved">Not defined in this environment</div>
+            ) : preview.kind === 'dynamic' ? (
+              <div className="var-card-value muted">Generated for each request</div>
+            ) : preview.kind === 'secret' ? (
+              <div className="var-card-value muted">Secret — hidden here, but it can be copied</div>
+            ) : (
+              <div className="var-card-value">
+                {preview.value === '' ? '(empty)' : preview.value}
+              </div>
+            )}
+            {preview !== undefined && preview.kind !== 'dynamic' && (
+              <CopyButton
+                // Another variable's card starts with the copy icon, not a tick.
+                key={hovered.name}
+                what={`the value of ${hovered.name}`}
+                onCopy={() => onCopy(hovered.name)}
+              />
+            )}
+          </div>
 
           <div className="var-card-foot">
             <span className="var-card-origin">{preview?.origin ?? 'unresolved'}</span>
-            {preview !== undefined && preview.kind !== 'dynamic' && (
-              <button type="button" onClick={() => void copy()}>
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-            )}
           </div>
         </div>
       )}

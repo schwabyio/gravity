@@ -266,14 +266,21 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
 }
 
 /**
- * A result with the secrets in its request hidden, as `[secret: NAME]`: the
- * app shows what a request sent, and a secret's value is never shown (SPEC.md
- * §6). The response is left as it came.
+ * A result with the secrets in its request and console output hidden, as
+ * `[secret: NAME]`: the app shows what a request sent and what its scripts
+ * wrote, and a secret's value is never shown (SPEC.md §6) — as gta's console
+ * report hides them. The response is left as it came.
  */
 const hidingSecrets =
   (secrets: ReadonlyArray<[string, string]>) =>
   (result: RunResult): RunResult =>
-    secrets.length === 0 ? result : { ...result, request: redact(result.request, secrets) }
+    secrets.length === 0
+      ? result
+      : {
+          ...result,
+          request: redact(result.request, secrets),
+          ...(result.logs ? { logs: redact(result.logs, secrets) } : {})
+        }
 
 const postFailure = (runId: string, cause: unknown) =>
   process.parentPort.postMessage({

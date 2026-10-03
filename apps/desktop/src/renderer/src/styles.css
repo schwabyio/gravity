@@ -1029,11 +1029,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-.var-card-foot button {
-  padding: 2px 10px;
-  font-size: 11px;
-}
-
 /* The URL bar's field is the flexible column in that row. */
 .url-bar .var-input.url {
   flex: 1;
@@ -1237,9 +1232,22 @@ button:disabled {
   white-space: nowrap;
 }
 
-.var-card-foot button {
-  padding: 2px 10px;
-  font-size: 11px;
+.var-card-value-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.var-card-value-row .var-card-value {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+/* Level with the value's first line, however many lines it wraps to. */
+.var-card-value-row .copy-button {
+  margin-top: -2px;
 }
 
 /* The URL bar's field is the flexible column in that row. */
@@ -1768,6 +1776,26 @@ body.resizing {
 
 body.resizing * {
   cursor: col-resize !important;
+}
+
+/* A divider on a pane's top edge, for a pane docked to the bottom. */
+.resizer-top {
+  top: -4px;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: auto;
+  height: 7px;
+  cursor: row-resize;
+}
+
+.resizer-top::after {
+  inset: 3px 0;
+}
+
+body.resizing.resizing-rows,
+body.resizing.resizing-rows * {
+  cursor: row-resize !important;
 }
 
 /* ---------- tooltips ---------- */
@@ -4761,4 +4789,400 @@ section[aria-labelledby='project-eol-title'] button {
 
 .hint.filter-empty {
   padding-left: 22px;
+}
+
+/* ---------- copy buttons ---------- */
+
+button.copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+button.copy-button.icon-only {
+  width: 24px;
+  padding: 0;
+  justify-content: center;
+  border-color: transparent;
+  background: none;
+}
+
+button.copy-button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+button.copy-button.icon-only:hover:not(:disabled) {
+  background: var(--surface-alt);
+}
+
+/* Still a tick under the pointer that just clicked it. */
+button.copy-button.copied,
+button.copy-button.copied:hover:not(:disabled) {
+  color: var(--ok);
+}
+
+button.copy-button svg {
+  flex: none;
+}
+
+/* ---------- status bar and console ---------- */
+
+.status-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.status-button svg {
+  flex: none;
+}
+
+.status-button:hover:not(:disabled),
+.status-button.on {
+  background: var(--surface-alt);
+  color: var(--text);
+}
+
+.status-count {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-count.error {
+  background: color-mix(in srgb, var(--client) 20%, transparent);
+  color: var(--client);
+}
+
+.status-count.warn {
+  background: color-mix(in srgb, var(--redirect) 20%, transparent);
+  color: var(--redirect);
+}
+
+.console-panel {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.console-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.console-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.console-head .spacer {
+  flex: 1;
+}
+
+.console-head input,
+.console-head select {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.console-filter {
+  width: 220px;
+}
+
+.console-head button {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.console-head .console-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 16px;
+}
+
+.console-head .console-close:hover {
+  background: var(--surface-alt);
+  color: var(--text);
+}
+
+.console-rows {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 18px;
+}
+
+.console-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+/* Time, then method or what the line is, then the line itself, then where it came from. */
+.console-line {
+  display: grid;
+  grid-template-columns: 104px 92px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: baseline;
+  padding: 1px 10px;
+}
+
+button.console-line {
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.console-line:hover {
+  background: var(--surface-alt);
+}
+
+.console-time {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.console-caret {
+  display: inline-block;
+  width: 12px;
+}
+
+.console-tag {
+  overflow: hidden;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-row.request .console-tag {
+  font-weight: 700;
+}
+
+.console-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.console-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-aside {
+  display: flex;
+  gap: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.console-source {
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-status {
+  font-weight: 600;
+}
+
+.console-status.ok {
+  color: var(--ok);
+}
+.console-status.redirect {
+  color: var(--redirect);
+}
+.console-status.client {
+  color: var(--client);
+}
+.console-status.server {
+  color: var(--server);
+}
+.console-status.info {
+  color: var(--info);
+}
+
+.console-checks {
+  color: var(--ok);
+}
+
+.console-checks.fail {
+  color: var(--client);
+}
+
+.console-row.run .console-text {
+  font-weight: 600;
+}
+
+.console-row.run-failed .console-text {
+  color: var(--client);
+}
+
+.console-row.skipped {
+  color: var(--text-dim);
+}
+
+.console-row.log-warn {
+  background: color-mix(in srgb, var(--redirect) 8%, transparent);
+}
+
+.console-row.log-warn .console-text {
+  color: var(--redirect);
+}
+
+.console-row.log-error,
+.console-row.error {
+  background: color-mix(in srgb, var(--client) 8%, transparent);
+}
+
+.console-row.log-error .console-text,
+.console-row.error .console-text,
+.console-row.error .console-tag {
+  color: var(--client);
+}
+
+.console-note {
+  padding: 8px 10px;
+  color: var(--text-dim);
+  font:
+    12px/1.5 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+/* Lined up under the request's method, past its time. */
+.console-detail {
+  padding: 4px 10px 10px 122px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  background: var(--bg);
+}
+
+/* What the request took, with the copy of both under it, above the raw text. */
+.console-detail-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.console-facts {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.console-raw {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 10px;
+}
+
+.console-raw-block {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.console-raw-block header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 4px 3px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.console-raw-block h3 {
+  margin: 0;
+  color: var(--text-dim);
+  font:
+    600 11px/1.5 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.console-raw-block pre {
+  max-height: 320px;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.console-raw-block .hint,
+.console-none {
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--text-dim);
+}
+
+.console-failed {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--client);
+  white-space: pre-wrap;
+}
+
+.console-stack {
+  max-height: 200px;
+  margin: 8px 0 0;
+  overflow: auto;
+  color: var(--text-dim);
+  font: inherit;
+  white-space: pre-wrap;
 }

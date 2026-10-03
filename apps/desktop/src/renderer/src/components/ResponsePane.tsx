@@ -15,6 +15,7 @@ import {
   type Check,
   type Marked
 } from '../testLinks.js'
+import { formatMs, formatSize } from '../format.js'
 
 export type ResponseTab = 'body' | 'headers' | 'timings' | 'request'
 
@@ -52,19 +53,14 @@ export interface LiveView {
   count: number
 }
 
-const statusClass = (status: number): string => {
+/** The colour a status shows in: `ok` for 2xx, `client` for 4xx, and so on. */
+export const statusClass = (status: number): string => {
   if (status < 200) return 'info'
   if (status < 300) return 'ok'
   if (status < 400) return 'redirect'
   if (status < 500) return 'client'
   return 'server'
 }
-
-const formatSize = (bytes: number): string =>
-  bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
-
-const formatMs = (ms: number): string =>
-  ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(2)} s`
 
 /** What stopped an event stream's reading, as the summary says it. */
 const ENDED_BY: Record<EventStreamRead['endedBy'], { short: string; long: string }> = {

@@ -201,9 +201,14 @@ test('copying a variable puts its value on the clipboard', async () => {
   // hover onto the same coordinates would dispatch no mouse event at all.
   await page.mouse.move(0, 0)
   await token('apiVersion').hover()
-  await page.locator('.var-card').getByRole('button', { name: 'Copy' }).click()
+  await page
+    .locator('.var-card')
+    .getByRole('button', { name: 'Copy the value of apiVersion' })
+    .click()
 
+  // The copy icon turns to a tick.
   await expect(page.locator('.var-card').getByRole('button', { name: 'Copied' })).toBeVisible()
+  await expect(page.locator('.var-card .copy-button.copied')).toHaveCount(1)
   expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe('2')
 })
 

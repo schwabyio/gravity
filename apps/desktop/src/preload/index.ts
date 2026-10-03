@@ -28,6 +28,7 @@ const api: DesktopApi = {
   runStop: (runId: string) => ipcRenderer.send(IpcChannel.runStop, runId),
   onRunProgress: (callback) => subscribe(IpcChannel.eventRunProgress, callback),
   onRunLive: (callback) => subscribe(IpcChannel.eventRunLive, callback),
+  onConsole: (callback) => subscribe(IpcChannel.eventConsole, callback),
   closeConnection: (collectionPath: string, name?: string) =>
     ipcRenderer.send(IpcChannel.connectionClose, collectionPath, name),
   onConnections: (callback) => subscribe(IpcChannel.eventConnections, callback),
@@ -150,7 +151,8 @@ const api: DesktopApi = {
       }
       ipcRenderer.on(IpcChannel.appBeforeClose, listener)
       return () => ipcRenderer.removeListener(IpcChannel.appBeforeClose, listener)
-    }
+    },
+    copyText: (text: string) => ipcRenderer.send(IpcChannel.appCopyText, text)
   },
 
   script: {

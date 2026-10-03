@@ -91,6 +91,8 @@ export const IpcChannel = {
   /** main -> renderer: may the window close? The renderer answers on appCloseReply. */
   appBeforeClose: 'app:beforeClose',
   appCloseReply: 'app:closeReply',
+  /** Put text on the clipboard: what the console copies. */
+  appCopyText: 'app:copyText',
   variablesPreview: 'variables:preview',
   variablesCopy: 'variables:copy',
   scriptCheck: 'script:check',
@@ -99,6 +101,8 @@ export const IpcChannel = {
   eventRunProgress: 'event:runProgress',
   /** main -> renderer: an event stream a run is reading: its headers, then each event. */
   eventRunLive: 'event:runLive',
+  /** main -> renderer: a run started, a result landed or a run ended, for the console. */
+  eventConsole: 'event:console',
   /** main -> renderer: the connections a collection's Sends hold open changed. */
   eventConnections: 'event:connections',
   /** main -> renderer: workspaces, the active one, or which projects they hold changed. */
@@ -525,6 +529,38 @@ export interface RunProgress {
   iteration?: IterationRef
 }
 
+/** What started a run, as the console tells them apart: a Send, steps run on their own, Run all. */
+export type ConsoleRunKind = 'send' | 'steps' | 'all'
+
+/**
+ * The console's view of every run, Send or Run all, whichever collection it
+ * is of: it starts, its results land one by one, and it ends. Main tells every
+ * window, in that order, on one channel.
+ */
+export type ConsoleEvent =
+  | {
+      kind: 'start'
+      runId: string
+      /** Epoch milliseconds. */
+      at: number
+      run: ConsoleRunKind
+      /** The collection file's name; null for none. */
+      collection: string | null
+      environment: string | null
+      /** For a run over a data file's rows: how many. */
+      rows?: number
+    }
+  | { kind: 'result'; runId: string; at: number; result: RunResult; iteration?: IterationRef }
+  | {
+      kind: 'end'
+      runId: string
+      at: number
+      /** A collection run's totals; absent for a Send. */
+      totals?: Omit<CollectionRunSummary, 'results'>
+      /** Why the run could not run, when it could not. */
+      failure?: string
+    }
+
 /** A collection's data file, for the editor: its text and its table, or why it is not one. */
 export interface ReadDataResult {
   /** Absolute; null when the collection has no data file. */
@@ -560,6 +596,8 @@ export interface DesktopApi {
   onRunProgress(callback: (progress: RunProgress) => void): Unsubscribe
   /** An event stream a run is reading, as it is read. */
   onRunLive(callback: (live: RunLive) => void): Unsubscribe
+  /** Every run's start, results and end, for the console. */
+  onConsole(callback: (event: ConsoleEvent) => void): Unsubscribe
   /** Close a connection a collection's Sends hold, or with no name all of them. */
   closeConnection(collectionPath: string, name?: string): void
   onConnections(callback: (view: ConnectionsView) => void): Unsubscribe
@@ -754,6 +792,8 @@ export interface DesktopApi {
      * unsaved; main decides whether to ask.
      */
     onBeforeClose(handler: (request: { save: boolean }) => Promise<CloseCheck>): Unsubscribe
+    /** Put text on the clipboard. */
+    copyText(text: string): void
   }
 
   variables: {

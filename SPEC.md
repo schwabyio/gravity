@@ -1465,7 +1465,8 @@ global project's root.
 - A secret with no value anywhere fails the run, naming it. An empty credential is never
   sent.
 - Reports replace a secret's value with `[secret: NAME]`, wherever it appears. So does
-  the desktop app where it shows a request as sent.
+  the desktop app where it shows a request as sent, or what a script wrote with
+  `console`.
 - `.env` holds `NAME=value` lines. `#` starts a comment line, `export ` before a name is
   allowed, and a value may be quoted. It must not be committed.
 
