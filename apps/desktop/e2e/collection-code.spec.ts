@@ -125,7 +125,7 @@ test('the pre-request script and tests are written as blocks before the steps', 
         'steps:'
       ].join('\n')
     )
-  await drawer().getByRole('button', { name: 'Close' }).click()
+  await drawer().getByRole('button', { name: 'Close', exact: true }).click()
 })
 
 test('a send uses them, and the step says the collection’s scripts run first', async () => {
@@ -144,7 +144,7 @@ test('a send uses them, and the step says the collection’s scripts run first',
   await expect(
     drawer().getByRole('textbox', { name: 'Collection pre-request script' })
   ).toContainText("gta.set('id', 'abc')")
-  await page.getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
 })
 
 test('with auto save off, a send uses the variables as edited, before they are saved', async () => {
@@ -156,7 +156,7 @@ test('with auto save off, a send uses the variables as edited, before they are s
   await openDrawer()
   await drawerTab('Variables').click()
   await drawer().getByLabel('Value of apiVersion').fill('3')
-  await drawer().getByRole('button', { name: 'Close' }).click()
+  await drawer().getByRole('button', { name: 'Close', exact: true }).click()
 
   received = []
   await page.getByRole('button', { name: 'Send' }).click()

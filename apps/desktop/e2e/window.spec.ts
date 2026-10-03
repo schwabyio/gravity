@@ -93,7 +93,7 @@ test('a spec’s size is the window’s, on its screen, and a drawer stays insid
   expect(box.x).toBeGreaterThanOrEqual(0)
   expect(box.x + box.width).toBeLessThanOrEqual(shown.viewport.width)
   expect(box.y + box.height).toBeLessThanOrEqual(shown.viewport.height)
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
 })
 
 test('a size bigger than the screen gets all the room it has, still on it', async () => {

@@ -123,7 +123,7 @@ test('project settings write project.yml, with uses written with /', async () =>
     .poll(() => read(path.join(shop, 'project.yml')), { timeout: 5_000 })
     .toBe('uses: ../../shared\nvars:\n  region: eu\n')
   await expect(drawer).toContainText('Now: Shared')
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
   // Linking a global project leaves its own file alone.
   expect(read(path.join(shared, 'project.yml'))).toBe('name: Shared\nvars:\n  owner: platform\n')
   await expect(project().locator('.uses-badge')).toHaveText('uses Shared')
@@ -152,7 +152,7 @@ test('a shared environment is marked, and editing it edits the global project', 
       timeout: 5_000
     })
     .toBe('name: demo\nvars:\n  path: edited\n')
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
   await send()
   expect(received).toEqual(['/edited/eu/platform'])
 })
@@ -171,7 +171,7 @@ test('the project’s own environment of the same name wins, key by key', async 
   await expect
     .poll(() => read(path.join(shop, 'environments', 'demo.yml')), { timeout: 5_000 })
     .toBe('name: demo\nvars:\n  path: own\n')
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
 
   // Still one "demo" to choose.
   await expect(page.getByLabel('Environment', { exact: true }).locator('option')).toHaveText([
@@ -195,7 +195,7 @@ test('shared variables are edited in place, for every project using them', async
     .toBe('name: Shared\nvars:\n  owner: payments-team\n')
   // This project's own file is untouched.
   expect(read(path.join(shop, 'project.yml'))).toBe('uses: ../../shared\nvars:\n  region: eu\n')
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
   await send()
   expect(received).toEqual(['/own/eu/payments-team'])
 })
@@ -210,7 +210,7 @@ test('a project variable of the same name overrides the shared one', async () =>
   await expect
     .poll(() => read(path.join(shop, 'project.yml')), { timeout: 5_000 })
     .toBe('uses: ../../shared\nvars:\n  region: eu\n  owner: mine\n')
-  await page.getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
   await send()
   expect(received).toEqual(['/own/eu/mine'])
 })

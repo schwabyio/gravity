@@ -225,7 +225,8 @@ test('a request set’s step is marked as the one a use step’s tests check', a
   const file = path.join(shop, 'requests', 'orders.yml')
   // The test before leaves the collection settings open.
   const settings = page.getByRole('dialog', { name: 'Collection settings' })
-  if (await settings.isVisible()) await settings.getByRole('button', { name: 'Close' }).click()
+  if (await settings.isVisible())
+    await settings.getByRole('button', { name: 'Close', exact: true }).click()
   await page.getByRole('group', { name: 'Request sets of shop' }).getByText('orders').click()
   await expect(page.locator('.collection-header h1')).toHaveText('orders')
   const marker = page.getByRole('checkbox', { name: /A use step’s tests check this response/ })

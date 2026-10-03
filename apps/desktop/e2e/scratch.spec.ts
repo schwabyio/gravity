@@ -165,7 +165,7 @@ test('a scratch collection runs with the environments of the global project it u
   await expect(drawer).toContainText('Now: Shared')
   // No git, so nothing to say about line endings.
   await expect(drawer.getByRole('heading', { name: 'Line endings' })).toHaveCount(0)
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
 
   await page.getByRole('button', { name: '+ Add step' }).click()
   await page.getByLabel('Request URL').fill('{{baseUrl}}/ping')

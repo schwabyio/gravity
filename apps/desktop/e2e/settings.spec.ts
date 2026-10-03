@@ -89,7 +89,7 @@ test('a collection setting is saved at the top, and the step inherits it', async
   await expect(
     drawer.getByRole('region', { name: 'Timeout', exact: true }).locator('.setting-used')
   ).toHaveText('4000 mscollection')
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
 
   // The step tab has only the step's own fields, showing what they inherit.
   await expect(page.getByLabel('Timeout for the whole collection', { exact: true })).toHaveCount(0)

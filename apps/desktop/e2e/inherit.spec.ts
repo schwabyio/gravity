@@ -155,7 +155,7 @@ test('a collection extends a base collection, set in its settings', async () => 
   const drawer = page.getByRole('dialog', { name: 'Collection settings' })
   await drawer.getByLabel('Base collection').selectOption('auth')
   await expect.poll(() => file().extends, { timeout: 5_000 }).toBe('auth')
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
 
   received = []
   await openStep('get user')

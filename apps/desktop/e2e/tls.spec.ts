@@ -111,7 +111,7 @@ test('adding the CA in Project settings writes tls.ca and makes the send pass', 
   await expect(drawer.getByRole('list', { name: 'CA certificates' })).toContainText(
     'Gravity Test CA · expires'
   )
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
 
   await page.getByRole('button', { name: 'Send' }).click()
   await expect(page.locator('.status-pill')).toHaveText('200 OK')
@@ -124,7 +124,7 @@ test('a certificate file that cannot be used is a project problem, and sends not
     'no such file',
     { timeout: 5_000 }
   )
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(projectRegion('shop').getByLabel('Project problems')).toBeVisible()
 
   await page.getByRole('button', { name: 'Send' }).click()
@@ -137,7 +137,7 @@ test('a certificate file that cannot be used is a project problem, and sends not
   await again.getByRole('button', { name: 'Remove certs/gone.pem' }).click()
   await expect.poll(() => read(path.join(shop, 'project.yml')), { timeout: 5_000 }).toBe('{}\n')
   await expect(projectRegion('shop').getByLabel('Project problems')).toHaveCount(0)
-  await again.getByRole('button', { name: 'Close' }).click()
+  await again.getByRole('button', { name: 'Close', exact: true }).click()
 })
 
 test('a global project’s tls.ca is trusted by every project that uses it, and by no other', async () => {
@@ -171,7 +171,7 @@ test('a global project’s tls.ca is trusted by every project that uses it, and 
   await expect(sharedList).toContainText('Gravity Test CA · expires')
   await expect(sharedList.locator('input, button')).toHaveCount(0)
   await expect(drawer.getByRole('list', { name: 'CA certificates', exact: true })).toHaveCount(0)
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
   expect(read(path.join(tmp, 'orders', 'project.yml'))).toBe('uses: ../shared\n')
 
   // shop does not use it: its send is still refused.

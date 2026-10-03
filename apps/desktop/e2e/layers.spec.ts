@@ -217,7 +217,7 @@ test('the Pre-request and Tests tabs list the scripts that run first, in order',
   await expect(
     drawer.getByRole('textbox', { name: 'Collection pre-request script' })
   ).toContainText("gta.set('fromCollection', 'yes')")
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  await drawer.getByRole('button', { name: 'Close', exact: true }).click()
 })
 
 test('a result shows the request as sent: every header, resolved, and a secret hidden', async () => {

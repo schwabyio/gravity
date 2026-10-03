@@ -101,7 +101,8 @@ async function openChanges() {
 }
 
 async function closeChanges() {
-  if (await drawer().isVisible()) await drawer().getByRole('button', { name: 'Close' }).click()
+  if (await drawer().isVisible())
+    await drawer().getByRole('button', { name: 'Close', exact: true }).click()
 }
 
 test.beforeAll(async () => {

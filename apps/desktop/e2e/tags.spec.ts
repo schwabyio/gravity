@@ -180,6 +180,6 @@ test('turning step tags back on writes it after the collection tags', async () =
   await expect
     .poll(onDisk, { timeout: 5_000 })
     .toMatch(/^id: shop\ntags: \[api\]\nstepTags: true\nsteps:/)
-  await page.getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(stepTags().getByRole('button', { name: 'Add a tag to step' })).toBeVisible()
 })

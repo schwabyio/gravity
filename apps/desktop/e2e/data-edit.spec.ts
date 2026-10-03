@@ -150,7 +150,7 @@ test('rows move and are removed', async () => {
 })
 
 test('a change on disk while editing is put to the person, never overwritten', async () => {
-  await drawer().getByRole('button', { name: 'Close' }).click()
+  await drawer().getByRole('button', { name: 'Close', exact: true }).click()
   await setAutoSaveDelay(3000)
   await openData()
   await cell('Row 2 note').fill('mine')
@@ -166,7 +166,7 @@ test('a change on disk while editing is put to the person, never overwritten', a
   await expect(cell('Row 1 note')).toHaveValue('theirs')
   await expect(status()).toHaveText('Saved')
   expect(onDisk()).toBe(theirs)
-  await drawer().getByRole('button', { name: 'Close' }).click()
+  await drawer().getByRole('button', { name: 'Close', exact: true }).click()
   await setAutoSaveDelay(1000)
 })
 
@@ -186,7 +186,7 @@ test('a JSON data file keeps each value’s type, and reads typed values as gta 
   await expect
     .poll(() => JSON.parse(fs.readFileSync(json, 'utf8')), { timeout: 5_000 })
     .toEqual([{ userId: 2, active: true, name: 'Annie' }])
-  await drawer().getByRole('button', { name: 'Close' }).click()
+  await drawer().getByRole('button', { name: 'Close', exact: true }).click()
 })
 
 test('a data file is created from a first column name, and deleted', async () => {
