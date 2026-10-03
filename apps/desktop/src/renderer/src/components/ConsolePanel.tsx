@@ -230,7 +230,9 @@ function RequestRow(props: {
           </span>
           {clockTime(sentAt(entry))}
         </time>
-        <span className={`console-tag m-${request.method.toLowerCase()}`}>{request.method}</span>
+        <span className="console-tag">
+          <span className={`method m-${request.method.toLowerCase()}`}>{request.method}</span>
+        </span>
         <span className="console-url">{request.url}</span>
         <span className="console-aside">
           <span className={`console-status ${response ? statusClass(response.status) : 'server'}`}>

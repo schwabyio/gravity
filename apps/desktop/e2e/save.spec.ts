@@ -141,7 +141,8 @@ test('steps can be added, renamed, duplicated, moved and deleted', async () => {
   await page.getByLabel('Step name').press('Enter')
   await url().fill('http://127.0.0.1:1/orders/search')
   // Changing the method as well: one step is never left with no method, or two.
-  await page.getByLabel('HTTP method').selectOption('POST')
+  await page.getByRole('button', { name: 'HTTP method' }).click()
+  await page.getByRole('option', { name: 'POST' }).click()
   await page.keyboard.press('ControlOrMeta+s')
   await expect(status()).toHaveText('Saved')
   await expect

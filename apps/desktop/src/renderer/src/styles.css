@@ -13,6 +13,17 @@
   --server: #a01a2b;
   --info: #4a5568;
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  /* Each method its own color, as API docs commonly have them (GET blue, POST green),
+     all AA on the panels; USE and READ clear of them. */
+  --m-get: #1f5fd6;
+  --m-post: #0b7a43;
+  --m-put: #946200;
+  --m-patch: #0b7f84;
+  --m-delete: #c42b2b;
+  --m-head: #7c45d0;
+  --m-options: #3f5f80;
+  --m-use: #b0287a;
+  --m-read: #8a5a2b;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +41,15 @@
     --client: #f08a5d;
     --server: #f0607a;
     --info: #9aa3b2;
+    --m-get: #6b9bff;
+    --m-post: #4fd08f;
+    --m-put: #eab54e;
+    --m-patch: #4fd1d1;
+    --m-delete: #ff6f6f;
+    --m-head: #b991ff;
+    --m-options: #8fb4dc;
+    --m-use: #ff7ac0;
+    --m-read: #d9a066;
   }
 }
 
@@ -91,9 +111,69 @@ body {
   background: var(--surface);
 }
 
-.url-bar .method {
+/* The method picker: a button like a dropdown, and the list it opens. */
+.method-picker {
+  position: relative;
+  flex: none;
+}
+
+.method-picker-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   width: 110px;
-  font-weight: 600;
+  height: 100%;
+  padding: 0 9px;
+  background: var(--surface);
+}
+
+.method-picker-button::after {
+  content: '▾';
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.method-picker-button .method,
+.method-picker-list .method {
+  width: auto;
+  font-size: 11px;
+}
+
+.method-picker-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 110px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px color-mix(in srgb, black 18%, transparent);
+  outline: none;
+}
+
+.method-picker-list li {
+  padding: 4px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.method-picker-list li.active {
+  background: var(--surface-alt);
+}
+
+.method-picker-list li.chosen::after {
+  content: '✓';
+  float: right;
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 input,
@@ -914,8 +994,9 @@ button:disabled {
 }
 
 .method {
+  display: inline-block;
   flex: none;
-  width: 44px;
+  width: 54px;
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 700;
@@ -923,21 +1004,25 @@ button:disabled {
 }
 
 .m-get {
-  color: var(--ok);
+  color: var(--m-get);
 }
 .m-post {
-  color: var(--accent);
+  color: var(--m-post);
 }
-.m-put,
+.m-put {
+  color: var(--m-put);
+}
 .m-patch {
-  color: var(--redirect);
+  color: var(--m-patch);
 }
 .m-delete {
-  color: var(--client);
+  color: var(--m-delete);
 }
-.m-head,
+.m-head {
+  color: var(--m-head);
+}
 .m-options {
-  color: var(--text-dim);
+  color: var(--m-options);
 }
 
 .problem {
@@ -3950,24 +4035,12 @@ button.tag.filter.on {
 /* ---------- request sets and use steps ---------- */
 
 .m-use {
-  color: #8a4fd8;
-}
-
-@media (prefers-color-scheme: dark) {
-  .m-use {
-    color: #b58cff;
-  }
+  color: var(--m-use);
 }
 
 /* A step reading a connection (SPEC.md §2.11). */
 .m-read {
-  color: #0f8a8a;
-}
-
-@media (prefers-color-scheme: dark) {
-  .m-read {
-    color: #4fd1d1;
-  }
+  color: var(--m-read);
 }
 
 .read-bar .method.m-read {

@@ -38,6 +38,7 @@ import {
   toHeaders,
   type EditorState
 } from '../requestState.js'
+import MethodPicker from './MethodPicker.js'
 
 type RequestTab = 'params' | 'headers' | 'body' | 'pre-request' | 'tests' | 'settings' | 'docs'
 
@@ -243,18 +244,12 @@ export default function RequestView(props: Props) {
             props.onSend()
           }}
         >
-          <select
-            className="method"
+          <MethodPicker
+            label="HTTP method"
             value={request.method}
-            onChange={(e) => props.onChange({ method: e.target.value as HttpMethod })}
-            aria-label="HTTP method"
-          >
-            {HTTP_METHODS.map((method) => (
-              <option key={method} value={method}>
-                {method}
-              </option>
-            ))}
-          </select>
+            methods={HTTP_METHODS}
+            onChange={(method: HttpMethod) => props.onChange({ method })}
+          />
           <VariableInput
             className="url"
             value={request.url}
