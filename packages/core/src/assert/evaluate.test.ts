@@ -140,6 +140,37 @@ describe('body', () => {
     expect(byPath(assertions, 'users')?.message).toBe('Expected 3 items, got 2')
   })
 
+  it('matches a RegExp in an unordered list, or as an item’s property, against the value as text', () => {
+    const { assertions } = run(
+      {
+        body: {
+          roles: { unordered: [/^ADM/i, 'editor'] },
+          users: { unordered: [{ id: /^1$/, name: /^a/ }] },
+          'error.code': { equals: 'token_expired' },
+          sessions: { unorderedNot: [/x/] }
+        }
+      },
+      body
+    )
+    expect(assertions.map((a) => [a.path, a.status])).toEqual([
+      ['roles', 'pass'],
+      ['users', 'pass'],
+      ['error.code', 'pass'],
+      ['sessions', 'pass']
+    ])
+    const missing = run(
+      { body: { roles: { unordered: [/^own/] }, users: { unordered: [/a/] } } },
+      body
+    )
+    expect(missing.assertions.map((a) => a.message)).toEqual([
+      'Missing from the array: /^own/',
+      // A pattern is tested against text, so it never matches an object item.
+      'Missing from the array: /a/'
+    ])
+    const found = run({ body: { roles: { unorderedNot: ['owner', /^view/] } } }, body)
+    expect(found.assertions[0]?.message).toBe('Must not contain: /^view/')
+  })
+
   it('compares epoch dates by calendar day, with a number as an offset from now', () => {
     const noon = new Date(2026, 8, 23, 12).getTime()
     const { assertions } = run(
@@ -221,6 +252,13 @@ describe('strict', () => {
       'items[1].id',
       'items[1].at'
     ])
+  })
+
+  it('counts items matched by a pattern as checked', () => {
+    expect(
+      strict({ id: 7, name: 'x', items: { unordered: [{ id: /^1$/, at: /^n/ }, { id: /2/ }] } })
+        .unasserted
+    ).toEqual(['items[1].at'])
   })
 
   it('counts object items matched by unordered, property by property', () => {
