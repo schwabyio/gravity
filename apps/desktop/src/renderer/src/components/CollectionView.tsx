@@ -427,11 +427,7 @@ export default function CollectionView(props: Props) {
             )}
             {!collectionDocs && !editingDocs && props.onCollectionDocs && (
               <Tooltip text="Describe this collection in markdown, shown above its steps">
-                <button
-                  type="button"
-                  className="data-badge create"
-                  onClick={() => setEditingDocs(true)}
-                >
+                <button type="button" className="add-docs" onClick={() => setEditingDocs(true)}>
                   + Docs
                 </button>
               </Tooltip>

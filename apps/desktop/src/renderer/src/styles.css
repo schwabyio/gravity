@@ -3656,6 +3656,21 @@ button.tag.filter.on {
   font-family: inherit;
 }
 
+/* "+ Docs", beside "+ Data file" and drawn as it is: a chip of its own, not the data file's. */
+.add-docs {
+  padding: 1px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.add-docs:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
 .data-row-picker {
   display: inline-flex;
   align-items: center;
