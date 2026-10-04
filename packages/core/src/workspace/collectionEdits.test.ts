@@ -245,6 +245,32 @@ describe('editSource: collection fields', () => {
     for (const name of ['one', 'two', 'three']) expect(block(next, name)).toBe(block(SOURCE, name))
   })
 
+  it('writes docs after the id, as a block once they run past a line', () => {
+    const next = editSource(SOURCE, [
+      { type: 'editCollection', key: 'docs', value: 'Checks **checkout**.\n\n- one\n- two' }
+    ])
+    expect(next).toContain(
+      'id: checkout\ndocs: |-\n  Checks **checkout**.\n\n  - one\n  - two\nsteps:'
+    )
+    const short = editSource(SOURCE, [{ type: 'editCollection', key: 'docs', value: 'One line.' }])
+    expect(short).toContain('id: checkout\ndocs: One line.\nsteps:')
+    const removed = editSource(next, [{ type: 'editCollection', key: 'docs', value: undefined }])
+    expect(removed).toBe(SOURCE)
+  })
+
+  it('writes a step’s docs where a person would, as a block', () => {
+    const next = editSource(SOURCE, [
+      {
+        type: 'editStep',
+        index: 0,
+        step: { name: 'one', GET: 'http://x/one', docs: 'Lists them.\nAll of them.' }
+      }
+    ])
+    expect(block(next, 'one')).toBe(
+      '  - name: one\n    GET: "http://x/one" # trailing\n    docs: |-\n      Lists them.\n      All of them.'
+    )
+  })
+
   it('changes and removes them in place', () => {
     const tagged = editSource(SOURCE, [{ type: 'editCollection', key: 'tags', value: ['a'] }])
     const changed = editSource(tagged, [{ type: 'editCollection', key: 'tags', value: ['a', 'b'] }])

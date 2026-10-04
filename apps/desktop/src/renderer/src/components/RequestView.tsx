@@ -23,10 +23,9 @@ import InheritedHeaders from './InheritedHeaders.js'
 import KeyValueEditor from './KeyValueEditor.js'
 import MultipartEditor, { FileBodyEditor } from './MultipartEditor.js'
 import QueryParamsEditor from './QueryParamsEditor.js'
-import Markdown from './Markdown.js'
 import ResponsePane, { type LiveView, type ResponseTab } from './ResponsePane.js'
 import { ConnectionField, ReadBar } from './ConnectionStep.js'
-import ScriptsPane, { ScriptsStrip, type ScriptTab } from './ScriptsPane.js'
+import ScriptsPane, { ScriptsStrip, type ScriptKind, type ScriptTab } from './ScriptsPane.js'
 import Tooltip from './Tooltip.js'
 import { UseBar, UseStepEditor } from './UseStep.js'
 import VariableInput from './VariableInput.js'
@@ -40,7 +39,7 @@ import {
 import MethodPicker from './MethodPicker.js'
 
 /** The request editor's tabs: what the request is made of. Its scripts have a pane of their own. */
-type RequestTab = 'params' | 'headers' | 'body' | 'settings' | 'docs'
+type RequestTab = 'params' | 'headers' | 'body' | 'settings'
 
 interface Props {
   request: EditorState
@@ -61,9 +60,6 @@ interface Props {
   bases: LibraryFileView[]
   /** Open a base collection's file. */
   onOpenBase: (path: string) => void
-
-  /** The step's own docs, rendered in a tab when it has any. */
-  docs?: string | undefined
 
   previews: VariablePreviews
   onCopyVariable: (name: string) => Promise<boolean>
@@ -134,7 +130,7 @@ export default function RequestView(props: Props) {
   const scriptError = result?.error?.phase === 'tests' ? result.error : null
   // Mark the failing line in an editor, when the failing script is this step's own.
   const own = props.request.use !== null ? 'use' : 'step'
-  const errorLine = (phase: ScriptTab) =>
+  const errorLine = (phase: ScriptKind) =>
     result?.error?.phase === phase && result.error.script === own ? result.error.line : undefined
   // Before anything is sent, the response has nothing to show.
   const responseShown =
@@ -363,14 +359,6 @@ export default function RequestView(props: Props) {
                 Settings{' '}
                 {Object.keys(request.settings).length > 0 && <span className="count dot">•</span>}
               </button>
-              {props.docs && (
-                <button
-                  className={shownTab === 'docs' ? 'active' : ''}
-                  onClick={() => setTab('docs')}
-                >
-                  Docs
-                </button>
-              )}
               <Tooltip text="Collapse the request editor to give the response more room">
                 <button
                   type="button"
@@ -410,7 +398,6 @@ export default function RequestView(props: Props) {
                   />
                 </>
               )}
-              {shownTab === 'docs' && props.docs && <Markdown source={props.docs} />}
               {shownTab === 'settings' && !reads && (
                 <ConnectionField
                   value={request.connection}

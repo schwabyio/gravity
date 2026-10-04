@@ -1904,6 +1904,112 @@ button:disabled {
   transform: rotate(180deg);
 }
 
+/* Editing the collection's docs: a pencil beside the toggle, then the text box in place.
+   Placed by its tooltip's wrapper, which would otherwise take a line of its own. */
+.docs-panel > .tooltip-trigger:has(> .docs-edit) {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 1;
+}
+
+.docs-edit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-alt);
+  color: var(--text-dim);
+}
+
+.docs-edit:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Left of the expand toggle, when there is one. */
+.docs-panel:has(.docs-toggle) > .tooltip-trigger:has(> .docs-edit) {
+  right: 44px;
+}
+
+.docs-panel.editable .docs-body {
+  padding-right: 48px;
+}
+
+.docs-panel.editable:has(.docs-toggle) .docs-body {
+  padding-right: 80px;
+}
+
+.docs-panel.editing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 10px 16px;
+}
+
+.docs-panel.editing .docs-editor {
+  height: 160px;
+}
+
+.docs-done {
+  padding: 2px 12px;
+  font-size: 12px;
+}
+
+/* Docs written as markdown, in a plain box: the collection's above its steps, a step's in its tab. */
+.docs-editor {
+  width: 100%;
+  min-height: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font:
+    13px/1.5 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  resize: vertical;
+}
+
+.docs-editor:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.docs-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.docs-tab .docs-editor {
+  flex: 1;
+  resize: none;
+}
+
+/* A step's docs, read: the pencil at their top right, clear of the text. */
+.step-docs {
+  position: relative;
+  padding-right: 36px;
+}
+
+.step-docs > .tooltip-trigger:has(> .docs-edit) {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.docs-tab > .docs-done {
+  align-self: flex-end;
+}
+
 /* ---------- rendered markdown ---------- */
 
 .md {

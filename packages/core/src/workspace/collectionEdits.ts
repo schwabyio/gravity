@@ -35,6 +35,7 @@ export type CollectionEdit =
 /** Collection-level fields the app edits. */
 export const COLLECTION_FIELDS = [
   'id',
+  'docs',
   'tags',
   'stepTags',
   'exclude',

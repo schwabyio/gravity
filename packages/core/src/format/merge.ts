@@ -193,7 +193,8 @@ export function compactList(document: YAML.Document, path: ReadonlyArray<string 
 
 /**
  * Write code — `tests` and `before.script` — as a `|` block, even one line of
- * it: code reads as code there, and never needs quoting or escaping.
+ * it: code reads as code there, and never needs quoting or escaping. Docs too,
+ * once they run past a line: markdown is written as it reads.
  */
 export function codeAsBlock(
   document: YAML.Document,
@@ -201,9 +202,16 @@ export function codeAsBlock(
   key: string
 ) {
   const path =
-    key === 'tests' ? [...owner, 'tests'] : key === 'before' ? [...owner, 'before', 'script'] : null
+    key === 'tests'
+      ? [...owner, 'tests']
+      : key === 'before'
+        ? [...owner, 'before', 'script']
+        : key === 'docs'
+          ? [...owner, 'docs']
+          : null
   const node = path && document.getIn(path, true)
-  if (YAML.isScalar(node) && typeof node.value === 'string') node.type = 'BLOCK_LITERAL'
+  if (!YAML.isScalar(node) || typeof node.value !== 'string') return
+  if (key !== 'docs' || node.value.includes('\n')) node.type = 'BLOCK_LITERAL'
 }
 
 /** Where keys go in a step, so a newly added one lands where a person would put it. */

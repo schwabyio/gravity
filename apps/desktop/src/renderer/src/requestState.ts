@@ -54,6 +54,8 @@ export interface EditorState {
   preRequest: string
   /** The step's `tests`: JavaScript run after the response. */
   tests: string
+  /** The step's `docs`: markdown about it; empty for none. */
+  docs: string
   /** The step's own tags; only used when the collection has `stepTags: true`. */
   tags: string[]
   /** Feature flags the step needs to run (SPEC.md §2.9); empty for none. */
@@ -130,6 +132,7 @@ export const emptyRequest = (): EditorState => ({
   bodyFile: '',
   preRequest: '',
   tests: '',
+  docs: '',
   tags: [],
   flags: {},
   forEach: '',
@@ -307,6 +310,7 @@ export function fromStep(step: Step): EditorState {
       url: '',
       headers: [newRow()],
       tests: step.tests ?? '',
+      docs: step.docs ?? '',
       tags: step.tags ?? [],
       flags: step.flags ?? {},
       use: step.use,
@@ -319,6 +323,7 @@ export function fromStep(step: Step): EditorState {
       name: step.name ?? '',
       preRequest: step.before?.script ?? '',
       tests: step.tests ?? '',
+      docs: step.docs ?? '',
       tags: step.tags ?? [],
       flags: step.flags ?? {},
       useTests: step.useTests === true,
@@ -337,6 +342,7 @@ export function fromStep(step: Step): EditorState {
     ...readBody(step.body),
     preRequest: step.before?.script ?? '',
     tests: step.tests ?? '',
+    docs: step.docs ?? '',
     tags: step.tags ?? [],
     flags: step.flags ?? {},
     forEach: step.forEach ?? '',
@@ -351,17 +357,17 @@ export function fromStep(step: Step): EditorState {
 }
 
 /**
- * A use step: its set, the values it passes and its own tests. It has no
- * request of its own, so nothing else is carried over except `docs`.
+ * A use step: its set, the values it passes, its docs and its own tests. It
+ * has no request of its own, so nothing else is carried over.
  */
-function mergeIntoUseStep(original: Step, edited: EditorState): Step {
+function mergeIntoUseStep(_original: Step, edited: EditorState): Step {
   const next: Record<string, unknown> = {}
   if (edited.name.trim() !== '') next['name'] = edited.name
   next['use'] = edited.use
   if (Object.keys(edited.with).length > 0) next['with'] = edited.with
   if (edited.tags.length > 0) next['tags'] = edited.tags
   if (Object.keys(edited.flags).length > 0) next['flags'] = edited.flags
-  if (original.docs !== undefined) next['docs'] = original.docs
+  if (edited.docs.trim() !== '') next['docs'] = edited.docs
   if (edited.tests.trim() !== '') next['tests'] = edited.tests
   return next as Step
 }
@@ -370,14 +376,14 @@ function mergeIntoUseStep(original: Step, edited: EditorState): Step {
  * A step reading a connection (SPEC.md §2.11): the connection, and what it
  * checks and waits for. It sends nothing, so it has no request to carry over.
  */
-function mergeIntoReadStep(original: Step, edited: EditorState): Step {
+function mergeIntoReadStep(_original: Step, edited: EditorState): Step {
   const next: Record<string, unknown> = {}
   if (edited.name.trim() !== '') next['name'] = edited.name
   next['connection'] = edited.reads
   if (edited.tags.length > 0) next['tags'] = edited.tags
   if (Object.keys(edited.flags).length > 0) next['flags'] = edited.flags
   if (edited.useTests) next['useTests'] = true
-  if (original.docs !== undefined) next['docs'] = original.docs
+  if (edited.docs.trim() !== '') next['docs'] = edited.docs
   const settings = Object.fromEntries(
     Object.entries(edited.settings).filter(([, value]) => value !== undefined)
   )
@@ -410,8 +416,8 @@ function readBody(body: Body | undefined): BodyState {
 /**
  * Overlay editor state onto the step it came from.
  *
- * Crucially this MERGES rather than rebuilds: `docs` has no editor yet, and rebuilding the step from
- * editor state alone would silently delete every one of them on the first save.
+ * Crucially this MERGES rather than rebuilds: a key with no editor — a graphql
+ * body, `before.set` — would otherwise be silently deleted on the first save.
  */
 export function mergeIntoStep(original: Step, edited: EditorState): Step {
   if (edited.use !== null) return mergeIntoUseStep(original, edited)
@@ -451,6 +457,9 @@ export function mergeIntoStep(original: Step, edited: EditorState): Step {
 
   if (edited.tests.trim() === '') delete next['tests']
   else next['tests'] = edited.tests
+
+  if (edited.docs.trim() === '') delete next['docs']
+  else next['docs'] = edited.docs
 
   if (edited.base) delete next['base']
   else next['base'] = false

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   isReadStep,
   isUseStep,
@@ -101,6 +101,8 @@ interface Props {
   stepUseTests: boolean
   onStepUseTests: (useTests: boolean) => void
   onCollectionTags: (tags: string[]) => void
+  /** Where the collection's docs are edited; without it they are only read. */
+  onCollectionDocs?: (docs: string) => void
   onStepTagsEnabled: (enabled: boolean) => void
   onCollectionExcluded: (excluded: boolean) => void
   /** The feature flag values runs use now (SPEC.md §2.9); null when none are known. */
@@ -142,6 +144,10 @@ interface Props {
  * its results while the selected step's editor and response fill the rest.
  */
 export default function CollectionView(props: Props) {
+  const collectionDocs = (props.collection.docs ?? '').trim() !== ''
+  // Writing the collection's docs in place; another collection opens to read its own.
+  const [editingDocs, setEditingDocs] = useState(false)
+  useEffect(() => setEditingDocs(false), [props.relativePath])
   const { summary } = props
   // Wide enough for a name beside its status, time and verdict.
   const steps = usePaneWidth('pane.steps', 320, 180, 560)
@@ -387,6 +393,17 @@ export default function CollectionView(props: Props) {
             {!props.dataFile && props.onCreateData && (
               <CreateDataFile onCreate={props.onCreateData} />
             )}
+            {!collectionDocs && !editingDocs && props.onCollectionDocs && (
+              <Tooltip text="Describe this collection in markdown, shown above its steps">
+                <button
+                  type="button"
+                  className="data-badge create"
+                  onClick={() => setEditingDocs(true)}
+                >
+                  + Docs
+                </button>
+              </Tooltip>
+            )}
             <Tooltip
               text={`Collection settings: group runs, step tags, headers, request settings, variables and scripts${props.changes?.collection ? ' — changed since the last commit' : ''}`}
             >
@@ -549,7 +566,14 @@ export default function CollectionView(props: Props) {
         />
       )}
 
-      {props.collection.docs && <DocsPanel source={props.collection.docs} />}
+      {(collectionDocs || editingDocs) && (
+        <DocsPanel
+          source={props.collection.docs ?? ''}
+          {...(props.onCollectionDocs ? { onChange: props.onCollectionDocs } : {})}
+          editing={editingDocs}
+          onEditing={setEditingDocs}
+        />
+      )}
 
       {!anySteps ? (
         <div className="hint empty">

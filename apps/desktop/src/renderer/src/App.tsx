@@ -1355,6 +1355,7 @@ export default function App() {
               stepUseTests={request?.useTests ?? false}
               onStepUseTests={(useTests) => editor.patch({ useTests })}
               onCollectionTags={editor.setCollectionTags}
+              onCollectionDocs={editor.setCollectionDocs}
               onStepTagsEnabled={editor.setStepTagsEnabled}
               onCollectionExcluded={editor.setCollectionExcluded}
               flagValues={flagValues}
@@ -1394,7 +1395,6 @@ export default function App() {
                   bases={activeProject?.bases ?? NO_BASES}
                   onOpenBase={openLibraryFile}
                   onChange={editor.patch}
-                  docs={selectedDocStep?.docs}
                   previews={shownPreviews}
                   onCopyVariable={copyVariable}
                   onPickFile={pickUpload}

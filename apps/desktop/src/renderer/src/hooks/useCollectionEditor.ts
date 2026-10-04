@@ -803,6 +803,8 @@ export function useCollectionEditor({
     patch,
     rename,
     setCollectionTags: (tags: string[]) => setCollectionField('tags', tags),
+    setCollectionDocs: (docs: string) =>
+      setCollectionField('docs', docs.trim() === '' ? undefined : docs),
     setCollectionHeaders: (headers: Headers | undefined) =>
       setCollectionField('headers', headers ?? {}),
     setCollectionSettings: (settings: Settings) => setCollectionField('settings', settings),

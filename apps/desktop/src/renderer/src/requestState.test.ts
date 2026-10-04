@@ -143,3 +143,24 @@ describe('connections in the editor', () => {
     })
   })
 })
+
+describe('docs in the editor', () => {
+  it('reads a step’s docs, writes a change, and removes emptied ones', () => {
+    const original = StepSchema.parse({ name: 'get', GET: 'http://x', docs: 'Gets it.' })
+    const editing = fromStep(original)
+    expect(editing.docs).toBe('Gets it.')
+    expect(mergeIntoStep(original, { ...editing, docs: 'Gets it, **twice**.' }).docs).toBe(
+      'Gets it, **twice**.'
+    )
+    expect('docs' in mergeIntoStep(original, { ...editing, docs: '  ' })).toBe(false)
+  })
+
+  it('writes a use step’s and a reading step’s docs as edited', () => {
+    const use = StepSchema.parse({ use: 'login', docs: 'Logs in.' })
+    expect(mergeIntoStep(use, { ...fromStep(use), docs: 'Logs in first.' }).docs).toBe(
+      'Logs in first.'
+    )
+    const reading = StepSchema.parse({ connection: 'orders' })
+    expect(mergeIntoStep(reading, { ...fromStep(reading), docs: 'Waits.' }).docs).toBe('Waits.')
+  })
+})

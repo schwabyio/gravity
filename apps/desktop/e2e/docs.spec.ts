@@ -198,9 +198,64 @@ test('docs start collapsed', async () => {
   await expect(page.locator('.docs-toggle')).toHaveAttribute('aria-expanded', 'false')
 })
 
-test('a step with docs gets a Docs tab', async () => {
-  const requestPane = page.locator('.request-pane')
-  await requestPane.getByRole('button', { name: 'Docs' }).click()
-  await expect(requestPane.locator('.md strong')).toHaveText('bold')
-  await expect(requestPane.locator('.md .md-inline-code')).toHaveText('code')
+test('a step with docs gets a Docs tab beside its scripts, after Tests', async () => {
+  const scripts = page.locator('.scripts-pane')
+  await expect(scripts.locator('.tabs button:not(.pane-toggle)')).toHaveText([
+    /^Pre-request/,
+    /^Tests/,
+    /^Docs/
+  ])
+  // Not among what the request is made of.
+  await expect(page.locator('.request-pane .tabs button', { hasText: 'Docs' })).toHaveCount(0)
+  await scripts.getByRole('button', { name: /^Docs/ }).click()
+  await expect(scripts.locator('.md strong')).toHaveText('bold')
+  await expect(scripts.locator('.md .md-inline-code')).toHaveText('code')
+  // Marked as having some.
+  await expect(scripts.getByRole('button', { name: /^Docs/ }).locator('.dot')).toHaveCount(1)
+})
+
+test('a step without docs still has the tab, saying where they would go', async () => {
+  await openCollection('plain')
+  const scripts = page.locator('.scripts-pane')
+  const tab = scripts.getByRole('button', { name: /^Docs/ })
+  await expect(tab).toBeVisible()
+  await expect(tab.locator('.dot')).toHaveCount(0)
+  await tab.click()
+  await expect(scripts.locator('.docs-empty')).toContainText('This step has no docs')
+})
+
+const plainFile = () => fs.readFileSync(path.join(tmp, 'r', 'collections', 'plain.yml'), 'utf8')
+
+test('a step’s docs are written in the tab, previewed, and saved as its docs', async () => {
+  const scripts = page.locator('.scripts-pane')
+  await scripts.getByRole('button', { name: 'Edit the step’s docs' }).click()
+  const box = scripts.getByRole('textbox', { name: 'Step docs' })
+  await expect(box).toBeFocused()
+  await page.keyboard.type('Says **hi**.')
+  await expect
+    .poll(plainFile, { timeout: 5_000 })
+    .toContain('  - name: two\n    GET: "http://example.test/two"\n    docs: Says **hi**.\n')
+  await scripts.getByRole('button', { name: 'Done' }).click()
+  await expect(scripts.locator('.md strong')).toHaveText('hi')
+  await expect(scripts.getByRole('button', { name: /^Docs/ }).locator('.dot')).toHaveCount(1)
+})
+
+test('a collection without docs gets them from + Docs, written above its steps', async () => {
+  await page.getByRole('button', { name: '+ Docs' }).click()
+  const box = page.getByRole('textbox', { name: 'Collection docs' })
+  await expect(box).toBeFocused()
+  await page.keyboard.type('Plain **one**.\n\nA second paragraph.')
+  await expect
+    .poll(plainFile, { timeout: 5_000 })
+    .toContain('id: plain\ndocs: |-\n  Plain **one**.\n\n  A second paragraph.\nsteps:')
+  await page.getByRole('button', { name: 'Done' }).click()
+  await expect(page.locator('.docs-panel .md strong')).toHaveText('one')
+  await expect(page.getByRole('button', { name: '+ Docs' })).toHaveCount(0)
+
+  // Edited again from the pencil; emptied, they are gone from the file and + Docs is back.
+  await page.getByRole('button', { name: 'Edit the collection’s docs' }).click()
+  await box.fill('')
+  await expect.poll(plainFile, { timeout: 5_000 }).not.toContain('Plain **one**')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: '+ Docs' })).toBeVisible()
 })

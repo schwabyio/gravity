@@ -874,6 +874,7 @@ export interface ScriptSyntaxProblem {
 /** Collection-level fields the app edits; mirrors core's `COLLECTION_FIELDS`. */
 export type CollectionField =
   | 'id'
+  | 'docs'
   | 'tags'
   | 'stepTags'
   | 'exclude'

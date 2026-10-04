@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { LogEntry, RunError, RunResult } from '@schwabyio/gravity-core/model'
 import { checkLines } from '../checkLines.js'
 import type { PaneWidth } from '../hooks/usePaneWidth.js'
@@ -7,12 +7,19 @@ import type { EditorState } from '../requestState.js'
 import { preRequestChip, testsChip, type ScriptChip } from '../scriptChips.js'
 import type { Check } from '../testLinks.js'
 import CodeEditor from './CodeEditor.js'
+import DocsEditor from './DocsEditor.js'
+import Markdown from './Markdown.js'
+import PencilIcon from './PencilIcon.js'
 import InheritedScripts from './InheritedScripts.js'
 import Resizer from './Resizer.js'
 import TestResults from './TestResults.js'
 import Tooltip from './Tooltip.js'
 
-export type ScriptTab = 'pre-request' | 'tests'
+/** The step's two scripts, as they run. */
+export type ScriptKind = 'pre-request' | 'tests'
+
+/** The pane's tabs: the scripts, then the step's docs. */
+export type ScriptTab = ScriptKind | 'docs'
 
 interface Props {
   /** A use step has tests of its own, run after its set, and no pre-request script. */
@@ -24,7 +31,7 @@ interface Props {
 
   /** The layers around the step whose scripts run with its own, and a way to each. */
   layers: InheritedLayer[]
-  onOpenLayer: (kind: ScriptTab) => (layer: InheritedLayer) => void
+  onOpenLayer: (kind: ScriptKind) => (layer: InheritedLayer) => void
 
   result: RunResult | null
   checks: Check[]
@@ -44,7 +51,8 @@ interface Props {
 
 /**
  * The step's scripts, always beside the request and its response: Pre-request
- * and Tests, in the order they run, Tests open unless another is picked. A run
+ * and Tests, in the order they run, Tests open unless another is picked, then
+ * the step's docs. A run
  * puts its results under the Tests script, which stays where it was, so a
  * failed check and the code that made it are read together. Each tab says what its script holds, or how it
  * went: `3 checks`, `✓ 3`, `✕ 1 of 3`; and each line of the Tests script a
@@ -52,7 +60,11 @@ interface Props {
  */
 export default function ScriptsPane(props: Props) {
   const { request, result, checks, logs, scriptError } = props
-  const tab: ScriptTab = props.use ? 'tests' : props.tab
+  // A use step has no pre-request script.
+  const tab: ScriptTab = props.tab === 'pre-request' && props.use ? 'tests' : props.tab
+  const docs = request.docs.trim() ? request.docs : null
+  // The Docs tab writes them in place once asked to, until asked to show them again.
+  const [editingDocs, setEditingDocs] = useState(false)
   // Checks a layer around the step makes, so its own empty script is not "none".
   const inheritedTests = props.layers.some((layer) => layer.used && (layer.tests ?? '').trim())
   const ignored = result?.ignored ?? []
@@ -81,6 +93,10 @@ export default function ScriptsPane(props: Props) {
         <button className={tab === 'tests' ? 'active' : ''} onClick={() => props.onTab('tests')}>
           Tests <Chip chip={testsChip(request.tests, result, inheritedTests)} />
         </button>
+        {/* Always there, so where a step's docs go is never a mystery; a dot when it has some. */}
+        <button className={tab === 'docs' ? 'active' : ''} onClick={() => props.onTab('docs')}>
+          Docs {docs && <span className="count dot">•</span>}
+        </button>
         <Tooltip text="Hide the scripts to give the response more room">
           <button
             type="button"
@@ -93,7 +109,45 @@ export default function ScriptsPane(props: Props) {
         </Tooltip>
       </div>
 
-      {tab === 'tests' ? (
+      {tab === 'docs' ? (
+        <div className="scripts-body" key="docs">
+          <div className="tab-body docs-tab">
+            {editingDocs ? (
+              <>
+                <DocsEditor
+                  value={request.docs}
+                  onChange={(next) => props.onChange({ docs: next })}
+                  label="Step docs"
+                  placeholder="Describe this step in markdown: what it checks, and why."
+                  onDone={() => setEditingDocs(false)}
+                />
+                <button type="button" className="docs-done" onClick={() => setEditingDocs(false)}>
+                  Done
+                </button>
+              </>
+            ) : (
+              // As the collection's docs: a pencil to write them in place.
+              <div className="step-docs">
+                <Tooltip text="Edit the step’s docs">
+                  <button
+                    type="button"
+                    className="docs-edit"
+                    onClick={() => setEditingDocs(true)}
+                    aria-label="Edit the step’s docs"
+                  >
+                    <PencilIcon />
+                  </button>
+                </Tooltip>
+                {docs ? (
+                  <Markdown source={docs} />
+                ) : (
+                  <p className="hint docs-empty">This step has no docs yet.</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : tab === 'tests' ? (
         <div className="scripts-body">
           <div className="script-editor">
             {props.use ? (
