@@ -12,7 +12,7 @@ import {
 import { DEFAULT_WINDOW, sizeWindow } from './window'
 import { addProject } from './addProject'
 
-/** Both dividers: drag, clamp, keyboard, reset, and remembered between launches. */
+/** The dividers: drag, clamp, keyboard, reset, and remembered between launches. */
 
 const MAIN = path.resolve(process.cwd(), 'out/main/index.js')
 
@@ -26,6 +26,9 @@ const sidebar = () => page.locator('.sidebar')
 const stepsColumn = () => page.locator('.steps-column')
 const sidebarHandle = () => page.getByRole('separator', { name: 'Resize the collections pane' })
 const stepsHandle = () => page.getByRole('separator', { name: 'Resize the steps pane' })
+const requestPane = () => page.locator('.request-pane')
+const responsePane = () => page.locator('.panes > section.pane:not(.request-pane)')
+const requestHandle = () => page.getByRole('separator', { name: 'Resize the request pane' })
 
 const widthOf = async (locator: ReturnType<typeof sidebar>) => (await locator.boundingBox())!.width
 
@@ -130,11 +133,44 @@ test('reports its size to assistive technology', async () => {
   await expect(sidebarHandle()).toHaveAttribute('aria-orientation', 'vertical')
 })
 
-test('both widths survive a restart', async () => {
+test('the request pane drags wider, the response giving way, and resets to an even split', async () => {
+  const request = await widthOf(requestPane())
+  const response = await widthOf(responsePane())
+  expect(Math.abs(request - response)).toBeLessThan(3)
+
+  await drag(requestHandle(), 80)
+  expect(await widthOf(requestPane())).toBeCloseTo(request + 80, -1)
+  expect(await widthOf(responsePane())).toBeCloseTo(response - 80, -1)
+
+  // Neither crowds out the other.
+  await drag(requestHandle(), 3000)
+  expect(await widthOf(responsePane())).toBeCloseTo(240, -1)
+  await drag(requestHandle(), -3000)
+  expect(await widthOf(requestPane())).toBeCloseTo(240, -1)
+
+  await requestHandle().focus()
+  await page.keyboard.press('ArrowRight')
+  expect(await widthOf(requestPane())).toBeCloseTo(256, -1)
+
+  await requestHandle().dblclick()
+  expect(Math.abs((await widthOf(requestPane())) - (await widthOf(responsePane())))).toBeLessThan(3)
+
+  // A wider steps pane takes from both, in proportion.
+  await drag(requestHandle(), 60)
+  const share = (await widthOf(requestPane())) / (await widthOf(responsePane()))
+  await drag(stepsHandle(), 100)
+  expect((await widthOf(requestPane())) / (await widthOf(responsePane()))).toBeCloseTo(share, 1)
+  await stepsHandle().dblclick()
+  await requestHandle().dblclick()
+})
+
+test('every width survives a restart', async () => {
   await drag(sidebarHandle(), 60)
   await drag(stepsHandle(), 40)
+  await drag(requestHandle(), 50)
   const sidebarWidth = await widthOf(sidebar())
   const stepsWidth = await widthOf(stepsColumn())
+  const requestWidth = await widthOf(requestPane())
 
   await app.close()
   await launch()
@@ -143,4 +179,5 @@ test('both widths survive a restart', async () => {
 
   expect(await widthOf(sidebar())).toBeCloseTo(sidebarWidth, -1)
   expect(await widthOf(stepsColumn())).toBeCloseTo(stepsWidth, -1)
+  expect(await widthOf(requestPane())).toBeCloseTo(requestWidth, -1)
 })

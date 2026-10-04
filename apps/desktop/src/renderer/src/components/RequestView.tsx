@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EndpointView, LibraryFileView, RequestSetView } from '@shared/ipc.js'
 import {
   findEndpoint,
@@ -14,7 +14,8 @@ import {
   sentHeaders,
   type InheritedLayer
 } from '../inheritance.js'
-import { usePaneWidth } from '../hooks/usePaneWidth.js'
+import { usePaneShare, usePaneWidth } from '../hooks/usePaneWidth.js'
+import Resizer from './Resizer.js'
 import { useStoredFlag } from '../hooks/useStoredFlag.js'
 import { buildChecks, tabFor } from '../testLinks.js'
 import CodeEditor from './CodeEditor.js'
@@ -114,6 +115,13 @@ export default function RequestView(props: Props) {
   const [testResultsHidden, setTestResultsHidden] = useStoredFlag('pane.testResults.hidden')
   const testResultsPane = usePaneWidth('pane.testResults', 360, 240, 720)
 
+  // The request editor and the response split their room by a share the divider between
+  // them sets: measured, since the steps pane and the test results pane take theirs first.
+  const requestEl = useRef<HTMLElement>(null)
+  const responseEl = useRef<HTMLElement>(null)
+  const [room, setRoom] = useState(0)
+  const requestPane = usePaneShare('pane.request', 0.5, room, 240)
+
   const result = props.result
   // A step reading a connection sends nothing: it has no params, headers or body.
   const reads = props.request.reads !== null
@@ -157,10 +165,21 @@ export default function RequestView(props: Props) {
     setResponseTab('body')
   }
 
+  useEffect(() => {
+    const measure = () =>
+      setRoom((requestEl.current?.offsetWidth ?? 0) + (responseEl.current?.offsetWidth ?? 0))
+    const observer = new ResizeObserver(measure)
+    for (const element of [requestEl.current, responseEl.current]) {
+      if (element) observer.observe(element)
+    }
+    measure()
+    return () => observer.disconnect()
+  }, [requestOpen, props.request.use])
+
   const showTestResults = result?.response != null
   const columns = [
-    requestOpen ? 'minmax(0, 1fr)' : 'var(--strip)',
-    'minmax(0, 1fr)',
+    requestOpen ? `minmax(0, ${requestPane.share}fr)` : 'var(--strip)',
+    requestOpen ? `minmax(0, ${1 - requestPane.share}fr)` : 'minmax(0, 1fr)',
     ...(showTestResults
       ? [hasTests && !testResultsHidden ? `${testResultsPane.width}px` : 'var(--strip)']
       : [])
@@ -297,7 +316,8 @@ export default function RequestView(props: Props) {
             <span>Request ▸</span>
           </button>
         ) : request.use !== null ? (
-          <section className="pane request-pane">
+          <section className="pane request-pane" ref={requestEl}>
+            <Resizer pane={requestPane} label="Resize the request pane" />
             <UseStepEditor
               request={request}
               sets={props.sets}
@@ -316,7 +336,8 @@ export default function RequestView(props: Props) {
             />
           </section>
         ) : (
-          <section className="pane request-pane">
+          <section className="pane request-pane" ref={requestEl}>
+            <Resizer pane={requestPane} label="Resize the request pane" />
             <div className="tabs">
               {!reads && (
                 <>
@@ -516,7 +537,7 @@ export default function RequestView(props: Props) {
           </section>
         )}
 
-        <section className="pane">
+        <section className="pane" ref={responseEl}>
           {props.resultCaption && result && (
             <p className="result-iteration" aria-label="Result from">
               {props.resultCaption}

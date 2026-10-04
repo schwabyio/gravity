@@ -242,6 +242,11 @@ button:disabled {
   border-right: none;
 }
 
+/* Holds the divider on its right edge, between it and the response. */
+.request-pane {
+  position: relative;
+}
+
 .tabs {
   display: flex;
   gap: 2px;
