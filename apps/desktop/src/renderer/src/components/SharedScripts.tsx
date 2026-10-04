@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import type { IgnoredPath, RunResult } from '@schwabyio/gravity-core/model'
-import type { CheckFileView } from '@shared/ipc.js'
+import type { CheckFileView, EditorTarget } from '@shared/ipc.js'
 import { checkLines, madeIn, type ScriptOf } from '../checkLines.js'
 import { calledChecks, checkFileName } from '../checkSources.js'
 import type { InheritedLayer } from '../inheritance.js'
 import CodeEditor from './CodeEditor.js'
+import OpenInEditor from './OpenInEditor.js'
 
 type Kind = 'pre-request' | 'tests'
 
@@ -17,6 +18,30 @@ interface Props {
   own: string
   checkFiles: CheckFileView[]
   result: RunResult | null
+  /** The step's collection file: where the collection's own scripts are written. */
+  collectionPath: string | null
+}
+
+/** Where a layer's script is written, for the external editor: its file, and the step it is in. */
+export function layerScriptTarget(
+  layer: InheritedLayer,
+  script: Kind,
+  collectionPath: string | null
+): EditorTarget | null {
+  if (layer.kind === 'endpoint' && layer.endpoint) {
+    return {
+      path: layer.endpoint.filePath,
+      step: { list: 'steps', index: layer.endpoint.index },
+      script
+    }
+  }
+  const path =
+    layer.kind === 'endpoint-file'
+      ? layer.endpoint?.filePath
+      : layer.kind === 'base'
+        ? layer.path
+        : collectionPath
+  return path ? { path, script } : null
 }
 
 const NOTHING = (): void => {}
@@ -31,6 +56,10 @@ const NOTHING = (): void => {}
 export default function SharedScripts(props: Props) {
   const { kind, result } = props
   const [toggled, setToggled] = useState<Record<string, boolean>>({})
+  /** "Open in …" for a script written elsewhere: an icon, its name on hover. */
+  const external = (what: string, target: EditorTarget | null) => (
+    <OpenInEditor what={what} target={target} />
+  )
   const scriptOf = (layer: InheritedLayer) =>
     (kind === 'pre-request' ? layer.before?.script : layer.tests) ?? ''
   const running = props.layers.filter((layer) => scriptOf(layer).trim() !== '')
@@ -137,14 +166,20 @@ export default function SharedScripts(props: Props) {
                     {layer.shared && <span className="shared-tag">shared</span>}
                     {!layer.used && <span className="layer-off">not used by this step</span>}
                   </>,
-                  <button
-                    type="button"
-                    className="link"
-                    onClick={() => props.onOpen(layer)}
-                    aria-label={`Open the ${layer.title}’s ${what}`}
-                  >
-                    Open
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => props.onOpen(layer)}
+                      aria-label={`Open the ${layer.title}’s ${what}`}
+                    >
+                      Open
+                    </button>
+                    {external(
+                      `the ${layer.title}’s ${what}`,
+                      layerScriptTarget(layer, kind, props.collectionPath)
+                    )}
+                  </>
                 )}
               </li>
             ))}
@@ -172,7 +207,8 @@ export default function SharedScripts(props: Props) {
                   <>
                     <code className="layer-name">{checkFileName(file.filename)}</code>
                     {file.shared && <span className="shared-tag">shared</span>}
-                  </>
+                  </>,
+                  external(checkFileName(file.filename), { path: file.path })
                 )}
               </li>
             ))}

@@ -26,6 +26,7 @@ import type { IterationCounts } from '../dataGrid.js'
 import FlagConditionsEditor from './FlagConditionsEditor.js'
 import CollectionSettings, { type SettingsSection } from './CollectionSettings.js'
 import DocsPanel from './DocsPanel.js'
+import OpenInEditor from './OpenInEditor.js'
 import GearIcon from './GearIcon.js'
 import Resizer from './Resizer.js'
 import StepList, { type AddAction } from './StepList.js'
@@ -37,6 +38,8 @@ import type { CollectionChanges } from '../stepChanges.js'
 interface Props {
   name: string
   relativePath: string
+  /** The collection's file, for "Open in …". */
+  path: string
   /** What is wrong with the file: an id that is not its name, or one another file shares. */
   problems: LoadProblem[]
   /** Write the id the file must have. */
@@ -432,6 +435,17 @@ export default function CollectionView(props: Props) {
                 </button>
               </Tooltip>
             )}
+            <OpenInEditor
+              className="collection-open-button"
+              size={15}
+              what={`${props.relativePath.split('/').pop()}${selectedStep ? `, at ${stepLabel(selectedStep)}` : ''}`}
+              target={{
+                path: props.path,
+                ...(selectedStep
+                  ? { step: { list: props.selectedList, index: props.selectedIndex } }
+                  : {})
+              }}
+            />
             <Tooltip
               text={`Collection settings: group runs, step tags, headers, request settings, variables and scripts${props.changes?.collection ? ' — changed since the last commit' : ''}`}
             >

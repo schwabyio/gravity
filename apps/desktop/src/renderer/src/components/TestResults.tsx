@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { IgnoredPath, LogEntry, RunError, ScriptSource } from '@schwabyio/gravity-core/model'
+import type { EditorTarget } from '@shared/ipc.js'
+import { useExternalEditor } from '../externalEditor.js'
 import type { Check } from '../testLinks.js'
 
 interface Props {
@@ -19,6 +21,8 @@ interface Props {
   strict: boolean
   /** Where a check came from, said as tags: nothing for the step's own. */
   tagsOf: (source: ScriptSource | undefined) => string[]
+  /** Where a stopped script is written, to open at its line in the external editor. */
+  errorTarget?: EditorTarget | null
 }
 
 const GROUPS: Array<{ target: Check['assertion']['target'] | 'other'; label: string }> = [
@@ -38,6 +42,7 @@ const GROUPS: Array<{ target: Check['assertion']['target'] | 'other'; label: str
  * open sits directly beside the results for it.
  */
 export default function TestResults(props: Props) {
+  const editor = useExternalEditor()
   const { checks, selected } = props
   const [failuresOnly, setFailuresOnly] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
@@ -89,6 +94,11 @@ export default function TestResults(props: Props) {
             {(scriptError.script === 'step' || scriptError.script === 'use') &&
               scriptError.line !== undefined && <p>The line is marked in the script above.</p>}
             {checks.length > 0 && <p>Checks made before it are listed below.</p>}
+            {editor && props.errorTarget && (
+              <button type="button" onClick={() => editor.open(props.errorTarget!)}>
+                {editor.label} at line {scriptError.line}
+              </button>
+            )}
           </div>
         )}
         {GROUPS.map(({ target, label }) => {

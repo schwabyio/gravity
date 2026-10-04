@@ -96,6 +96,8 @@ export const IpcChannel = {
 
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
+  editorOpen: 'editor:open',
+  editorTest: 'editor:test',
 
   /** main -> renderer: may the window close? The renderer answers on appCloseReply. */
   appBeforeClose: 'app:beforeClose',
@@ -307,11 +309,26 @@ export interface CaFileView {
   problem: string | null
 }
 
+/**
+ * A place in a project's file to open in the external editor: a line, or a
+ * step of a collection-shaped file — collection, request set, endpoints file,
+ * base — or its script, or the file's own script, and a line of that script.
+ */
+export interface EditorTarget {
+  path: string
+  line?: number
+  step?: { list: StepList; index: number }
+  script?: 'tests' | 'pre-request'
+  scriptLine?: number
+}
+
 /** A check file, as a step's scripts reach it: `checks.<name>`. */
 export interface CheckFileView {
   name: string
   /** As a run names it in a stack, relative to the project: `checks/common.js`. */
   filename: string
+  /** Where it is on disk, for "Open in …". */
+  path: string
   code: string
   /** From the global project. */
   shared: boolean
@@ -407,6 +424,8 @@ export interface EndpointView {
   /** The endpoints file it is in, and that file's name in `endpoints/`. */
   filePath: string
   fileName: string
+  /** Which step of that file it is. */
+  index: number
   source: 'project' | 'global'
   /** What it brings: for the note under a step that uses it. */
   headers: string[]
@@ -841,6 +860,13 @@ export interface DesktopApi {
     get(): Promise<Settings>
     set(patch: SettingsPatch): Promise<Result<{ settings: Settings }>>
     onChanged(callback: (settings: Settings) => void): Unsubscribe
+  }
+
+  /** The external editor App settings name: a file of a project opened in it. */
+  editor: {
+    open(target: EditorTarget): Promise<Result<object>>
+    /** Open the app's own settings file in it, to see that it works. */
+    test(): Promise<Result<object>>
   }
 
   app: {

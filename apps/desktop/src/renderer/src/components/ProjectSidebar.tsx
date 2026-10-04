@@ -1,16 +1,23 @@
 import { useState } from 'react'
 import type { CollectionSummary } from '@schwabyio/gravity-core/model'
-import type { GitProgress, LibraryKind, ProjectView, WorkspaceSummary } from '@shared/ipc.js'
+import type {
+  GitProgress,
+  LibraryFileView,
+  LibraryKind,
+  ProjectView,
+  WorkspaceSummary
+} from '@shared/ipc.js'
 import { summaryOfFile } from '../reuse.js'
 import { filterCollections, filtering, keepsFile } from '../sidebarFilter.js'
 import CollapseIcon from './CollapseIcon.js'
 import GitBadge from './GitBadge.js'
-import { gitMarks, MARK_WORDS } from '../gitMarks.js'
+import { gitMarks, MARK_WORDS, type GitMark } from '../gitMarks.js'
+import { useExternalEditor } from '../externalEditor.js'
 import CollectionList, { type CollectionActions, type FolderDrag } from './CollectionList.js'
 import NameForm from './NameForm.js'
 import ProjectHeading from './ProjectHeading.js'
 import Tooltip from './Tooltip.js'
-import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
+import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
 interface Props {
   /** The divider between this pane and the main one. */
@@ -553,33 +560,19 @@ export default function ProjectSidebar(props: Props) {
                         aria-label={`${title} of ${project.name}`}
                       >
                         <div className="request-sets-head">{title}</div>
-                        {files.map((file) => {
-                          // A shared one's changes are its global project's, marked there.
-                          const mark = file.source === 'project' ? marks.file(file.path) : null
-                          return (
-                            <button
-                              key={file.path}
-                              type="button"
-                              className={`row set-row${file.path === props.selectedRoot ? ' selected' : ''}`}
-                              title={[
-                                file.problem ?? `${home}/${file.name}.yml`,
-                                mark ? MARK_WORDS[mark].toLowerCase() : null
-                              ]
-                                .filter(Boolean)
-                                .join(' — ')}
-                              onClick={() =>
-                                props.onSelectCollection(project, summaryOfFile(file, home))
-                              }
-                            >
-                              <span className="label">{file.title}</span>
-                              {file.source === 'global' && (
-                                <span className="shared-tag">shared</span>
-                              )}
-                              {file.problem && <span className="problem">!</span>}
-                              <GitBadge mark={mark} />
-                            </button>
-                          )
-                        })}
+                        {files.map((file) => (
+                          <LibraryRow
+                            key={file.path}
+                            file={file}
+                            home={home}
+                            // A shared one's changes are its global project's, marked there.
+                            mark={file.source === 'project' ? marks.file(file.path) : null}
+                            selected={file.path === props.selectedRoot}
+                            onSelect={() =>
+                              props.onSelectCollection(project, summaryOfFile(file, home))
+                            }
+                          />
+                        ))}
                       </div>
                     )
                 )}
@@ -588,6 +581,84 @@ export default function ProjectSidebar(props: Props) {
         })}
       </div>
     </aside>
+  )
+}
+
+/**
+ * A request set, endpoints file or base collection in the sidebar: opens in
+ * the app on a click, and from its ⋯ menu — or a right-click — in the
+ * external editor.
+ */
+function LibraryRow(props: {
+  file: LibraryFileView
+  home: string
+  mark: GitMark | null
+  selected: boolean
+  onSelect: () => void
+}) {
+  const { file, mark } = props
+  const editor = useExternalEditor()
+  const [menu, setMenu] = useState(false)
+  const menus = useMenuDismiss(menu, () => setMenu(false))
+  const openMenu = () => {
+    if (!menu) menus.opened()
+    setMenu(true)
+  }
+  return (
+    <div
+      className={`collection-item${props.selected ? ' selected' : ''}${menu ? ' menu-open' : ''}`}
+      onContextMenu={editor ? onRightClick(openMenu) : undefined}
+    >
+      <button
+        type="button"
+        className={`row set-row${props.selected ? ' selected' : ''}`}
+        title={[
+          file.problem ?? `${props.home}/${file.name}.yml`,
+          mark ? MARK_WORDS[mark].toLowerCase() : null
+        ]
+          .filter(Boolean)
+          .join(' — ')}
+        onClick={props.onSelect}
+      >
+        <span className="label">{file.title}</span>
+        {file.source === 'global' && <span className="shared-tag">shared</span>}
+        {file.problem && <span className="problem">!</span>}
+        <GitBadge mark={mark} />
+      </button>
+      {editor && (
+        <span className="project-menu-wrap">
+          <button
+            type="button"
+            className="collection-menu-button"
+            aria-label={`Actions for ${file.title}`}
+            aria-haspopup="menu"
+            aria-expanded={menu}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (menu) setMenu(false)
+              else openMenu()
+            }}
+          >
+            ⋯
+          </button>
+          {menu && (
+            <div className="project-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setMenu(false)
+                  editor.open({ path: file.path })
+                }}
+              >
+                {editor.label}
+              </button>
+            </div>
+          )}
+        </span>
+      )}
+    </div>
   )
 }
 

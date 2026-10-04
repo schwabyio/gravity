@@ -3214,6 +3214,10 @@ button.status-pill.focused {
   max-width: 720px;
 }
 
+.settings-sections section + section {
+  margin-top: 28px;
+}
+
 .settings-sections h2 {
   margin: 0 0 8px;
   font-size: 14px;
@@ -3232,8 +3236,24 @@ button.status-pill.focused {
   opacity: 0.55;
 }
 
-.setting-text label {
+.setting-text label,
+.setting-label {
   font-weight: 600;
+}
+
+.setting-text code {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.setting-ok {
+  color: var(--ok) !important;
+}
+
+.setting-command {
+  width: 260px;
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 .setting-text p {
@@ -3601,7 +3621,8 @@ button.tag.filter.on {
 
 /* ---------- collection settings drawer ---------- */
 
-.collection-settings-button {
+.collection-settings-button,
+.collection-open-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3614,7 +3635,8 @@ button.tag.filter.on {
   color: var(--text-dim);
 }
 
-.collection-settings-button:hover {
+.collection-settings-button:hover,
+.collection-open-button:hover {
   background: var(--surface-alt);
   color: var(--accent);
 }
@@ -3955,6 +3977,32 @@ button.tag.filter.on {
 .drawer-close:hover {
   background: var(--surface-alt);
   color: var(--text);
+}
+
+/* "Open in …" as an icon, beside the name of what it opens. */
+.open-external {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  vertical-align: middle;
+}
+
+.open-external:hover {
+  background: var(--surface-alt);
+  color: var(--accent);
+}
+
+.drawer-head h2 .tooltip-trigger,
+.env-detail > .hint .tooltip-trigger {
+  margin-left: 4px;
+  vertical-align: middle;
 }
 
 .drawer-body {
@@ -5849,4 +5897,21 @@ button.console-line:hover {
   font-family: system-ui, sans-serif;
   font-size: 10.5px;
   line-height: 16px;
+}
+
+/* Something asked for went wrong — "Open in …", say — in the status bar until dismissed. */
+.status-message {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  color: var(--client);
+  font-size: 12px;
+}
+
+.status-message button {
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
 }

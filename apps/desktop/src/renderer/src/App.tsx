@@ -52,6 +52,8 @@ import { idsOf, stepsOf, useCollectionEditor } from './hooks/useCollectionEditor
 import { useEnvironmentEditor } from './hooks/useEnvironmentEditor.js'
 import { usePaneWidth } from './hooks/usePaneWidth.js'
 import { useSettings } from './hooks/useSettings.js'
+import { ExternalEditorContext, type ExternalEditor } from './externalEditor.js'
+import { openInLabel } from '@shared/settings.js'
 import { useProjects } from './hooks/useProjects.js'
 import {
   childKey,
@@ -103,6 +105,22 @@ export default function App() {
   const ws = useProjects()
   const sidebar = usePaneWidth('pane.sidebar', 300, 200, 560)
   const { settings, loaded: settingsLoaded, change: changeSettings } = useSettings()
+
+  // "Open in …" everywhere: the editor App settings name, and what went wrong opening a file.
+  const [editorProblem, setEditorProblem] = useState<string | null>(null)
+  const externalEditor = useMemo<ExternalEditor>(
+    () => ({
+      label: openInLabel(settings.editor.kind),
+      open: (target) => {
+        void window.desktop.editor.open(target).then((result) => {
+          setEditorProblem(
+            result.ok ? null : `${openInLabel(settings.editor.kind)} failed: ${result.message}`
+          )
+        })
+      }
+    }),
+    [settings.editor.kind]
+  )
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   // Until the real settings arrive, do not auto save on a default the person
@@ -1080,382 +1098,390 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <header className="app-bar">
-        <span className="app-title">Gravity</span>
-        <span className="app-subtitle" title={open?.summary.path ?? ''}>
-          {open?.summary.name ?? ''}
-        </span>
-        {editor.status && (
-          <SaveStatus
-            status={editor.status}
-            autoSave={autoSave.enabled}
-            onSave={() => void save()}
-            onReload={editor.reloadFromDisk}
-            onKeepMine={editor.keepMine}
-          />
-        )}
-        <span className="spacer" />
-        {open && (
-          <EnvironmentPicker
-            environments={environments}
-            selected={selectedEnvironment}
-            onChange={chooseEnvironment}
-          />
-        )}
-        {open && (
-          <Tooltip text="Edit environments: their names and variables">
-            <button
-              type="button"
-              className="env-edit"
-              onClick={() => setEnvironmentsOpen(true)}
-              aria-label="Edit environments"
-            >
-              {environments.length === 0 ? '+ Environment' : 'Edit'}
-              {environmentEditor.anyPending && (
-                <span className="step-dirty" title="Unsaved changes">
-                  •
-                </span>
-              )}
-            </button>
-          </Tooltip>
-        )}
-        {open && (
-          <Tooltip
-            text={
-              flags.view?.error
-                ? 'Feature flags: the command failed, so runs use fixed values and overrides only'
-                : 'Feature flags: their values in this environment, and overrides'
-            }
-          >
-            <button
-              type="button"
-              className={`flags-button${flags.view?.error || flags.failure ? ' warn' : ''}`}
-              onClick={() => setFlagsOpen(true)}
-              aria-label="Feature flags"
-            >
-              Flags
-              <span className="count">{Object.keys(flagValues ?? {}).length}</span>
-              {(flags.view?.error || flags.failure) && <span className="flags-warn">!</span>}
-            </button>
-          </Tooltip>
-        )}
-        <Tooltip text="App settings (⌘,)">
-          <button
-            type="button"
-            className="settings-button"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="App settings"
-          >
-            <GearIcon />
-          </button>
-        </Tooltip>
-      </header>
-
-      {projectSettingsOpen && ws.project(projectSettingsOpen) && (
-        <ProjectSettingsDrawer
-          project={ws.project(projectSettingsOpen)!}
-          autoSave={autoSave}
-          previews={shownPreviews}
-          onCopyVariable={copyVariable}
-          onOpenChanges={() => {
-            setChangesFor({ projectId: projectSettingsOpen, tab: 'changes' })
-            setProjectSettingsOpen(null)
-          }}
-          onClose={() => setProjectSettingsOpen(null)}
-        />
-      )}
-
-      {changesFor && ws.project(changesFor.projectId)?.isRepo && (
-        <ChangesDrawer
-          key={changesFor.projectId}
-          project={ws.project(changesFor.projectId)!}
-          initialTab={changesFor.tab}
-          onClose={() => setChangesFor(null)}
-        />
-      )}
-
-      {dataOpen && open && data.path && (
-        <DataDrawer data={data} autoSave={autoSave.enabled} onClose={() => setDataOpen(false)} />
-      )}
-
-      {flagsOpen && open && (
-        <FlagsDrawer
-          view={flags.view}
-          busy={flags.busy}
-          failure={flags.failure}
-          onRefresh={() => void flags.refresh()}
-          onOverride={(name, value) => void flags.setOverride(name, value)}
-          onEditEnvironment={() => {
-            setFlagsOpen(false)
-            setEnvironmentsOpen(true)
-          }}
-          onClose={() => setFlagsOpen(false)}
-        />
-      )}
-
-      {environmentsOpen && open && (
-        <EnvironmentsDrawer
-          environments={environments}
-          collectionPath={open.summary.path}
-          selected={selectedEnvironment}
-          editor={environmentEditor}
-          autoSave={autoSave.enabled}
-          onCreated={(name) => {
-            if (!selectedEnvironment) chooseEnvironment(name)
-          }}
-          onDeleted={(name) => {
-            if (selectedEnvironment === name) chooseEnvironment(null)
-          }}
-          previews={shownPreviews}
-          onCopyVariable={copyVariable}
-          onClose={closeEnvironments}
-        />
-      )}
-
-      <div className="layout" style={{ gridTemplateColumns: `${sidebar.width}px 1fr` }}>
-        <ProjectSidebar
-          resizer={<Resizer pane={sidebar} label="Resize the collections pane" />}
-          workspaces={ws.state.workspaces}
-          active={ws.active}
-          projects={ws.projects}
-          selectedRoot={collectionPath}
-          error={ws.error}
-          onClearError={ws.clearError}
-          notice={ws.notice}
-          cloning={ws.cloning}
-          onSelectCollection={(project, collectionSummary) =>
-            void openCollection(project, collectionSummary)
-          }
-          onSetActive={(id) => void ws.setActive(id)}
-          onCreateWorkspace={async (name) => messageOf(await ws.createWorkspace(name))}
-          onRenameWorkspace={async (id, name) => messageOf(await ws.renameWorkspace(id, name))}
-          onRemoveWorkspace={async (id) => {
-            const scratch = ws.projects.filter((project) => project.scratch)
-            await ws.removeWorkspace(id)
-            for (const project of scratch) editor.forgetProject(project.id)
-          }}
-          onAddProject={() => void ws.addProject()}
-          onCreateScratchPad={ws.createScratchPad}
-          scratchPadName={scratchPadName}
-          collectionActions={collectionActions}
-          onRenameFolder={renameFolder}
-          onDropRefused={ws.showError}
-          onRenameScratchPad={renameScratchPad}
-          onDeleteFolder={(projectId, folder) => void deleteFolder(projectId, folder)}
-          onClone={(url) => void ws.cloneUrl(url)}
-          onRemoveProject={async (id) => {
-            const scratch = ws.project(id)?.scratch ?? false
-            const result = await ws.removeProject(id)
-            // A scratch pad's files went with it: nothing of it stays open.
-            if (result.ok && scratch) editor.forgetProject(id)
-          }}
-          onFetch={ws.fetch}
-          onPull={ws.pull}
-          onPush={ws.push}
-          onChanges={(projectId, tab) => setChangesFor({ projectId, tab })}
-          onCreateDirectory={async (id, name) => messageOf(await ws.createDirectory(id, name))}
-          onCreateCollection={async (id, directory, name, kind) => {
-            const result = await ws.createCollection(id, directory, name, kind)
-            if (result.ok) setOpenWhenListed(result.path)
-            return messageOf(result)
-          }}
-          onProjectSettings={setProjectSettingsOpen}
-          onReveal={(path) => void window.desktop.projects.reveal(path)}
-        />
-
-        <main className="workbench">
-          {open && doc ? (
-            <CollectionView
-              name={open.summary.name}
-              relativePath={open.summary.relativePath}
-              problems={openProblems}
-              dataFile={openDataFile}
-              dataRows={rowNames}
-              dataRow={dataRow}
-              onDataRow={chooseRow}
-              onOpenData={() => setDataOpen(true)}
-              onCreateData={
-                isLibraryOf('bases') || isLibraryOf('endpoints') || !doc
-                  ? null
-                  : async (column) => {
-                      await data.create(column)
-                      setDataOpen(true)
-                    }
-              }
-              iterations={iterations}
-              onFixId={editor.setCollectionId}
-              collection={doc}
-              selectedList={stepList}
-              selectedIndex={stepIndex}
-              results={resultsByIndex}
-              runningAt={runningAt}
-              busy={runningId !== null}
-              runningAll={runningAll}
-              summary={summary}
-              draftIndexes={editor.dirtyIndexes}
-              changes={sinceCommit}
-              onSelect={selectStep}
-              onRunAll={() => void runAll()}
-              onClose={closeCollection}
-              onCancel={cancel}
-              onAddStep={(list) =>
-                editor.addStep(
-                  editor.selectedId,
-                  isLibraryOf('endpoints') ? { GET: '/path/{id}' } : undefined,
-                  list
-                )
-              }
-              library={
-                isLibraryOf('endpoints') ? 'endpoints' : isLibraryOf('bases') ? 'bases' : null
-              }
-              sets={sets}
-              onAddUse={(list) => {
-                const first = sets.find((set) => !set.problem) ?? sets[0]
-                if (first) {
-                  editor.addStep(editor.selectedId, { use: referenceFor(sets, first) }, list)
-                }
-              }}
-              onAddRead={(list) => {
-                const [first] = connectionNames(doc)
-                if (first) editor.addStep(editor.selectedId, { connection: first }, list)
-              }}
-              connections={(collectionPath && held[collectionPath]) || NO_CONNECTIONS}
-              onCloseConnection={(name) => {
-                if (collectionPath) window.desktop.closeConnection(collectionPath, name)
-              }}
-              childResults={childResults}
-              itemResults={itemResults}
-              selectedChild={shownChild}
-              onSelectChild={(list, index, child) => {
-                if (idsOf(open, list)[index] === editor.selectedId) setShownChild(child)
-                else {
-                  askedChild.current = child
-                  selectStep(list, index)
-                }
-              }}
-              onRenameStep={(list, index, name) => {
-                const id = idsOf(open, list)[index]
-                if (id) editor.rename(id, name)
-              }}
-              onDuplicateStep={(list, index) => {
-                const id = idsOf(open, list)[index]
-                if (id) editor.duplicateStep(id)
-              }}
-              onDeleteStep={(list, index) => {
-                const id = idsOf(open, list)[index]
-                if (id) editor.removeStep(id)
-              }}
-              onDeleteSteps={(list, indexes) => {
-                const ids = idsOf(open, list)
-                editor.removeSteps(
-                  indexes.map((index) => ids[index]).filter((id): id is string => !!id)
-                )
-              }}
-              onMoveStep={(list, index, to) => {
-                const id = idsOf(open, list)[index]
-                if (id) editor.moveStep(id, to)
-              }}
-              stepTags={request?.tags ?? NO_TAGS}
-              onStepTags={(tags) => editor.patch({ tags })}
-              stepForEach={request?.forEach ?? ''}
-              onStepForEach={(forEach) => editor.patch({ forEach })}
-              stepUseTests={request?.useTests ?? false}
-              onStepUseTests={(useTests) => editor.patch({ useTests })}
-              onCollectionTags={editor.setCollectionTags}
-              onCollectionDocs={editor.setCollectionDocs}
-              onStepTagsEnabled={editor.setStepTagsEnabled}
-              onCollectionExcluded={editor.setCollectionExcluded}
-              flagValues={flagValues}
-              onCollectionFlags={editor.setCollectionFlags}
-              stepFlags={request?.flags ?? NO_FLAGS}
-              onStepFlags={(flags) => editor.patch({ flags: flags ?? {} })}
-              onCollectionSettings={editor.setCollectionSettings}
-              onCollectionHeaders={editor.setCollectionHeaders}
-              onCollectionVars={editor.setCollectionVars}
-              onCollectionParams={editor.setCollectionParams}
-              bases={
-                isLibraryOf('bases') || isLibraryOf('endpoints')
-                  ? null
-                  : (activeProject?.bases ?? [])
-              }
-              onExtends={editor.setCollectionExtends}
-              onOpenBase={openLibraryFile}
-              onCollectionPreRequest={editor.setCollectionPreRequest}
-              onCollectionTests={editor.setCollectionTests}
-              collectionErrorLines={collectionErrorLines}
-              settingsOpen={collectionSettingsOpen}
-              onSettingsOpen={setCollectionSettingsOpen}
-              previews={shownPreviews}
-              onCopyVariable={copyVariable}
-              tagSuggestions={tagSuggestions}
-              tagFilter={tagFilter}
-              onTagFilter={(tags) =>
-                setTagFilters((current) => ({ ...current, [open.summary.path]: tags }))
-              }
-            >
-              {stepIndex >= 0 && request && (
-                <RequestView
-                  request={request}
-                  collection={doc}
-                  onEditCollectionHeaders={() => setCollectionSettingsOpen('headers')}
-                  onEditCollectionScript={setCollectionSettingsOpen}
-                  bases={activeProject?.bases ?? NO_BASES}
-                  checkFiles={activeProject?.checkFiles ?? NO_CHECK_FILES}
-                  onOpenBase={openLibraryFile}
-                  onChange={editor.patch}
-                  previews={shownPreviews}
-                  onCopyVariable={copyVariable}
-                  onPickFile={pickUpload}
-                  result={selectedResult}
-                  resultCaption={
-                    // Setup and teardown run once, not with a row.
-                    rowNames && selectedDocStep && stepList === 'steps'
-                      ? iterationName(
-                          stepLabel(selectedDocStep),
-                          dataRow,
-                          data.table ? rowLabel(data.table.rows[dataRow] ?? {}) : null
-                        )
-                      : null
-                  }
-                  error={error}
-                  running={runningId !== null && runningId === editor.selectedId}
-                  onSend={() => void send()}
-                  onCancel={cancel}
-                  live={live}
-                  onStop={stopStream}
-                  connectionNames={connectionNames(doc)}
-                  conflict={open.conflict !== null}
-                  onReloadFromDisk={editor.reloadFromDisk}
-                  onKeepMine={editor.keepMine}
-                  sets={sets}
-                  shownChild={shownChild}
-                  onOpenSet={openSet}
-                  endpoints={
-                    // An endpoints file's own steps are the endpoints, under no base.
-                    isLibraryOf('endpoints')
-                      ? NO_ENDPOINTS
-                      : (activeProject?.endpoints ?? NO_ENDPOINTS)
-                  }
-                  onOpenEndpoints={(endpoint) => openLibraryFile(endpoint.filePath)}
-                />
-              )}
-            </CollectionView>
-          ) : (
-            <div className="placeholder">Choose a collection to see its steps.</div>
+    <ExternalEditorContext.Provider value={externalEditor}>
+      <div className="app">
+        <header className="app-bar">
+          <span className="app-title">Gravity</span>
+          <span className="app-subtitle" title={open?.summary.path ?? ''}>
+            {open?.summary.name ?? ''}
+          </span>
+          {editor.status && (
+            <SaveStatus
+              status={editor.status}
+              autoSave={autoSave.enabled}
+              onSave={() => void save()}
+              onReload={editor.reloadFromDisk}
+              onKeepMine={editor.keepMine}
+            />
           )}
-        </main>
+          <span className="spacer" />
+          {open && (
+            <EnvironmentPicker
+              environments={environments}
+              selected={selectedEnvironment}
+              onChange={chooseEnvironment}
+            />
+          )}
+          {open && (
+            <Tooltip text="Edit environments: their names and variables">
+              <button
+                type="button"
+                className="env-edit"
+                onClick={() => setEnvironmentsOpen(true)}
+                aria-label="Edit environments"
+              >
+                {environments.length === 0 ? '+ Environment' : 'Edit'}
+                {environmentEditor.anyPending && (
+                  <span className="step-dirty" title="Unsaved changes">
+                    •
+                  </span>
+                )}
+              </button>
+            </Tooltip>
+          )}
+          {open && (
+            <Tooltip
+              text={
+                flags.view?.error
+                  ? 'Feature flags: the command failed, so runs use fixed values and overrides only'
+                  : 'Feature flags: their values in this environment, and overrides'
+              }
+            >
+              <button
+                type="button"
+                className={`flags-button${flags.view?.error || flags.failure ? ' warn' : ''}`}
+                onClick={() => setFlagsOpen(true)}
+                aria-label="Feature flags"
+              >
+                Flags
+                <span className="count">{Object.keys(flagValues ?? {}).length}</span>
+                {(flags.view?.error || flags.failure) && <span className="flags-warn">!</span>}
+              </button>
+            </Tooltip>
+          )}
+          <Tooltip text="App settings (⌘,)">
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="App settings"
+            >
+              <GearIcon />
+            </button>
+          </Tooltip>
+        </header>
+
+        {projectSettingsOpen && ws.project(projectSettingsOpen) && (
+          <ProjectSettingsDrawer
+            project={ws.project(projectSettingsOpen)!}
+            autoSave={autoSave}
+            previews={shownPreviews}
+            onCopyVariable={copyVariable}
+            onOpenChanges={() => {
+              setChangesFor({ projectId: projectSettingsOpen, tab: 'changes' })
+              setProjectSettingsOpen(null)
+            }}
+            onClose={() => setProjectSettingsOpen(null)}
+          />
+        )}
+
+        {changesFor && ws.project(changesFor.projectId)?.isRepo && (
+          <ChangesDrawer
+            key={changesFor.projectId}
+            project={ws.project(changesFor.projectId)!}
+            initialTab={changesFor.tab}
+            onClose={() => setChangesFor(null)}
+          />
+        )}
+
+        {dataOpen && open && data.path && (
+          <DataDrawer data={data} autoSave={autoSave.enabled} onClose={() => setDataOpen(false)} />
+        )}
+
+        {flagsOpen && open && (
+          <FlagsDrawer
+            view={flags.view}
+            busy={flags.busy}
+            failure={flags.failure}
+            onRefresh={() => void flags.refresh()}
+            onOverride={(name, value) => void flags.setOverride(name, value)}
+            onEditEnvironment={() => {
+              setFlagsOpen(false)
+              setEnvironmentsOpen(true)
+            }}
+            onClose={() => setFlagsOpen(false)}
+          />
+        )}
+
+        {environmentsOpen && open && (
+          <EnvironmentsDrawer
+            environments={environments}
+            collectionPath={open.summary.path}
+            selected={selectedEnvironment}
+            editor={environmentEditor}
+            autoSave={autoSave.enabled}
+            onCreated={(name) => {
+              if (!selectedEnvironment) chooseEnvironment(name)
+            }}
+            onDeleted={(name) => {
+              if (selectedEnvironment === name) chooseEnvironment(null)
+            }}
+            previews={shownPreviews}
+            onCopyVariable={copyVariable}
+            onClose={closeEnvironments}
+          />
+        )}
+
+        <div className="layout" style={{ gridTemplateColumns: `${sidebar.width}px 1fr` }}>
+          <ProjectSidebar
+            resizer={<Resizer pane={sidebar} label="Resize the collections pane" />}
+            workspaces={ws.state.workspaces}
+            active={ws.active}
+            projects={ws.projects}
+            selectedRoot={collectionPath}
+            error={ws.error}
+            onClearError={ws.clearError}
+            notice={ws.notice}
+            cloning={ws.cloning}
+            onSelectCollection={(project, collectionSummary) =>
+              void openCollection(project, collectionSummary)
+            }
+            onSetActive={(id) => void ws.setActive(id)}
+            onCreateWorkspace={async (name) => messageOf(await ws.createWorkspace(name))}
+            onRenameWorkspace={async (id, name) => messageOf(await ws.renameWorkspace(id, name))}
+            onRemoveWorkspace={async (id) => {
+              const scratch = ws.projects.filter((project) => project.scratch)
+              await ws.removeWorkspace(id)
+              for (const project of scratch) editor.forgetProject(project.id)
+            }}
+            onAddProject={() => void ws.addProject()}
+            onCreateScratchPad={ws.createScratchPad}
+            scratchPadName={scratchPadName}
+            collectionActions={collectionActions}
+            onRenameFolder={renameFolder}
+            onDropRefused={ws.showError}
+            onRenameScratchPad={renameScratchPad}
+            onDeleteFolder={(projectId, folder) => void deleteFolder(projectId, folder)}
+            onClone={(url) => void ws.cloneUrl(url)}
+            onRemoveProject={async (id) => {
+              const scratch = ws.project(id)?.scratch ?? false
+              const result = await ws.removeProject(id)
+              // A scratch pad's files went with it: nothing of it stays open.
+              if (result.ok && scratch) editor.forgetProject(id)
+            }}
+            onFetch={ws.fetch}
+            onPull={ws.pull}
+            onPush={ws.push}
+            onChanges={(projectId, tab) => setChangesFor({ projectId, tab })}
+            onCreateDirectory={async (id, name) => messageOf(await ws.createDirectory(id, name))}
+            onCreateCollection={async (id, directory, name, kind) => {
+              const result = await ws.createCollection(id, directory, name, kind)
+              if (result.ok) setOpenWhenListed(result.path)
+              return messageOf(result)
+            }}
+            onProjectSettings={setProjectSettingsOpen}
+            onReveal={(path) => void window.desktop.projects.reveal(path)}
+          />
+
+          <main className="workbench">
+            {open && doc ? (
+              <CollectionView
+                name={open.summary.name}
+                relativePath={open.summary.relativePath}
+                path={open.summary.path}
+                problems={openProblems}
+                dataFile={openDataFile}
+                dataRows={rowNames}
+                dataRow={dataRow}
+                onDataRow={chooseRow}
+                onOpenData={() => setDataOpen(true)}
+                onCreateData={
+                  isLibraryOf('bases') || isLibraryOf('endpoints') || !doc
+                    ? null
+                    : async (column) => {
+                        await data.create(column)
+                        setDataOpen(true)
+                      }
+                }
+                iterations={iterations}
+                onFixId={editor.setCollectionId}
+                collection={doc}
+                selectedList={stepList}
+                selectedIndex={stepIndex}
+                results={resultsByIndex}
+                runningAt={runningAt}
+                busy={runningId !== null}
+                runningAll={runningAll}
+                summary={summary}
+                draftIndexes={editor.dirtyIndexes}
+                changes={sinceCommit}
+                onSelect={selectStep}
+                onRunAll={() => void runAll()}
+                onClose={closeCollection}
+                onCancel={cancel}
+                onAddStep={(list) =>
+                  editor.addStep(
+                    editor.selectedId,
+                    isLibraryOf('endpoints') ? { GET: '/path/{id}' } : undefined,
+                    list
+                  )
+                }
+                library={
+                  isLibraryOf('endpoints') ? 'endpoints' : isLibraryOf('bases') ? 'bases' : null
+                }
+                sets={sets}
+                onAddUse={(list) => {
+                  const first = sets.find((set) => !set.problem) ?? sets[0]
+                  if (first) {
+                    editor.addStep(editor.selectedId, { use: referenceFor(sets, first) }, list)
+                  }
+                }}
+                onAddRead={(list) => {
+                  const [first] = connectionNames(doc)
+                  if (first) editor.addStep(editor.selectedId, { connection: first }, list)
+                }}
+                connections={(collectionPath && held[collectionPath]) || NO_CONNECTIONS}
+                onCloseConnection={(name) => {
+                  if (collectionPath) window.desktop.closeConnection(collectionPath, name)
+                }}
+                childResults={childResults}
+                itemResults={itemResults}
+                selectedChild={shownChild}
+                onSelectChild={(list, index, child) => {
+                  if (idsOf(open, list)[index] === editor.selectedId) setShownChild(child)
+                  else {
+                    askedChild.current = child
+                    selectStep(list, index)
+                  }
+                }}
+                onRenameStep={(list, index, name) => {
+                  const id = idsOf(open, list)[index]
+                  if (id) editor.rename(id, name)
+                }}
+                onDuplicateStep={(list, index) => {
+                  const id = idsOf(open, list)[index]
+                  if (id) editor.duplicateStep(id)
+                }}
+                onDeleteStep={(list, index) => {
+                  const id = idsOf(open, list)[index]
+                  if (id) editor.removeStep(id)
+                }}
+                onDeleteSteps={(list, indexes) => {
+                  const ids = idsOf(open, list)
+                  editor.removeSteps(
+                    indexes.map((index) => ids[index]).filter((id): id is string => !!id)
+                  )
+                }}
+                onMoveStep={(list, index, to) => {
+                  const id = idsOf(open, list)[index]
+                  if (id) editor.moveStep(id, to)
+                }}
+                stepTags={request?.tags ?? NO_TAGS}
+                onStepTags={(tags) => editor.patch({ tags })}
+                stepForEach={request?.forEach ?? ''}
+                onStepForEach={(forEach) => editor.patch({ forEach })}
+                stepUseTests={request?.useTests ?? false}
+                onStepUseTests={(useTests) => editor.patch({ useTests })}
+                onCollectionTags={editor.setCollectionTags}
+                onCollectionDocs={editor.setCollectionDocs}
+                onStepTagsEnabled={editor.setStepTagsEnabled}
+                onCollectionExcluded={editor.setCollectionExcluded}
+                flagValues={flagValues}
+                onCollectionFlags={editor.setCollectionFlags}
+                stepFlags={request?.flags ?? NO_FLAGS}
+                onStepFlags={(flags) => editor.patch({ flags: flags ?? {} })}
+                onCollectionSettings={editor.setCollectionSettings}
+                onCollectionHeaders={editor.setCollectionHeaders}
+                onCollectionVars={editor.setCollectionVars}
+                onCollectionParams={editor.setCollectionParams}
+                bases={
+                  isLibraryOf('bases') || isLibraryOf('endpoints')
+                    ? null
+                    : (activeProject?.bases ?? [])
+                }
+                onExtends={editor.setCollectionExtends}
+                onOpenBase={openLibraryFile}
+                onCollectionPreRequest={editor.setCollectionPreRequest}
+                onCollectionTests={editor.setCollectionTests}
+                collectionErrorLines={collectionErrorLines}
+                settingsOpen={collectionSettingsOpen}
+                onSettingsOpen={setCollectionSettingsOpen}
+                previews={shownPreviews}
+                onCopyVariable={copyVariable}
+                tagSuggestions={tagSuggestions}
+                tagFilter={tagFilter}
+                onTagFilter={(tags) =>
+                  setTagFilters((current) => ({ ...current, [open.summary.path]: tags }))
+                }
+              >
+                {stepIndex >= 0 && request && (
+                  <RequestView
+                    request={request}
+                    collection={doc}
+                    onEditCollectionHeaders={() => setCollectionSettingsOpen('headers')}
+                    onEditCollectionScript={setCollectionSettingsOpen}
+                    bases={activeProject?.bases ?? NO_BASES}
+                    checkFiles={activeProject?.checkFiles ?? NO_CHECK_FILES}
+                    stepPlace={
+                      collectionPath
+                        ? { path: collectionPath, list: stepList, index: stepIndex }
+                        : null
+                    }
+                    onOpenBase={openLibraryFile}
+                    onChange={editor.patch}
+                    previews={shownPreviews}
+                    onCopyVariable={copyVariable}
+                    onPickFile={pickUpload}
+                    result={selectedResult}
+                    resultCaption={
+                      // Setup and teardown run once, not with a row.
+                      rowNames && selectedDocStep && stepList === 'steps'
+                        ? iterationName(
+                            stepLabel(selectedDocStep),
+                            dataRow,
+                            data.table ? rowLabel(data.table.rows[dataRow] ?? {}) : null
+                          )
+                        : null
+                    }
+                    error={error}
+                    running={runningId !== null && runningId === editor.selectedId}
+                    onSend={() => void send()}
+                    onCancel={cancel}
+                    live={live}
+                    onStop={stopStream}
+                    connectionNames={connectionNames(doc)}
+                    conflict={open.conflict !== null}
+                    onReloadFromDisk={editor.reloadFromDisk}
+                    onKeepMine={editor.keepMine}
+                    sets={sets}
+                    shownChild={shownChild}
+                    onOpenSet={openSet}
+                    endpoints={
+                      // An endpoints file's own steps are the endpoints, under no base.
+                      isLibraryOf('endpoints')
+                        ? NO_ENDPOINTS
+                        : (activeProject?.endpoints ?? NO_ENDPOINTS)
+                    }
+                    onOpenEndpoints={(endpoint) => openLibraryFile(endpoint.filePath)}
+                  />
+                )}
+              </CollectionView>
+            ) : (
+              <div className="placeholder">Choose a collection to see its steps.</div>
+            )}
+          </main>
+        </div>
+
+        <BottomPanel message={editorProblem} onDismissMessage={() => setEditorProblem(null)} />
+
+        {settingsOpen && (
+          <SettingsPage
+            settings={settings}
+            onChange={changeSettings}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
       </div>
-
-      <BottomPanel />
-
-      {settingsOpen && (
-        <SettingsPage
-          settings={settings}
-          onChange={changeSettings}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
-    </div>
+    </ExternalEditorContext.Provider>
   )
 }

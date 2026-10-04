@@ -1,7 +1,13 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { app } from 'electron'
-import { DEFAULT_SETTINGS, SettingsSchema, type Settings } from '../shared/settings.js'
+import {
+  DEFAULT_SETTINGS,
+  patchSettings,
+  SettingsSchema,
+  type Settings,
+  type SettingsPatch
+} from '../shared/settings.js'
 
 /**
  * The app's settings, in `settings.json` beside the workspace list.
@@ -15,7 +21,8 @@ class SettingsStore {
   private current: Settings | null = null
   private listeners = new Set<(settings: Settings) => void>()
 
-  private get file(): string {
+  /** Where they are kept: the file the external editor's Test opens. */
+  get file(): string {
     return path.join(app.getPath('userData'), 'settings.json')
   }
 
@@ -33,14 +40,8 @@ class SettingsStore {
   /** Merge a partial update, validate the whole, persist, and notify. */
   async update(patch: unknown): Promise<Settings> {
     const base = await this.get()
-    const incoming = (patch ?? {}) as { editing?: { autoSave?: object } }
-    const next = SettingsSchema.parse({
-      ...base,
-      editing: {
-        ...base.editing,
-        autoSave: { ...base.editing.autoSave, ...incoming.editing?.autoSave }
-      }
-    })
+    // Whatever arrives is checked whole below, so a bad field changes nothing.
+    const next = SettingsSchema.parse(patchSettings(base, (patch ?? {}) as SettingsPatch))
     this.current = next
     await fs.mkdir(path.dirname(this.file), { recursive: true })
     await fs.writeFile(this.file, `${JSON.stringify(next, null, 2)}\n`)

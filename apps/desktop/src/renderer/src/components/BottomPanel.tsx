@@ -20,7 +20,11 @@ const ROOM_ABOVE = 220
  * the panel was closed is there when it opens. Its own state, not the app's:
  * a result landing re-renders this, not the editor.
  */
-export default function BottomPanel() {
+export default function BottomPanel(props: {
+  /** Something the person asked for went wrong, said here until dismissed. */
+  message?: string | null
+  onDismissMessage?: () => void
+}) {
   const log = useConsoleLog()
   const [open, setOpen] = useStoredFlag('console.open')
   // Never so tall that nothing is left above it, however small the window gets.
@@ -68,6 +72,14 @@ export default function BottomPanel() {
             {warnings > 0 && <span className="status-count warn">{warnings}</span>}
           </button>
         </Tooltip>
+        {props.message && (
+          <span className="status-message" role="alert">
+            {props.message}
+            <button type="button" onClick={props.onDismissMessage} aria-label="Dismiss">
+              ×
+            </button>
+          </span>
+        )}
       </footer>
     </>
   )

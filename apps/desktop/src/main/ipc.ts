@@ -35,6 +35,7 @@ import {
   findDataFile,
   idOfFile,
   readDataTable,
+  sourceLine,
   VarValueSchema,
   type CollectionRunSummary,
   type RunResult,
@@ -59,6 +60,7 @@ import {
   readEnvironmentFile
 } from './collectionFiles.js'
 import { settingsStore } from './settingsStore.js'
+import { openInEditor } from './editor.js'
 import { runSupervisor } from './runSupervisor.js'
 import { flagService } from './flagService.js'
 import type { ProjectService } from './projectService.js'
@@ -901,6 +903,46 @@ export function registerIpc(projects: ProjectService): void {
       const target = assertInProjects(String(file))
       await deleteEnvironmentFile(target)
       await refreshProjectsOf(target)
+      return {}
+    })
+  )
+
+  /** A place to open, checked: a renderer could send anything. */
+  const EditorTargetSchema = z.object({
+    path: z.string(),
+    line: z.number().int().positive().optional(),
+    step: z.object({ list: z.enum(STEP_LISTS), index: z.number().int().nonnegative() }).optional(),
+    script: z.enum(['tests', 'pre-request']).optional(),
+    scriptLine: z.number().int().positive().optional()
+  })
+
+  ipcMain.handle(
+    IpcChannel.editorOpen,
+    guard(async (_event, payload: unknown) => {
+      const target = EditorTargetSchema.parse(payload)
+      const file = assertInProjects(target.path)
+      // A step or a script is found in the file as it is on disk now.
+      const line =
+        target.line ??
+        (target.step || target.script
+          ? sourceLine(await fs.readFile(file, 'utf8'), {
+              ...(target.step ? { step: target.step } : {}),
+              ...(target.script ? { script: target.script } : {}),
+              ...(target.scriptLine ? { scriptLine: target.scriptLine } : {})
+            })
+          : undefined)
+      await openInEditor((await settingsStore.get()).editor, file, line)
+      return {}
+    })
+  )
+
+  ipcMain.handle(
+    IpcChannel.editorTest,
+    guard(async () => {
+      const settings = await settingsStore.get()
+      // Written once, if it never has been, so there is a file to open.
+      await fs.access(settingsStore.file).catch(() => settingsStore.update({}))
+      await openInEditor(settings.editor, settingsStore.file)
       return {}
     })
   )

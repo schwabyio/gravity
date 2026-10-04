@@ -5,6 +5,7 @@ import {
   type Collection,
   type HttpMethod,
   type RunResult,
+  type StepList,
   type VariablePreviews
 } from '@schwabyio/gravity-core/model'
 import {
@@ -60,6 +61,8 @@ interface Props {
   bases: LibraryFileView[]
   /** The project's check files, to show those the step's scripts call. */
   checkFiles: CheckFileView[]
+  /** Where the step is written, for "Open in …": its collection file, list and index. */
+  stepPlace: { path: string; list: StepList; index: number } | null
   /** Open a base collection's file. */
   onOpenBase: (path: string) => void
 
@@ -537,6 +540,7 @@ export default function RequestView(props: Props) {
             onTab={setScriptTab}
             layers={layers}
             checkFiles={props.checkFiles}
+            stepPlace={props.stepPlace}
             onOpenLayer={openLayer}
             result={result}
             checks={checks}

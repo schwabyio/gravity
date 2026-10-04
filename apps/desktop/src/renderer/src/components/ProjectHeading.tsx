@@ -3,6 +3,7 @@ import type { ProjectView } from '@shared/ipc.js'
 import { pullState, pushState } from '../gitActions.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
+import { joinPath, useExternalEditor } from '../externalEditor.js'
 
 interface Props {
   project: ProjectView
@@ -43,6 +44,7 @@ export default function ProjectHeading(props: Props) {
   const pull = git ? pullState(git, busy) : null
   const push = git ? pushState(git, busy, null) : null
   const [menu, setMenu] = useState(false)
+  const editor = useExternalEditor()
 
   // A click anywhere else, or another menu opening, closes the menu.
   const menus = useMenuDismiss(menu, () => setMenu(false))
@@ -206,6 +208,11 @@ export default function ProjectHeading(props: Props) {
               {git && item('History', () => props.onChanges('history'))}
               {project.scratch && item('Rename', props.onRename)}
               {item('Project settings', props.onSettings)}
+              {editor &&
+                project.projectSource !== null &&
+                item(`${editor.label}: project.yml`, () =>
+                  editor.open({ path: joinPath(project.path, 'project.yml') })
+                )}
               {item('Show in folder', props.onReveal)}
             </div>
           )}

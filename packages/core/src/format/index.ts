@@ -26,6 +26,7 @@ import { patchIn } from './patch.js'
 export * from './constants.js'
 export * from './errors.js'
 export * from './merge.js'
+export * from './lines.js'
 
 /** A parsed document plus the YAML it came from. */
 export interface ParsedFile<T> {

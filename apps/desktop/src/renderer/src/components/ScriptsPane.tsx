@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { LogEntry, RunError, RunResult } from '@schwabyio/gravity-core/model'
-import type { CheckFileView } from '@shared/ipc.js'
+import type { StepList } from '@schwabyio/gravity-core/model'
+import type { CheckFileView, EditorTarget } from '@shared/ipc.js'
 import { checkLines } from '../checkLines.js'
 import { sourceTags } from '../checkSources.js'
 import type { PaneWidth } from '../hooks/usePaneWidth.js'
@@ -13,7 +14,7 @@ import DocsEditor from './DocsEditor.js'
 import Markdown from './Markdown.js'
 import PaneHead from './PaneHead.js'
 import PencilIcon from './PencilIcon.js'
-import SharedScripts from './SharedScripts.js'
+import SharedScripts, { layerScriptTarget } from './SharedScripts.js'
 import Resizer from './Resizer.js'
 import TestResults from './TestResults.js'
 import Tooltip from './Tooltip.js'
@@ -36,6 +37,8 @@ interface Props {
   layers: InheritedLayer[]
   /** The project's check files, to show those its scripts call. */
   checkFiles: CheckFileView[]
+  /** Where the step is written: its collection file, list and index, for "Open in …". */
+  stepPlace: { path: string; list: StepList; index: number } | null
   onOpenLayer: (kind: ScriptKind) => (layer: InheritedLayer) => void
 
   result: RunResult | null
@@ -76,6 +79,28 @@ export default function ScriptsPane(props: Props) {
   const showResults =
     result?.response != null &&
     (checks.length > 0 || logs.length > 0 || scriptError !== null || ignored.length > 0)
+  // Where the tests stopped, to open in the external editor at that line.
+  const errorTarget = useMemo((): EditorTarget | null => {
+    const place = props.stepPlace
+    if (!scriptError || scriptError.line === undefined || !place) return null
+    const at = { script: 'tests' as const, scriptLine: scriptError.line }
+    switch (scriptError.script) {
+      case 'step':
+      case 'use':
+        return { path: place.path, step: { list: place.list, index: place.index }, ...at }
+      case 'collection':
+        return { path: place.path, ...at }
+      case 'endpoint':
+      case 'endpoint-file':
+      case 'base': {
+        const layer = props.layers.find((candidate) => candidate.kind === scriptError.script)
+        const target = layer && layerScriptTarget(layer, 'tests', place.path)
+        return target ? { ...target, scriptLine: scriptError.line } : null
+      }
+      default:
+        return null
+    }
+  }, [scriptError, props.stepPlace, props.layers])
   // A ✓ or ✕ beside each line of the script a check was made on: a new array only for a
   // new result, so the marks follow their lines while the script is edited.
   const marks = useMemo(
@@ -175,6 +200,7 @@ export default function ScriptsPane(props: Props) {
               own={request.tests}
               checkFiles={props.checkFiles}
               result={result}
+              collectionPath={props.stepPlace?.path ?? null}
             />
             <CodeEditor
               kind="tests"
@@ -202,6 +228,7 @@ export default function ScriptsPane(props: Props) {
               ignored={ignored}
               strict={checks.some((check) => check.assertion.target === 'strict')}
               tagsOf={(source) => sourceTags(source, props.use ? 'use' : 'step', props.layers)}
+              errorTarget={errorTarget}
             />
           )}
         </div>
@@ -220,6 +247,7 @@ export default function ScriptsPane(props: Props) {
               own={request.preRequest}
               checkFiles={props.checkFiles}
               result={result}
+              collectionPath={props.stepPlace?.path ?? null}
             />
             <CodeEditor
               kind="pre-request"

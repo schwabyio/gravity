@@ -14,6 +14,7 @@ const endpoint: EndpointView = {
   path: '/users/{id}',
   filePath: '/shared/endpoints/people.yml',
   fileName: 'people',
+  index: 0,
   source: 'global',
   headers: ['X-Request-Id', 'Accept'],
   hasTests: true,

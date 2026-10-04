@@ -148,6 +148,10 @@ const api: DesktopApi = {
     set: (patch) => ipcRenderer.invoke(IpcChannel.settingsSet, patch),
     onChanged: (callback) => subscribe(IpcChannel.eventSettings, callback)
   },
+  editor: {
+    open: (target) => ipcRenderer.invoke(IpcChannel.editorOpen, target),
+    test: () => ipcRenderer.invoke(IpcChannel.editorTest)
+  },
 
   app: {
     onBeforeClose: (handler) => {

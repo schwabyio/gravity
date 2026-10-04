@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { AUTO_SAVE_DELAY, type Settings, type SettingsPatch } from '@shared/settings.js'
+import {
+  AUTO_SAVE_DELAY,
+  EDITORS,
+  type EditorKind,
+  type Settings,
+  type SettingsPatch
+} from '@shared/settings.js'
 
 interface Props {
   settings: Settings
@@ -7,7 +13,23 @@ interface Props {
   onClose: () => void
 }
 
-const SECTIONS = [{ id: 'editing', label: 'Editing' }] as const
+const SECTIONS = [
+  { id: 'editing', label: 'Editing' },
+  { id: 'editor', label: 'External editor' }
+] as const
+
+/** How each editor is opened, and whether at a line. */
+const EDITOR_NOTES: Record<EditorKind, string> = {
+  system: 'Opens a file with the app your system uses for it. It cannot go to a line.',
+  vscode: 'Opens VS Code by its link, at the step’s or script’s line.',
+  cursor: 'Opens Cursor by its link, at the step’s or script’s line.',
+  intellij:
+    'Opens IntelliJ IDEA by its launcher, its app or its link, whichever is installed, at the line.',
+  webstorm:
+    'Opens WebStorm by its launcher, its app or its link, whichever is installed, at the line.',
+  custom:
+    'The program and its arguments: {file} is the file and {line} its line. It runs directly, not through a shell; on Windows, give the program’s .exe.'
+}
 
 /**
  * App settings, over the workbench.
@@ -20,8 +42,24 @@ export default function SettingsPage({ settings, onChange, onClose }: Props) {
   const { autoSave } = settings.editing
   const [delay, setDelay] = useState(String(autoSave.delayMs))
   const [delayError, setDelayError] = useState<string | null>(null)
+  const [command, setCommand] = useState(settings.editor.command)
+  const [tested, setTested] = useState<{ ok: boolean; message: string } | null>(null)
 
   useEffect(() => setDelay(String(autoSave.delayMs)), [autoSave.delayMs])
+  useEffect(() => setCommand(settings.editor.command), [settings.editor.command])
+
+  const commitCommand = async () => {
+    if (command !== settings.editor.command) await onChange({ editor: { command } })
+  }
+  const test = async () => {
+    await commitCommand()
+    const result = await window.desktop.editor.test()
+    setTested(
+      result.ok
+        ? { ok: true, message: 'Opened the app’s settings.json.' }
+        : { ok: false, message: result.message }
+    )
+  }
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -113,6 +151,81 @@ export default function SettingsPage({ settings, onChange, onClose }: Props) {
                 />
                 ms
               </span>
+            </div>
+          </section>
+
+          <section id="settings-editor" aria-labelledby="settings-editor-title">
+            <h2 id="settings-editor-title">External editor</h2>
+
+            <div className="setting-row">
+              <div className="setting-text">
+                <label htmlFor="setting-editor">Open files in</label>
+                <p>
+                  Where “Open in …” opens a collection, request set, check file, data or environment
+                  file — at the step or the script’s line where there is one.{' '}
+                  {EDITOR_NOTES[settings.editor.kind]}
+                </p>
+              </div>
+              <select
+                id="setting-editor"
+                value={settings.editor.kind}
+                onChange={(e) => {
+                  setTested(null)
+                  void onChange({ editor: { kind: e.target.value as EditorKind } })
+                }}
+              >
+                {EDITORS.map((editor) => (
+                  <option key={editor.id} value={editor.id}>
+                    {editor.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {settings.editor.kind === 'custom' && (
+              <div className="setting-row">
+                <div className="setting-text">
+                  <label htmlFor="setting-editor-command">Command</label>
+                  <p>
+                    For example{' '}
+                    <code>
+                      zed {'{file}'}:{'{line}'}
+                    </code>{' '}
+                    or{' '}
+                    <code>
+                      /usr/local/bin/subl {'{file}'}:{'{line}'}
+                    </code>
+                    .
+                  </p>
+                </div>
+                <input
+                  id="setting-editor-command"
+                  className="setting-command"
+                  value={command}
+                  spellCheck={false}
+                  placeholder="program {file}:{line}"
+                  onChange={(e) => setCommand(e.target.value)}
+                  onBlur={() => void commitCommand()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void commitCommand()
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="setting-row">
+              <div className="setting-text">
+                <span className="setting-label">Try it</span>
+                <p>Opens the app’s own settings file in it.</p>
+                {tested && (
+                  <p className={tested.ok ? 'setting-ok' : 'setting-error'} role="status">
+                    {tested.message}
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={() => void test()}>
+                Test
+              </button>
             </div>
           </section>
         </div>

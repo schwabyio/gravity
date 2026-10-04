@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '@shared/settings.js'
+import {
+  DEFAULT_SETTINGS,
+  patchSettings,
+  type Settings,
+  type SettingsPatch
+} from '@shared/settings.js'
 
 /**
  * The app's settings, read from main and kept current as they change.
@@ -31,13 +36,7 @@ export function useSettings() {
     let previous: Settings | null = null
     setSettings((current) => {
       previous = current
-      return {
-        ...current,
-        editing: {
-          ...current.editing,
-          autoSave: { ...current.editing.autoSave, ...patch.editing?.autoSave }
-        }
-      }
+      return patchSettings(current, patch)
     })
     const result = await window.desktop.settings.set(patch)
     if (result.ok) setSettings(result.settings)

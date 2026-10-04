@@ -13,6 +13,7 @@ import {
 } from '../dataGrid.js'
 import type { useDataFileEditor } from '../hooks/useDataFileEditor.js'
 import SaveStatus from './SaveStatus.js'
+import OpenInEditor from './OpenInEditor.js'
 
 interface Props {
   data: ReturnType<typeof useDataFileEditor>
@@ -88,6 +89,10 @@ export default function DataDrawer({ data, autoSave, onClose }: Props) {
         <header className="drawer-head">
           <h2>
             Data file <span className="data-file-name">{data.fileName}</span>
+            <OpenInEditor
+              what={data.fileName ?? 'the data file'}
+              target={data.path ? { path: data.path } : null}
+            />
           </h2>
           <button type="button" className="drawer-close" onClick={onClose} aria-label="Close">
             ×

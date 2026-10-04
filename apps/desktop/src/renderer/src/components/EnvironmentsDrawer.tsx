@@ -4,6 +4,7 @@ import type { useEnvironmentEditor } from '../hooks/useEnvironmentEditor.js'
 import SaveStatus from './SaveStatus.js'
 import VariablesEditor from './VariablesEditor.js'
 import FlagConditionsEditor from './FlagConditionsEditor.js'
+import OpenInEditor from './OpenInEditor.js'
 
 interface Props {
   /** The environments the open collection can choose from. */
@@ -215,9 +216,12 @@ export default function EnvironmentsDrawer(props: Props) {
                   </p>
                 )}
                 <p className="hint">
-                  <code>environments/{fileName}</code> · its variables override the collection’s. A{' '}
-                  <strong>Secret</strong> is never written here: its value comes from a variable of
-                  the same name in the process environment or <code>.env</code>.
+                  <code>environments/{fileName}</code>
+                  {/* The chosen environment's file, beside its name. */}
+                  <OpenInEditor what={fileName} target={{ path: current }} /> · its variables
+                  override the collection’s. A <strong>Secret</strong> is never written here: its
+                  value comes from a variable of the same name in the process environment or{' '}
+                  <code>.env</code>.
                 </p>
                 <VariablesEditor
                   vars={doc.vars}

@@ -9,6 +9,7 @@ import { MARK_WORDS, type GitMarks } from '../gitMarks.js'
 import GitBadge from './GitBadge.js'
 import NameForm from './NameForm.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
+import { useExternalEditor } from '../externalEditor.js'
 
 /** What can be done to a collection from its row; each resolves to a refusal to show, or null. */
 export interface CollectionActions {
@@ -154,6 +155,7 @@ function CollectionRow(props: {
 }) {
   const { summary, actions } = props
   const mark = props.marks.collection(summary)
+  const editor = useExternalEditor()
   /** Where it could move in its project: the root, unless it is there, and every other folder. */
   const elsewhere = [
     ...(summary.directory !== null ? [null] : []),
@@ -278,6 +280,11 @@ function CollectionRow(props: {
               })}
               {item('New request set', () => props.onAct('set'))}
               {item('Rename', () => props.onAct('rename'))}
+              {editor &&
+                item(editor.label, () => {
+                  props.onAct(null)
+                  editor.open({ path: summary.path })
+                })}
               {elsewhere.length > 0 && item('Move to folder…', () => props.onAct('folder'))}
               {actions.targets.length > 0 && item('Copy to project…', () => props.onAct('copy'))}
               {actions.targets.length > 0 && item('Move to project…', () => props.onAct('move'))}

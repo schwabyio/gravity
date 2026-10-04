@@ -754,13 +754,18 @@ export class ProjectService {
       })),
       checks: checks.map((check) => check.name),
       // A file of the global project's lies outside this one: its path climbs out.
-      checkFiles: checks.map((check) => ({ ...check, shared: check.filename.startsWith('../') })),
+      checkFiles: checks.map((check) => ({
+        ...check,
+        path: path.resolve(entry.path, check.filename),
+        shared: check.filename.startsWith('../')
+      })),
       endpointFiles: endpointFiles.map((file) => libraryFile(file, endpointProblem)),
       endpoints: endpoints.map((endpoint) => ({
         method: endpoint.method,
         path: endpoint.path,
         filePath: endpoint.filePath,
         fileName: endpoint.fileName,
+        index: endpoint.file.steps.indexOf(endpoint.step),
         source: endpoint.source,
         headers: Object.keys(mergeHeaders(endpoint.file.headers, endpoint.step.headers)),
         hasTests: Boolean(endpoint.file.tests || endpoint.step.tests),
