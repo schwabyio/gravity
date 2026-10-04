@@ -21,7 +21,7 @@ import {
   type StepOutcome
 } from '../stepOutcome.js'
 import Tooltip from './Tooltip.js'
-import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
+import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
 /** A button under the list that adds a step. */
 export interface AddAction {
@@ -177,6 +177,10 @@ export default function StepList(props: Props) {
                 setDragging(null)
                 setDropAt(null)
               }}
+              onContextMenu={onRightClick(() => {
+                if (menu !== index) menus.opened()
+                setMenu(index)
+              })}
             >
               {change && (
                 <span

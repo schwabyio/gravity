@@ -450,6 +450,29 @@ test('opening one ⋯ menu closes any other open one', async () => {
   await expect(menu()).toHaveCount(0)
 })
 
+test('right-clicking a row opens its ⋯ menu', async () => {
+  const menu = () => page.getByRole('menu')
+  const rows: Array<[ReturnType<typeof page.locator>, string]> = [
+    [
+      project('Scratch pad').locator('.collection-item', { hasText: 'ping-check' }),
+      'New request set'
+    ],
+    [project('Scratch pad').locator('.folder-item', { hasText: 'smoke' }), 'New collection'],
+    [project('Scratch pad').locator('.repo-head'), 'New folder'],
+    [page.locator('.step-list li', { hasText: 'New step' }).first(), 'Duplicate']
+  ]
+  for (const [row, says] of rows) {
+    await row.click({ button: 'right' })
+    // One at a time, as from the ⋯ buttons.
+    await expect(menu()).toHaveCount(1)
+    await expect(menu()).toContainText(says)
+  }
+
+  // A right-click anywhere else closes it, as a click does.
+  await header().click({ button: 'right' })
+  await expect(menu()).toHaveCount(0)
+})
+
 test('one button collapses every project, and then expands them again', async () => {
   const rows = () => page.locator('.sidebar .collection-row')
   await expect(rows()).not.toHaveCount(0)

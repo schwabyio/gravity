@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef } from 'react'
 const OPENED = 'gravity:menu-opened'
 
 /**
- * Closing a component's ⋯ menu: on a click anywhere else, and as soon as any
- * other menu in the window opens. A menu's own button stops its click from
+ * Closing a component's ⋯ menu: on a click or right-click anywhere else, and as
+ * soon as any other menu in the window opens. A menu's own button stops its click from
  * reaching the window — or the menu would close as it opened — so the click
  * that opens another menu never reaches this one: hence the announcement.
  * One menu open at a time.
@@ -25,9 +25,11 @@ export function useMenuDismiss(open: boolean, close: () => void): { opened: () =
       if ((event as CustomEvent).detail !== owner.current) dismiss()
     }
     window.addEventListener('click', dismiss)
+    window.addEventListener('contextmenu', dismiss)
     window.addEventListener(OPENED, onOpened)
     return () => {
       window.removeEventListener('click', dismiss)
+      window.removeEventListener('contextmenu', dismiss)
       window.removeEventListener(OPENED, onOpened)
     }
   }, [open])
@@ -37,4 +39,18 @@ export function useMenuDismiss(open: boolean, close: () => void): { opened: () =
     []
   )
   return { opened }
+}
+
+/**
+ * A row's right-click, opening its ⋯ menu as the button does. Not in a text
+ * field, which a rename puts in the row, and kept from the window, which
+ * closes open menus on a right-click.
+ */
+export function onRightClick(open: () => void) {
+  return (event: React.MouseEvent) => {
+    if ((event.target as HTMLElement).closest('input, textarea, [contenteditable="true"]')) return
+    event.preventDefault()
+    event.stopPropagation()
+    open()
+  }
 }

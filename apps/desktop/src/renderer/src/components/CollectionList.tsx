@@ -8,7 +8,7 @@ import type { ProjectView } from '@shared/ipc.js'
 import { MARK_WORDS, type GitMarks } from '../gitMarks.js'
 import GitBadge from './GitBadge.js'
 import NameForm from './NameForm.js'
-import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
+import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
 /** What can be done to a collection from its row; each resolves to a refusal to show, or null. */
 export interface CollectionActions {
@@ -219,6 +219,7 @@ function CollectionRow(props: {
         }}
         onDragEnd={props.drag.onEnd}
         {...props.drag.zone(summary.directory)}
+        onContextMenu={onRightClick(() => props.onAct('menu'))}
       >
         <button
           className={`row collection-row${props.selected ? ' selected' : ''}${summary.excluded ? ' excluded' : ''}`}
@@ -501,6 +502,7 @@ function Directory(props: {
         <div
           className={`collection-item folder-item${props.acting === 'menu' ? ' menu-open' : ''}${props.drag.over === node.name ? ' drop-target' : ''}`}
           {...props.drag.zone(node.name)}
+          onContextMenu={onRightClick(() => props.onAct('menu'))}
         >
           <button
             className="row group-row"

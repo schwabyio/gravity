@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { ProjectView } from '@shared/ipc.js'
 import { pullState, pushState } from '../gitActions.js'
 import Tooltip from './Tooltip.js'
-import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
+import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
 interface Props {
   project: ProjectView
@@ -61,7 +61,13 @@ export default function ProjectHeading(props: Props) {
   )
 
   return (
-    <div className="repo-head">
+    <div
+      className="repo-head"
+      onContextMenu={onRightClick(() => {
+        if (!menu) menus.opened()
+        setMenu(true)
+      })}
+    >
       <button
         type="button"
         className="repo-toggle"
