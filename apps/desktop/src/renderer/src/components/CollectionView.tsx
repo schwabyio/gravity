@@ -143,6 +143,36 @@ interface Props {
  * Nothing collapses and nothing navigates away: the list of steps stays put with
  * its results while the selected step's editor and response fill the rest.
  */
+/**
+ * Up and down the steps from the keyboard: with a step focused, the arrows
+ * select the one above or below — across setup, steps and teardown, as they
+ * are listed — and Home and End the first and last. A step's row is a button,
+ * so a click leaves it focused and the arrows work straight away; typing in a
+ * rename, or anywhere else, is left alone.
+ */
+function moveBetweenSteps(event: React.KeyboardEvent<HTMLElement>) {
+  const target = event.target as HTMLElement
+  if (!target.classList.contains('step-open')) return
+  const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('.step-open')]
+  const at = rows.indexOf(target as HTMLButtonElement)
+  const to =
+    event.key === 'ArrowDown'
+      ? at + 1
+      : event.key === 'ArrowUp'
+        ? at - 1
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? rows.length - 1
+            : null
+  if (to === null) return
+  event.preventDefault()
+  const row = rows[to]
+  if (!row || row === target) return
+  row.focus()
+  row.click()
+}
+
 export default function CollectionView(props: Props) {
   const collectionDocs = (props.collection.docs ?? '').trim() !== ''
   // Writing the collection's docs in place; another collection opens to read its own.
@@ -600,7 +630,7 @@ export default function CollectionView(props: Props) {
           {/* Outside the scrolling column: a divider inside it would scroll
               away with the steps and only be as tall as their content. */}
           <Resizer pane={steps} label="Resize the steps pane" offset={steps.width} />
-          <aside className="steps-column">
+          <aside className="steps-column" onKeyDown={moveBetweenSteps}>
             {props.connections.length > 0 && (
               <div className="connections-bar" role="status" aria-label="Open connections">
                 {props.connections.map((connection) => (

@@ -343,6 +343,33 @@ test('a teardown written outside the app shows in its list at once', async () =>
   await expect(page.getByLabel('Request URL')).toHaveValue(`${origin}/cleanup`)
 })
 
+test('the arrow keys move up and down the steps, across setup, steps and teardown', async () => {
+  const selected = () => page.locator('.step-list > li.selected .step-name')
+  const header = () => page.locator('.collection-step-name')
+  await rowIn('Setup', 'prepare').locator('.step-open').click()
+  await expect(selected()).toHaveText('prepare')
+
+  await page.keyboard.press('ArrowDown')
+  await expect(selected()).toHaveText('ping it')
+  // The editor follows the selection, as a click would have it.
+  await expect(header()).toHaveText('ping it')
+  await page.keyboard.press('ArrowDown')
+  await expect(selected()).toHaveText('maybe')
+  await page.keyboard.press('ArrowDown')
+  await expect(selected()).toHaveText('cleanup')
+  // Nothing below the last: it stays.
+  await page.keyboard.press('ArrowDown')
+  await expect(selected()).toHaveText('cleanup')
+
+  await page.keyboard.press('Home')
+  await expect(selected()).toHaveText('prepare')
+  await page.keyboard.press('End')
+  await expect(selected()).toHaveText('cleanup')
+  await page.keyboard.press('ArrowUp')
+  await expect(selected()).toHaveText('maybe')
+  await expect(header()).toHaveText('maybe')
+})
+
 test('a tag filter narrows the steps, never setup or teardown', async () => {
   await page.locator('.collection-row', { hasText: 'Tagged' }).click()
   const filter = page.getByRole('group', { name: 'Filter steps by tag' })
