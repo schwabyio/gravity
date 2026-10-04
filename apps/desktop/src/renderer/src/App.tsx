@@ -858,43 +858,6 @@ export default function App() {
     dataRowToRun
   ])
 
-  /** Run one step on its own, selecting it first so its response is visible. */
-  const runStep = useCallback(
-    (list: StepList, index: number) => {
-      selectStep(list, index)
-      // Selecting is state; the send below reads the step from the document
-      // rather than the editor, so it does not have to wait for that state.
-      const step = doc ? stepsOf(doc, list)[index] : undefined
-      const id = open ? idsOf(open, list)[index] : undefined
-      if (!step || !doc || !id) return
-      if (isUseStep(step) || step.forEach) return void runIndexesOf(list, [index], false)
-      const runId = nextRunId()
-      activeRunId.current = runId
-      resultsRunId.current = runId
-      setRunningId(id)
-      setError(null)
-      runRow.current = dataRow
-      void window.desktop
-        .runStart({
-          runId,
-          step,
-          collection: doc,
-          collectionPath,
-          environment: selectedEnvironment,
-          environmentOverrides,
-          dataRow: dataRowToRun
-        })
-        .then((response) => {
-          if (activeRunId.current !== runId) return
-          activeRunId.current = null
-          setRunningId(null)
-          if (response.ok) changeResults(list, (current) => ({ ...current, [id]: response.result }))
-          else setError(response.message)
-        })
-    },
-    [open, doc, collectionPath, selectedEnvironment, selectStep, dataRow, dataRowToRun]
-  )
-
   /**
    * Run some steps of one list in order, sharing one scope as a full run does:
    * every step for Run all, with setup and teardown around them, or one use
@@ -1331,7 +1294,6 @@ export default function App() {
               draftIndexes={editor.dirtyIndexes}
               changes={sinceCommit}
               onSelect={selectStep}
-              onRunStep={runStep}
               onRunAll={() => void runAll()}
               onClose={closeCollection}
               onCancel={cancel}

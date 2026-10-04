@@ -1650,7 +1650,7 @@ button:disabled {
 .collection-body {
   position: relative;
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 320px 1fr;
   flex: 1;
   min-height: 0;
 }
@@ -1705,50 +1705,128 @@ button:disabled {
   background: var(--surface-alt);
 }
 
-.step-foot {
+/* A step's first line: its number, method, name and verdict, with its ⋯ menu at the end. */
+.step-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px 4px 10px;
 }
 
-.step-run {
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: none;
-  color: var(--ok);
-  font-size: 10px;
-  line-height: 1.6;
+.step-head .step-open {
+  flex: 1;
+  min-width: 0;
+  align-items: center;
 }
 
-.step-run:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ok) 15%, transparent);
+/* Wide enough for OPTIONS, the longest, so names line up close to their methods. */
+.step-head .method {
+  width: 44px;
 }
 
-.step-status {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+/* Cut short before the status and time ever are. */
+.step-head .step-name {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.step-status.ok {
+.step-menu-wrap {
+  flex: none;
+  padding-right: 4px;
+}
+
+/* The last run, at the end of the name's line: its status and time, then its verdict. */
+.step-open > .tooltip-trigger,
+.step-open > .step-result {
+  flex: none;
+  margin-left: auto;
+}
+
+.step-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-summary {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A mark in its own color, or its place kept with none to show. */
+.step-mark-space {
+  flex: none;
+  width: 16px;
+}
+
+.step-mark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.step-mark.pass {
   color: var(--ok);
 }
-.step-status.client {
+
+.step-mark.fail {
   color: var(--client);
 }
-.step-status.server {
+
+.step-mark.error {
   color: var(--server);
 }
-.step-status.idle {
+
+.step-mark.skipped {
   color: var(--text-dim);
 }
-.step-status.running {
-  color: var(--accent);
+
+.step-mark.running {
+  background: none;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: step-spin 0.8s linear infinite;
+}
+
+@keyframes step-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-mark.running {
+    animation: none;
+  }
+}
+
+/* What the line above cannot hold, an error's message or a skip's reason, under the name. */
+.step-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Lined up with the name: 10px in, the number's 18px and the method's 44px, 8px after each. */
+  padding: 0 10px 4px 88px;
+}
+
+/* Quiet: the mark above carries the color. */
+.step-status {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .step-list .step-name {
@@ -2060,6 +2138,18 @@ body.resizing.resizing-rows * {
 .tooltip.wide {
   max-width: 320px;
   padding: 8px 11px;
+}
+
+/* A step's result on hover: how many checks passed, then which failed. */
+.step-hover-title {
+  display: block;
+  font-weight: 600;
+}
+
+.step-hover-line {
+  display: block;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
 }
 
 /* An event stream while it is read. */
@@ -2681,8 +2771,7 @@ button.status-pill.focused {
   box-shadow: inset 0 2px 0 var(--accent);
 }
 
-.step-foot .step-menu-button {
-  margin-left: auto;
+.step-menu-wrap .step-menu-button {
   padding: 0 6px;
   border: none;
   background: none;
@@ -4125,10 +4214,11 @@ button.tag.filter.on {
 
 .use-child {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 2px 6px;
+  /* Clear of the ⋯ above on the right, so its marks sit under its step's. */
+  padding: 2px 40px 2px 6px;
   border: none;
   border-left: 2px solid var(--border);
   border-radius: 0;
@@ -4156,8 +4246,20 @@ button.tag.filter.on {
   white-space: nowrap;
 }
 
-.use-child .step-status {
-  font-size: 11px;
+/* A request's result, as its step's but a size smaller. */
+.use-child > .tooltip-trigger,
+.use-child > .step-result {
+  flex: none;
+}
+
+.use-child .step-mark-space {
+  width: 14px;
+}
+
+.use-child .step-mark {
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
 }
 
 .use-missing {
@@ -4512,11 +4614,6 @@ button.tag.filter.on {
 .step-flag.error {
   background: color-mix(in srgb, var(--client) 18%, transparent);
   color: var(--client);
-}
-
-.step-status.skipped {
-  color: var(--text-dim);
-  font-style: italic;
 }
 
 .placeholder.skipped strong {

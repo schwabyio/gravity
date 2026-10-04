@@ -71,8 +71,7 @@ test('every icon-only button is explained on hover', async () => {
   const cases: Array<[string, RegExp]> = [
     ['Fetch', /Fetch from the remote/],
     ['Pull', /no upstream/],
-    ['Remove r', /files are left alone/],
-    ['Run one', /Run this step on its own/]
+    ['Remove r', /files are left alone/]
   ]
 
   for (const [name, expected] of cases) {

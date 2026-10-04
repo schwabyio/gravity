@@ -175,19 +175,24 @@ test('Run all runs setup once, the steps per row, then teardown once per item', 
     'DELETE /grant/r1',
     'DELETE /grant/r2'
   ])
-  await expect(rowIn('Setup', 'grant').locator('.step-status')).toContainText('200')
-  await expect(rowIn('Teardown', 'revoke').locator('.step-status')).toHaveText('2 of 2 passed')
+  await expect(rowIn('Setup', 'grant').locator('.step-head .step-summary')).toContainText('200')
+  await expect(rowIn('Teardown', 'revoke').locator('.step-head .step-summary')).toHaveText(
+    '2 of 2 passed'
+  )
   // Rows count their own steps; setup and teardown ran once, so they show on every row.
   const iterations = page.getByRole('group', { name: 'Iterations' })
   await expect(iterations.getByLabel('All iterations')).toHaveText('All: 4 passed')
   await iterations.locator('button.iteration').first().click()
-  await expect(rowIn('Setup', 'grant').locator('.step-status')).toContainText('200')
-  await expect(rowIn('Teardown', 'revoke').locator('.step-status')).toHaveText('2 of 2 passed')
+  await expect(rowIn('Setup', 'grant').locator('.step-head .step-summary')).toContainText('200')
+  await expect(rowIn('Teardown', 'revoke').locator('.step-head .step-summary')).toHaveText(
+    '2 of 2 passed'
+  )
 })
 
-test('a teardown step run on its own runs without setup', async () => {
+test('a teardown step sent on its own runs without setup', async () => {
   received = []
-  await rowIn('Teardown', 'revoke').getByRole('button', { name: 'Run revoke' }).click()
+  await rowIn('Teardown', 'revoke').locator('.step-open').click()
+  await page.getByRole('button', { name: 'Send' }).click()
   // Its list comes from setup, which did not run.
   await expect(rowIn('Teardown', 'revoke').locator('.step-status')).toContainText(
     'Variable "roots" is not defined',
@@ -256,9 +261,9 @@ test('a step repeated for each item writes forEach and runs once per item', asyn
   await expect(page.locator('.step-foreach > summary')).toHaveText('for each ["x", "y"]')
 
   received = []
-  await page.getByRole('button', { name: 'Run one' }).click()
+  await page.getByRole('button', { name: 'Send' }).click()
   await expect(
-    page.locator('.step-list > li', { hasText: 'one' }).locator('.step-status')
+    page.locator('.step-list > li', { hasText: 'one' }).locator('.step-summary')
   ).toHaveText('2 of 2 passed', { timeout: 10_000 })
   expect(received).toEqual(['GET /each/x', 'GET /each/y'])
 
@@ -272,11 +277,12 @@ test('a step repeated for each item writes forEach and runs once per item', asyn
     })
 })
 
-test('a use step, or a setup step, run on its own runs only that', async () => {
+test('a use step, or a setup step, sent on its own runs only that', async () => {
   await page.locator('.collection-row', { hasText: 'Mixed' }).click()
   received = []
-  await rowIn('Steps', 'ping it').getByRole('button', { name: 'Run ping it' }).click()
-  await expect(rowIn('Steps', 'ping it').locator('.step-foot .step-status')).toHaveText(
+  await rowIn('Steps', 'ping it').locator('.step-open').click()
+  await page.getByRole('button', { name: 'Run', exact: true }).click()
+  await expect(rowIn('Steps', 'ping it').locator('.step-head .step-summary')).toHaveText(
     '1 of 1 passed',
     {
       timeout: 10_000
@@ -285,8 +291,9 @@ test('a use step, or a setup step, run on its own runs only that', async () => {
   expect(received).toEqual(['GET /ping'])
 
   received = []
-  await rowIn('Setup', 'prepare').getByRole('button', { name: 'Run prepare' }).click()
-  await expect(rowIn('Setup', 'prepare').locator('.step-status')).toContainText('200', {
+  await rowIn('Setup', 'prepare').locator('.step-open').click()
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(rowIn('Setup', 'prepare').locator('.step-head .step-summary')).toContainText('200', {
     timeout: 10_000
   })
   expect(received).toEqual(['POST /prepare'])
@@ -294,10 +301,12 @@ test('a use step, or a setup step, run on its own runs only that', async () => {
 
 test('a step its script skips says why, having sent nothing', async () => {
   received = []
-  await rowIn('Steps', 'maybe').getByRole('button', { name: 'Run maybe' }).click()
-  await expect(rowIn('Steps', 'maybe').locator('.step-status')).toHaveText('skipped', {
+  await rowIn('Steps', 'maybe').locator('.step-open').click()
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(rowIn('Steps', 'maybe').locator('.step-mark')).toHaveAccessibleName('skipped', {
     timeout: 10_000
   })
+  await expect(rowIn('Steps', 'maybe').locator('.step-status')).toHaveText('skipped: not today')
   await expect(page.locator('.placeholder.skipped')).toContainText('not today — nothing was sent')
   expect(received).toEqual([])
 })

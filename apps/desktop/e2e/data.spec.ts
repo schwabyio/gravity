@@ -90,9 +90,9 @@ test('the row picker lists each row by its label, and a step runs with the row p
   await expect(picker()).toHaveValue('0')
   await picker().selectOption({ label: '3 — Third' })
   seen = []
-  await page.getByRole('button', { name: 'Run get user' }).click()
-  await expect.poll(() => seen, { timeout: 10_000 }).toEqual(['/users/cat'])
   await page.locator('.step-list > li').first().getByText('get user', { exact: true }).click()
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect.poll(() => seen, { timeout: 10_000 }).toEqual(['/users/cat'])
   await expect(page.getByLabel('Result from')).toHaveText('Iteration 3 (Third) - get user')
 
   // Variables show the picked row's values, and where they came from.
@@ -128,11 +128,11 @@ test('Run all runs every row in order, each an iteration of its own', async () =
   await chips.nth(1).click()
   await expect(chips.nth(1)).toHaveAttribute('aria-pressed', 'true')
   await expect(picker()).toHaveValue('1')
-  await expect(page.locator('.step-list .step-status').first()).toHaveClass(/client/)
-  await expect(page.locator('.step-list .step-status').first()).toContainText('404')
+  await expect(page.locator('.step-list .step-mark').first()).toHaveClass(/fail/)
+  await expect(page.locator('.step-list .step-summary').first()).toContainText('404')
   await expect(page.getByLabel('Result from')).toHaveText('Iteration 2 (Second) - get user')
   await chips.nth(0).click()
-  await expect(page.locator('.step-list .step-status').first()).toHaveClass(/ok/)
+  await expect(page.locator('.step-list .step-mark').first()).toHaveClass(/pass/)
 })
 
 test('Stop ends the run, leaving the rows after it unrun', async () => {

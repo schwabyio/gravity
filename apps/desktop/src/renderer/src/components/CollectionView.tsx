@@ -69,7 +69,6 @@ interface Props {
   /** What changed since the last commit: its steps, and the rest of it; null with nothing to compare. */
   changes: CollectionChanges | null
   onSelect: (list: ListName, index: number) => void
-  onRunStep: (list: ListName, index: number) => void
   onRunAll: () => void
   /** Stop showing it: its edits are kept, and with auto save on it is saved. */
   onClose: () => void
@@ -144,7 +143,8 @@ interface Props {
  */
 export default function CollectionView(props: Props) {
   const { summary } = props
-  const steps = usePaneWidth('pane.steps', 260, 180, 560)
+  // Wide enough for a name beside its status, time and verdict.
+  const steps = usePaneWidth('pane.steps', 320, 180, 560)
   const setupSteps = stepsOf(props.collection, 'setup')
   const teardownSteps = stepsOf(props.collection, 'teardown')
   const hasStages = setupSteps.length > 0 || teardownSteps.length > 0
@@ -264,12 +264,10 @@ export default function CollectionView(props: Props) {
         selectedIndex={props.selectedList === list ? props.selectedIndex : -1}
         results={props.results[list]}
         runningIndex={props.runningAt?.list === list ? props.runningAt.index : null}
-        busy={props.busy}
         draftIndexes={props.draftIndexes[list]}
         changes={props.changes?.steps[list]}
         removed={props.changes?.removed[list] ?? 0}
         onSelect={(index) => props.onSelect(list, index)}
-        onRun={(index) => props.onRunStep(list, index)}
         adds={addsFor(list)}
         sets={props.sets}
         childResults={props.childResults[list]}

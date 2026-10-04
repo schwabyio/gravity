@@ -135,12 +135,15 @@ test('filtering by tag narrows the list, and Run runs only what it shows', async
 
   await page.getByRole('button', { name: 'Run 2 steps' }).click()
   await expect(page.locator('.run-summary')).toContainText('2 passed', { timeout: 10_000 })
-  await expect(row('login').locator('.step-status')).toHaveText(/^200/)
+  await expect(row('login').locator('.step-summary')).toHaveText(/^200 · \d+ ms$/)
+  // It has no tests, so nothing passed: no mark.
+  await expect(row('login').locator('.step-mark')).toHaveCount(0)
 
   // The others were not run.
   await filter.getByRole('button', { name: 'Clear' }).click()
   await expect(page.locator('.step-list li')).toHaveCount(3)
-  await expect(row('checkout').locator('.step-status')).toHaveText('—')
+  await expect(row('checkout').locator('.step-mark')).toHaveCount(0)
+  await expect(row('checkout').locator('.step-summary')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Run all' })).toBeVisible()
 })
 

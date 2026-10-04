@@ -93,7 +93,15 @@ test('results open in their own pane, and the editor steps aside for them', asyn
   await expect(testResults().locator('.test-results-summary')).toHaveText('2 of 6 failed')
   await expect(page.locator('.request-pane')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Show the request editor' })).toBeVisible()
-  await expect(page.locator('.step-status').first()).toHaveClass(/client/)
+  await expect(page.locator('.step-list .step-mark').first()).toHaveAccessibleName('failed')
+  await expect(page.locator('.step-list .step-summary').first()).toHaveText(/^200 · \d+ ms$/)
+  // Hovering the result says how many checks failed, and which.
+  await page.locator('.step-list .step-result').first().hover()
+  const tip = page.getByRole('tooltip')
+  await expect(tip.locator('.step-hover-title')).toHaveText('2 of 6 checks failed')
+  await expect(tip.locator('.step-hover-line')).toHaveText([/^✕ /, /^✕ /])
+  await page.mouse.move(0, 0)
+  await expect(tip).toHaveCount(0)
 })
 
 test('a failed assertion shows what it expected beside what came back', async () => {

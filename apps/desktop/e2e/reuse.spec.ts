@@ -123,8 +123,10 @@ test('Run all runs the set’s requests with the values given, sharing variables
   await page.getByRole('button', { name: 'Run all' }).click()
   await expect(page.locator('.run-summary')).toContainText('2 passed', { timeout: 10_000 })
   expect(received).toEqual(['/login/alice', '/me?token=tok'])
-  await expect(stepRow('Login').locator('.step-foot .step-status')).toHaveText('1 of 1 passed')
-  await expect(children('login').locator('.step-status')).toHaveText(['200'])
+  await expect(stepRow('Login').locator('.step-head .step-summary')).toHaveText('1 of 1 passed')
+  // Each request shows its status and time, and its verdict, as a step does.
+  await expect(children('login').locator('.step-summary')).toHaveText([/^200 · \d+ ms$/])
+  await expect(children('login').locator('.step-mark')).toHaveAccessibleName('passed')
 })
 
 test('selecting a use step shows its set and the values it passes', async () => {
@@ -148,9 +150,11 @@ test('selecting a use step shows its set and the values it passes', async () => 
 
   received = []
   await page.getByRole('button', { name: 'Run', exact: true }).click()
-  await expect(children('login').locator('.step-status')).toHaveText(['401'], { timeout: 10_000 })
+  await expect(children('login').locator('.step-summary')).toHaveText([/^401 · /], {
+    timeout: 10_000
+  })
   expect(received).toEqual(['/login/bad'])
-  await expect(stepRow('Login').locator('.step-foot .step-status')).toHaveText('1 of 1 passed')
+  await expect(stepRow('Login').locator('.step-head .step-summary')).toHaveText('1 of 1 passed')
 })
 
 test('a missing required value stops the step before anything is sent', async () => {
@@ -182,11 +186,18 @@ test('a new use step runs another set; each of its requests is shown on its own'
 
   received = []
   await page.getByRole('button', { name: 'Run', exact: true }).click()
-  await expect(children('orders').locator('.step-status')).toHaveText(['200', '200'], {
+  await expect(children('orders').locator('.step-summary')).toHaveText([/^200 · /, /^200 · /], {
     timeout: 10_000
   })
   expect(received).toEqual(['/cart/widget', '/checkout'])
-  await expect(stepRow('Orders').locator('.step-foot .step-status')).toHaveText('2 of 2 passed')
+  await expect(stepRow('Orders').locator('.step-head .step-summary')).toHaveText('2 of 2 passed')
+  // Only the last request has a check, the use step's own tests: only it is marked.
+  const marks = children('orders').locator('li')
+  await expect(marks.nth(0).locator('.step-mark')).toHaveCount(0)
+  await expect(marks.nth(1).locator('.step-mark')).toHaveAccessibleName('passed')
+  await marks.nth(1).locator('.step-result').hover()
+  await expect(page.getByRole('tooltip').locator('.step-hover-title')).toHaveText('1 check passed')
+  await page.mouse.move(0, 0)
 
   // The use step's own tests ran on the set's last request.
   await children('orders')

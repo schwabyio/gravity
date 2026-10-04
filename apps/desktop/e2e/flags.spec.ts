@@ -143,12 +143,15 @@ test('a step its flags skip is marked, and Run all does not send it', async () =
   await runAll()
   expect(seen.sort()).toEqual(['/always', '/new'])
   await expect(page.locator('.run-summary')).toContainText('1 skipped')
-  await expect(stepRow('old checkout').locator('.step-status')).toHaveText('skipped')
+  await expect(stepRow('old checkout').locator('.step-mark')).toHaveAccessibleName('skipped')
+  await expect(stepRow('old checkout').locator('.step-status')).toHaveText(
+    'skipped: feature flag newCheckout is on'
+  )
 
-  // Run on its own, it is skipped the same way, and the response pane says why.
+  // Sent on its own, it is skipped the same way, and the response pane says why.
   seen = []
-  await page.getByRole('button', { name: 'Run old checkout' }).click()
   await stepRow('old checkout').locator('.step-open').click()
+  await page.getByRole('button', { name: 'Send' }).click()
   await expect(page.locator('.placeholder.skipped')).toContainText(
     'feature flag newCheckout is on — nothing was sent'
   )

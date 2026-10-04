@@ -11,8 +11,14 @@ import {
 import type { RequestSetView } from '@shared/ipc.js'
 import { resolveSet } from '../reuse.js'
 import type { FlagState } from '../flagState.js'
-import { formatMs } from '../format.js'
 import { STEP_CHANGE_WORDS, type StepChange } from '../stepChanges.js'
+import {
+  MARK_GLYPHS,
+  MARK_NAMES,
+  stepOutcome,
+  type StepHover,
+  type StepOutcome
+} from '../stepOutcome.js'
 import Tooltip from './Tooltip.js'
 import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
@@ -39,8 +45,6 @@ interface Props {
   results: Record<number, RunResult>
   /** The step currently executing, during a run, if it is in this list. */
   runningIndex: number | null
-  /** A run is in flight, whichever list it is in: nothing else may start. */
-  busy: boolean
   /** Step indexes with unsaved edits. */
   draftIndexes: Set<number>
   /** What changed of each step since the last commit, by index; absent with nothing to compare. */
@@ -48,7 +52,6 @@ interface Props {
   /** How many of the last commit's steps of this list are gone. */
   removed?: number
   onSelect: (index: number) => void
-  onRun: (index: number) => void
   /** The buttons under the list that add steps. */
   adds: AddAction[]
   /** Request sets a use step can run. */
@@ -68,24 +71,10 @@ interface Props {
   flagStates?: Record<number, FlagState>
 }
 
-const statusClass = (result: RunResult): string => {
-  if (result.status === 'pass') return 'ok'
-  if (result.status === 'fail') return 'client'
-  if (result.status === 'skipped') return 'skipped'
-  return 'server'
-}
-
-/** A use step's status, from its requests': an error beats a failure beats a pass. */
-function setStatusClass(ran: RunResult[], count: number): string {
-  if (ran.some((result) => result.status === 'error')) return 'server'
-  if (ran.some((result) => result.status === 'fail')) return 'client'
-  return ran.length === count ? 'ok' : 'idle'
-}
-
 /**
- * The steps of a collection: each runnable on its own, and the place to add,
- * rename, duplicate, delete and reorder them — by drag, or from each step's
- * menu for the keyboard.
+ * The steps of a collection: each one's last result at a glance, and the
+ * place to add, rename, duplicate, delete and reorder them — by drag, or from
+ * each step's menu for the keyboard. A step runs on its own by Send.
  */
 export default function StepList(props: Props) {
   const [renaming, setRenaming] = useState<number | null>(null)
@@ -143,6 +132,14 @@ export default function StepList(props: Props) {
           const tags = props.showTags ? (step.tags ?? []) : []
 
           const change = props.changes?.[index] ?? null
+          // A use step's requests count first, then a forEach step's items, then its own result.
+          const outcome = stepOutcome({
+            running: isRunning,
+            result,
+            parts: ran.length > 0 ? ran : items,
+            expected: ran.length > 0 ? children.length : itemCount,
+            partsAre: ran.length > 0 ? 'request' : 'item'
+          })
           return (
             <li
               key={index}
@@ -179,51 +176,87 @@ export default function StepList(props: Props) {
                   title={STEP_CHANGE_WORDS[change]}
                 />
               )}
-              {renaming === index ? (
-                <RenameField
-                  initial={step.name ?? ''}
-                  placeholder={stepLabel(step)}
-                  onDone={(name) => {
-                    setRenaming(null)
-                    if (name !== null && name !== (step.name ?? '')) props.onRename(index, name)
-                  }}
-                />
-              ) : (
-                <button
-                  className="step-open"
-                  onClick={() => props.onSelect(index)}
-                  onDoubleClick={() => setRenaming(index)}
-                  title={url}
-                >
-                  <span className="step-seq">{index + 1}</span>
-                  <span className={`method m-${method.toLowerCase()}`}>{method}</span>
-                  <span className="step-name">
-                    {use && set && !use.name ? set.title : stepLabel(step)}
-                    {flagState && (
-                      <span
-                        className={`step-flag ${flagState.kind}`}
-                        title={
-                          flagState.kind === 'skip'
-                            ? `Skipped: ${flagState.reason}`
-                            : flagState.message
-                        }
-                        aria-label={
-                          flagState.kind === 'skip'
-                            ? `skipped: ${flagState.reason}`
-                            : `flag error: ${flagState.message}`
-                        }
-                      >
-                        {flagState.kind === 'skip' ? 'skipped' : 'flag?'}
-                      </span>
-                    )}
-                    {props.draftIndexes.has(index) && (
-                      <span className="step-dirty" title="Unsaved changes">
-                        •
-                      </span>
-                    )}
-                  </span>
-                </button>
-              )}
+              <div className="step-head">
+                {renaming === index ? (
+                  <RenameField
+                    initial={step.name ?? ''}
+                    placeholder={stepLabel(step)}
+                    onDone={(name) => {
+                      setRenaming(null)
+                      if (name !== null && name !== (step.name ?? '')) props.onRename(index, name)
+                    }}
+                  />
+                ) : (
+                  <button
+                    className="step-open"
+                    onClick={() => props.onSelect(index)}
+                    onDoubleClick={() => setRenaming(index)}
+                    title={url}
+                  >
+                    <span className="step-seq">{index + 1}</span>
+                    <span className={`method m-${method.toLowerCase()}`}>{method}</span>
+                    <span className="step-name">
+                      {use && set && !use.name ? set.title : stepLabel(step)}
+                      {flagState && (
+                        <span
+                          className={`step-flag ${flagState.kind}`}
+                          title={
+                            flagState.kind === 'skip'
+                              ? `Skipped: ${flagState.reason}`
+                              : flagState.message
+                          }
+                          aria-label={
+                            flagState.kind === 'skip'
+                              ? `skipped: ${flagState.reason}`
+                              : `flag error: ${flagState.message}`
+                          }
+                        >
+                          {flagState.kind === 'skip' ? 'skipped' : 'flag?'}
+                        </span>
+                      )}
+                      {props.draftIndexes.has(index) && (
+                        <span className="step-dirty" title="Unsaved changes">
+                          •
+                        </span>
+                      )}
+                    </span>
+                    <StepResult outcome={outcome} />
+                  </button>
+                )}
+                <span className="step-menu-wrap">
+                  <button
+                    type="button"
+                    className="step-menu-button"
+                    aria-label={`More actions for ${stepLabel(step)}`}
+                    aria-haspopup="menu"
+                    aria-expanded={menu === index}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (menu !== index) menus.opened()
+                      setMenu(menu === index ? null : index)
+                    }}
+                  >
+                    ⋯
+                  </button>
+                  {menu === index && (
+                    <div className="step-menu" role="menu">
+                      <MenuItem label="Rename" onClick={() => setRenaming(index)} />
+                      <MenuItem label="Duplicate" onClick={() => props.onDuplicate(index)} />
+                      <MenuItem
+                        label="Move up"
+                        disabled={index === 0}
+                        onClick={() => props.onMove(index, index - 1)}
+                      />
+                      <MenuItem
+                        label="Move down"
+                        disabled={index === count - 1}
+                        onClick={() => props.onMove(index, index + 1)}
+                      />
+                      <MenuItem label="Delete" danger onClick={() => confirmDelete(index)} />
+                    </div>
+                  )}
+                </span>
+              </div>
               {tags.length > 0 && (
                 <div className="step-tags">
                   {tags.map((tag) => (
@@ -233,79 +266,13 @@ export default function StepList(props: Props) {
                   ))}
                 </div>
               )}
-
-              <div className="step-foot">
-                <Tooltip text="Run this step on its own, with a fresh variable scope">
-                  <button
-                    className="step-run"
-                    onClick={() => props.onRun(index)}
-                    disabled={props.busy}
-                    aria-label={`Run ${stepLabel(step)}`}
-                  >
-                    ▶
-                  </button>
-                </Tooltip>
-
-                {isRunning ? (
-                  <span className="step-status running">running…</span>
-                ) : ran.length > 0 ? (
-                  <span className={`step-status ${setStatusClass(ran, children.length)}`}>
-                    {`${ran.filter((child) => child.status === 'pass').length} of ${children.length} passed`}
+              {outcome.detail !== null && (
+                <div className="step-foot">
+                  <span className="step-status" title={outcome.detail}>
+                    {outcome.detail}
                   </span>
-                ) : items.length > 0 ? (
-                  <span
-                    className={`step-status ${setStatusClass(items, itemCount)}`}
-                    title={`One request for each of ${itemCount} item${itemCount === 1 ? '' : 's'}`}
-                  >
-                    {`${items.filter((item) => item.status === 'pass').length} of ${itemCount} passed`}
-                  </span>
-                ) : result ? (
-                  <span
-                    className={`step-status ${statusClass(result)}`}
-                    title={result.skipped?.reason ?? result.error?.message}
-                  >
-                    {result.response
-                      ? `${result.response.status} · ${formatMs(result.durationMs)}`
-                      : result.skipped
-                        ? 'skipped'
-                        : (result.error?.message ?? 'failed')}
-                  </span>
-                ) : (
-                  <span className="step-status idle">—</span>
-                )}
-
-                <button
-                  type="button"
-                  className="step-menu-button"
-                  aria-label={`More actions for ${stepLabel(step)}`}
-                  aria-haspopup="menu"
-                  aria-expanded={menu === index}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    if (menu !== index) menus.opened()
-                    setMenu(menu === index ? null : index)
-                  }}
-                >
-                  ⋯
-                </button>
-                {menu === index && (
-                  <div className="step-menu" role="menu">
-                    <MenuItem label="Rename" onClick={() => setRenaming(index)} />
-                    <MenuItem label="Duplicate" onClick={() => props.onDuplicate(index)} />
-                    <MenuItem
-                      label="Move up"
-                      disabled={index === 0}
-                      onClick={() => props.onMove(index, index - 1)}
-                    />
-                    <MenuItem
-                      label="Move down"
-                      disabled={index === count - 1}
-                      onClick={() => props.onMove(index, index + 1)}
-                    />
-                    <MenuItem label="Delete" danger onClick={() => confirmDelete(index)} />
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {use && (
                 <ol className="use-children" aria-label={`Requests of ${stepLabel(step)}`}>
@@ -317,6 +284,13 @@ export default function StepList(props: Props) {
                   {set?.steps.map((child, number) => {
                     const childResult = children[number]
                     const shown = index === props.selectedIndex && number === props.selectedChild
+                    // A run clears its step's results first, so the first without one is running.
+                    const childOutcome = stepOutcome({
+                      running: isRunning && number === children.indexOf(undefined),
+                      result: childResult,
+                      parts: [],
+                      expected: 0
+                    })
                     return (
                       <li key={number} className={shown ? 'shown' : ''}>
                         <button
@@ -328,13 +302,8 @@ export default function StepList(props: Props) {
                             {child.method}
                           </span>
                           <span className="use-child-name">{child.label}</span>
-                          {childResult && (
-                            <span className={`step-status ${statusClass(childResult)}`}>
-                              {childResult.response
-                                ? String(childResult.response.status)
-                                : childResult.status}
-                            </span>
-                          )}
+                          {/* No line under it: an error or a skip's reason is on hover. */}
+                          <StepResult outcome={childOutcome} />
                         </button>
                       </li>
                     )
@@ -373,6 +342,60 @@ export default function StepList(props: Props) {
         })}
       </div>
     </div>
+  )
+}
+
+/** A step's result, explained on hover: how many of its checks passed, and which failed. */
+/**
+ * A step's last run, at the end of its line: its status and time, then its
+ * verdict, explained on hover. Nothing before it has run.
+ */
+function StepResult({ outcome }: { outcome: StepOutcome }) {
+  if (outcome.summary === null && outcome.mark === null) return null
+  return (
+    <ResultHover hover={outcome.hover}>
+      {/* An empty title keeps the row's own, its URL, from showing too. */}
+      <span className="step-result" title="">
+        {outcome.summary !== null && <span className="step-summary">{outcome.summary}</span>}
+        {outcome.mark ? (
+          <span
+            className={`step-mark ${outcome.mark}`}
+            role="img"
+            aria-label={MARK_NAMES[outcome.mark]}
+          >
+            {MARK_GLYPHS[outcome.mark]}
+          </span>
+        ) : (
+          // No verdict, its place kept, so statuses and times line up down the list.
+          <span className="step-mark-space" />
+        )}
+      </span>
+    </ResultHover>
+  )
+}
+
+function ResultHover(props: {
+  hover: StepHover | null
+  children: React.ReactElement<Record<string, unknown>>
+}) {
+  if (!props.hover) return props.children
+  const { title, lines } = props.hover
+  return (
+    <Tooltip
+      wide
+      text={
+        <>
+          <strong className="step-hover-title">{title}</strong>
+          {lines.map((line, index) => (
+            <span key={index} className="step-hover-line">
+              {line}
+            </span>
+          ))}
+        </>
+      }
+    >
+      {props.children}
+    </Tooltip>
   )
 }
 

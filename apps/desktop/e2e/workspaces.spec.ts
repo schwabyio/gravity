@@ -305,34 +305,41 @@ test('selecting another step swaps the editor without leaving the list', async (
 })
 
 /**
- * A settled status: neither the idle dash nor the transient `running…`.
+ * A settled verdict, not the transient `running`.
  *
- * Asserting only "not —" passes the moment the run starts, which leaves the run
- * in flight and races whatever the next test does.
+ * Asserting only that a mark is there passes the moment the run starts, which
+ * leaves the run in flight and races whatever the next test does.
  */
-const SETTLED = /^(?!—$|running…$).+/
+const SETTLED = /^(passed|failed|error|skipped)$/
 
-test('a step can be run on its own, and shows its result in the list', async () => {
+test('a step sent on its own shows its result in the list', async () => {
   const row = page.locator('.step-list li', { hasText: 'create-session' })
-  await expect(row.locator('.step-status')).toHaveText('—')
+  // Nothing under a step that has not run.
+  await expect(row.locator('.step-mark')).toHaveCount(0)
+  await expect(row.locator('.step-summary')).toHaveCount(0)
+  await expect(row.locator('.step-status')).toHaveCount(0)
 
-  await row.getByRole('button', { name: /^Run / }).click()
+  await openStep('create-session')
+  await page.getByRole('button', { name: 'Send' }).click()
   // The port is closed, so this reports an error rather than a status code.
-  await expect(row.locator('.step-status')).toHaveText(SETTLED, { timeout: 20_000 })
-  // Only the step that was run has a result.
+  await expect(row.locator('.step-mark')).toHaveAccessibleName('error', { timeout: 20_000 })
+  // With no response, no status or time beside the mark, and the reason under the name.
+  await expect(row.locator('.step-summary')).toHaveCount(0)
+  await expect(row.locator('.step-status')).toHaveText('ECONNREFUSED')
+  // Only the step that was sent has a result.
   await expect(
-    page.locator('.step-list li', { hasText: 'capture' }).locator('.step-status')
-  ).toHaveText('—')
+    page.locator('.step-list li', { hasText: 'capture' }).locator('.step-mark')
+  ).toHaveCount(0)
 })
 
 test('Run all runs every step and reports a summary', async () => {
   await page.getByRole('button', { name: 'Run all' }).click()
 
   await expect(page.locator('.run-summary')).toBeVisible({ timeout: 30_000 })
-  const statuses = page.locator('.step-list .step-status')
-  await expect(statuses).toHaveCount(2)
-  for (const status of await statuses.all()) {
-    await expect(status).toHaveText(SETTLED, { timeout: 20_000 })
+  const marks = page.locator('.step-list .step-mark')
+  await expect(marks).toHaveCount(2)
+  for (const mark of await marks.all()) {
+    await expect(mark).toHaveAttribute('aria-label', SETTLED, { timeout: 20_000 })
   }
 })
 

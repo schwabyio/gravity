@@ -120,7 +120,7 @@ test('double-clicking a divider resets it', async () => {
   expect(await widthOf(sidebar())).toBe(300)
 
   await stepsHandle().dblclick()
-  expect(await widthOf(stepsColumn())).toBe(260)
+  expect(await widthOf(stepsColumn())).toBe(320)
 })
 
 test('reports its size to assistive technology', async () => {
