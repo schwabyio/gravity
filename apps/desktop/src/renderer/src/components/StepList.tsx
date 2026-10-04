@@ -12,6 +12,7 @@ import type { RequestSetView } from '@shared/ipc.js'
 import { resolveSet } from '../reuse.js'
 import type { FlagState } from '../flagState.js'
 import { STEP_CHANGE_WORDS, type StepChange } from '../stepChanges.js'
+import { movedTo, type StepDrop } from '../stepDrop.js'
 import {
   MARK_GLYPHS,
   MARK_NAMES,
@@ -80,7 +81,8 @@ export default function StepList(props: Props) {
   const [renaming, setRenaming] = useState<number | null>(null)
   const [menu, setMenu] = useState<number | null>(null)
   const [dragging, setDragging] = useState<number | null>(null)
-  const [dropAt, setDropAt] = useState<number | null>(null)
+  /** Where a drag would put its step: before or after the step under the pointer. */
+  const [dropAt, setDropAt] = useState<StepDrop | null>(null)
   const count = props.steps.length
 
   // A click anywhere else, or another menu opening, closes an open step menu.
@@ -125,7 +127,11 @@ export default function StepList(props: Props) {
             flagState?.kind === 'skip' ? 'flag-skipped' : '',
             flagState?.kind === 'error' ? 'flag-error' : '',
             dragging === index ? 'dragging' : '',
-            dropAt === index && dragging !== null && dragging !== index ? 'drop-before' : ''
+            dropAt?.index === index && dragging !== null && movedTo(dragging, dropAt) !== dragging
+              ? dropAt.after
+                ? 'drop-after'
+                : 'drop-before'
+              : ''
           ]
 
           if (!props.visible.has(index)) return null
@@ -153,12 +159,16 @@ export default function StepList(props: Props) {
               onDragOver={(event) => {
                 if (dragging === null) return
                 event.preventDefault()
-                setDropAt(index)
+                // The lower half of a step drops after it: the only way to the end of the list.
+                const { top, height } = event.currentTarget.getBoundingClientRect()
+                const after = event.clientY > top + height / 2
+                if (dropAt?.index !== index || dropAt.after !== after) setDropAt({ index, after })
               }}
               onDrop={(event) => {
                 event.preventDefault()
-                if (dragging !== null && dragging !== index) {
-                  props.onMove(dragging, dragging < index ? index - 1 : index)
+                if (dragging !== null && dropAt) {
+                  const to = movedTo(dragging, dropAt)
+                  if (to !== dragging) props.onMove(dragging, to)
                 }
                 setDragging(null)
                 setDropAt(null)

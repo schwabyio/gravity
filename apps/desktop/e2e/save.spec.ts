@@ -169,12 +169,20 @@ test('steps can be added, renamed, duplicated, moved and deleted', async () => {
   expect(saved.indexOf('- name: search')).toBeLessThan(saved.indexOf('- name: create'))
   expect(saved.indexOf('- name: remove')).toBeGreaterThan(saved.indexOf('- name: create'))
 
-  // Drag reorders too.
-  await step('remove').dragTo(step('list'))
+  // Drag reorders too: dropped on the top half of a step, before it.
+  await step('remove').dragTo(step('list'), { targetPosition: { x: 40, y: 4 } })
   await expect(stepNames()).toHaveText(['remove', 'list', 'search', 'create'])
   await expect
     .poll(() => onDisk().indexOf('- name: remove'))
     .toBeLessThan(onDisk().indexOf('- name: list'))
+
+  // On the bottom half, after it: the only way to the end of the list.
+  const last = await step('create').boundingBox()
+  await step('remove').dragTo(step('create'), { targetPosition: { x: 40, y: last!.height - 4 } })
+  await expect(stepNames()).toHaveText(['list', 'search', 'create', 'remove'])
+  await expect
+    .poll(() => onDisk().indexOf('- name: remove'))
+    .toBeGreaterThan(onDisk().indexOf('- name: create'))
 
   reset()
   await expect(stepNames()).toHaveText(['list', 'create', 'remove'], { timeout: 15_000 })
