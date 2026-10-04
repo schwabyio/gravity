@@ -1120,22 +1120,15 @@ export default function App() {
               environments={environments}
               selected={selectedEnvironment}
               onChange={chooseEnvironment}
+              onEdit={() => setEnvironmentsOpen(true)}
+              pending={environmentEditor.anyPending}
             />
           )}
-          {open && (
-            <Tooltip text="Edit environments: their names and variables">
-              <button
-                type="button"
-                className="env-edit"
-                onClick={() => setEnvironmentsOpen(true)}
-                aria-label="Edit environments"
-              >
-                {environments.length === 0 ? '+ Environment' : 'Edit'}
-                {environmentEditor.anyPending && (
-                  <span className="step-dirty" title="Unsaved changes">
-                    •
-                  </span>
-                )}
+          {/* With none yet there is no list to edit them from. */}
+          {open && environments.length === 0 && (
+            <Tooltip text="Add an environment: a named set of variables to run with">
+              <button type="button" className="env-edit" onClick={() => setEnvironmentsOpen(true)}>
+                + Environment
               </button>
             </Tooltip>
           )}

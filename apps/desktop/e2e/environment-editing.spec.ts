@@ -87,6 +87,17 @@ const send = async () => {
   await expect(page.locator('.status-pill')).toContainText('200')
 }
 
+test('the pencil beside the list opens the drawer, and the list holds only environments', async () => {
+  await expect(picker().locator('option')).toHaveText(['No environment', 'demo'])
+  const pencil = page.locator('.env-picker').getByRole('button', { name: 'Edit environments' })
+  await pencil.hover()
+  await expect(page.getByRole('tooltip')).toHaveText('Edit environments: their names and variables')
+  await pencil.click()
+  await expect(drawer()).toBeVisible()
+  await drawer().getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(picker()).toHaveValue('demo')
+})
+
 test('the drawer shows each environment’s variables, a secret without a value', async () => {
   await page.getByRole('button', { name: 'Edit environments' }).click()
   await expect(listed().getByRole('button')).toHaveText(['demo', '+ New environment'])
@@ -168,7 +179,9 @@ test('with auto save off, a send uses the environment as edited', async () => {
   await drawer().getByLabel('Value of path').fill('unsaved')
   await expect(drawer().locator('.save-status')).toContainText('1 unsaved change')
   await drawer().getByRole('button', { name: 'Close', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Edit environments' })).toContainText('•')
+  // The pencil says so, until saved.
+  const pencil = page.getByRole('button', { name: 'Edit environments (unsaved changes)' })
+  await expect(pencil.locator('.env-pending')).toBeVisible()
 
   await send()
   expect(received).toEqual(['/unsaved'])
@@ -176,6 +189,8 @@ test('with auto save off, a send uses the environment as edited', async () => {
 
   await page.keyboard.press('ControlOrMeta+s')
   await expect.poll(() => onDisk('staging-eu.yml'), { timeout: 5_000 }).toContain('path: unsaved')
+  await expect(pencil).toHaveCount(0)
+  await expect(page.locator('.env-pending')).toHaveCount(0)
 })
 
 test('deleting the chosen environment removes its file and the choice', async () => {
@@ -191,4 +206,21 @@ test('deleting the chosen environment removes its file and the choice', async ()
   expect(fs.existsSync(file('staging-eu.yml'))).toBe(false)
   await drawer().getByRole('button', { name: 'Close', exact: true }).click()
   await expect(picker()).toHaveValue('')
+})
+
+test('with none left, + Environment opens the drawer, and the first made brings the list back', async () => {
+  await page.getByRole('button', { name: 'Edit environments' }).click()
+  page.once('dialog', (dialog) => void dialog.accept())
+  await drawer().getByRole('button', { name: 'Delete' }).click()
+  await expect(drawer()).toContainText('No environments yet')
+  await drawer().getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(picker()).toHaveCount(0)
+
+  // The drawer opens ready to name the first.
+  await page.getByRole('button', { name: '+ Environment' }).click()
+  await drawer().getByLabel('New environment name').fill('local')
+  await drawer().getByRole('button', { name: 'Create' }).click()
+  await drawer().getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(page.getByRole('button', { name: '+ Environment' })).toHaveCount(0)
+  await expect(picker().locator('option')).toHaveText(['No environment', 'local'])
 })

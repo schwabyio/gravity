@@ -4080,6 +4080,38 @@ button.tag.filter.on {
 
 /* ---------- environments drawer ---------- */
 
+/* The pencil beside the environment list, as the app bar's gear is drawn. */
+.app-bar .env-edit-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  -webkit-app-region: no-drag;
+}
+
+.app-bar .env-edit-icon:hover {
+  background: var(--surface-alt);
+  color: var(--accent);
+}
+
+/* On the pencil's corner, clear of its tip: edits to the environments not saved yet. */
+.env-pending {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--redirect);
+}
+
 .env-edit {
   display: inline-flex;
   align-items: center;
