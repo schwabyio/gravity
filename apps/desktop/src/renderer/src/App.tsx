@@ -15,6 +15,7 @@ import {
   type VariablePreviews
 } from '@schwabyio/gravity-core/model'
 import type {
+  CheckFileView,
   ConnectionView,
   EndpointView,
   LibraryFileView,
@@ -71,6 +72,7 @@ const NO_FLAGS = {}
 const NO_SETS: RequestSetView[] = []
 const NO_ENDPOINTS: EndpointView[] = []
 const NO_BASES: LibraryFileView[] = []
+const NO_CHECK_FILES: CheckFileView[] = []
 const NO_CONNECTIONS: ConnectionView[] = []
 
 /** A failed call's message, or null — what the sidebar's name forms show. */
@@ -1393,6 +1395,7 @@ export default function App() {
                   onEditCollectionHeaders={() => setCollectionSettingsOpen('headers')}
                   onEditCollectionScript={setCollectionSettingsOpen}
                   bases={activeProject?.bases ?? NO_BASES}
+                  checkFiles={activeProject?.checkFiles ?? NO_CHECK_FILES}
                   onOpenBase={openLibraryFile}
                   onChange={editor.patch}
                   previews={shownPreviews}

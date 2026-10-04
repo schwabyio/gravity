@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AssertionResult } from '@schwabyio/gravity-core/model'
-import { checkLines } from './checkLines.js'
+import { checkLines, madeIn } from './checkLines.js'
 
 const made = (
   name: string,
@@ -58,6 +58,15 @@ describe('checkLines', () => {
       { line: 1, status: 'ignored', title: '– subAccounts ignored', failures: [] },
       { line: 2, status: 'pass', title: '✓ id.value is "a"\n– extra ignored', failures: [] }
     ])
+  })
+
+  it('marks a check file by its own lines, and its caller by the calling line', () => {
+    const fromFile = made('id is 7', 'pass', 2, {
+      source: { script: 'step', line: 2, check: { file: 'checks/common.js', line: 3 } }
+    })
+    expect(checkLines([fromFile], { file: 'checks/common.js' }).map((l) => l.line)).toEqual([3])
+    expect(checkLines([fromFile], 'step').map((l) => l.line)).toEqual([2])
+    expect(madeIn([fromFile], { file: 'checks/other.js' })).toEqual([])
   })
 
   it('leaves out checks other scripts made, and those no line made', () => {

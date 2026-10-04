@@ -155,7 +155,7 @@ function folded(layers: Layer[], collection: Collection | undefined): Collection
 /** How a run names each layer: in stack traces, results and messages. */
 const ROLES: Record<LayerKind, Pick<Layer, 'script' | 'label' | 'defaults'>> = {
   // An endpoint base's checks are defaults: the step's own of the same thing replace them.
-  'endpoint-file': { script: 'endpoint', label: 'endpoint file', defaults: true },
+  'endpoint-file': { script: 'endpoint-file', label: 'endpoint file', defaults: true },
   endpoint: { script: 'endpoint', label: 'endpoint', defaults: true },
   base: { script: 'base', label: 'base' },
   collection: { script: 'collection', label: 'collection' },
@@ -473,26 +473,30 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       const pending: Promise<unknown>[] = []
       const filename = filenameOf(layer, 'tests')
       const run = () =>
-        session.madeBy(layer.script, filename, () =>
-          runScript(code, {
-            phase: 'tests',
-            filename,
-            logs,
-            ...(checks ? { checks } : {}),
-            pending: () => pending,
-            globals: (adopt) => ({
-              ...shared(adopt, index),
-              gta: testsGta({
-                session,
-                scope,
-                pending,
-                control,
-                warn: (message) => logs.push({ level: 'warn', phase: 'tests', message })
-              }),
-              req: requestView(outcome.request, adopt),
-              res: responseView(response, adopt)
-            })
-          })
+        session.madeBy(
+          layer.script,
+          filename,
+          () =>
+            runScript(code, {
+              phase: 'tests',
+              filename,
+              logs,
+              ...(checks ? { checks } : {}),
+              pending: () => pending,
+              globals: (adopt) => ({
+                ...shared(adopt, index),
+                gta: testsGta({
+                  session,
+                  scope,
+                  pending,
+                  control,
+                  warn: (message) => logs.push({ level: 'warn', phase: 'tests', message })
+                }),
+                req: requestView(outcome.request, adopt),
+                res: responseView(response, adopt)
+              })
+            }),
+          (checks ?? []).map((file) => file.filename)
         )
       // An endpoint base's checks are defaults: the step's own replace them.
       const scriptError = layer.defaults ? await session.asDefaults(run) : await run()

@@ -192,9 +192,23 @@ function toRunError(cause: unknown, phase: RunError['phase'], filename: string):
  * `collection tests`.
  */
 export function scriptLine(stack: string, filename: string): number | undefined {
-  const escaped = filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = new RegExp(`(?:^|\\(|\\bat (?:async )?)${escaped}:(\\d+)`, 'm').exec(stack)
-  return match ? Number(match[1]) : undefined
+  return innermostFrame(stack, [filename])?.line
+}
+
+/** The frame nearest the top of a stack in any of these files: which, and its line. */
+export function innermostFrame(
+  stack: string,
+  filenames: readonly string[]
+): { filename: string; line: number } | undefined {
+  let found: { filename: string; line: number; at: number } | undefined
+  for (const filename of filenames) {
+    const escaped = filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const match = new RegExp(`(?:^|\\(|\\bat (?:async )?)${escaped}:(\\d+)`, 'm').exec(stack)
+    if (match && (!found || match.index < found.at)) {
+      found = { filename, line: Number(match[1]), at: match.index }
+    }
+  }
+  return found && { filename: found.filename, line: found.line }
 }
 
 const LOG_LIMIT = 500

@@ -72,6 +72,11 @@ test.beforeAll(async () => {
     'before:',
     "  script: gta.set('fromBase', 'yes')"
   ])
+  write('checks/ids.js', [
+    'export function same(id) {',
+    "  gta.expectResponseBodyToHaveProperty('id', id)",
+    '}'
+  ])
   write('collections/users.yml', [
     'id: users',
     'extends: auth',
@@ -91,7 +96,8 @@ test.beforeAll(async () => {
     '  - name: with key',
     '    GET: "{{baseUrl}}/users/7"',
     '    headers:',
-    "      X-Api-Key: '{{apiKey}}'"
+    "      X-Api-Key: '{{apiKey}}'",
+    "    tests: checks.ids.same('7')"
   ])
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: shop, stdio: 'pipe' })
 
@@ -219,6 +225,48 @@ test('the Pre-request and Tests tabs list the scripts that run first, in order',
     drawer.getByRole('textbox', { name: 'Collection pre-request script' })
   ).toContainText("gta.set('fromCollection', 'yes')")
   await drawer.getByRole('button', { name: 'Close', exact: true }).click()
+})
+
+test('the shared scripts show their code, marked by a send, and the results say where each check came from', async () => {
+  await openStep('with key')
+  await scriptTab('Tests').click()
+  const tests = page.getByRole('note', { name: 'Tests before this step’s' })
+  const files = page.getByRole('note', { name: 'Check files called' })
+  await expect(files.locator('li')).toHaveText(['checks/ids.js'])
+  // Folded to a line until opened: the code is there to read.
+  const collection = tests.locator('li', { hasText: 'the collection’s' })
+  await collection.locator('.shared-script-toggle').click()
+  await expect(collection.getByRole('textbox')).toContainText(
+    'gta.expectResponseStatusCodeToBe(200)'
+  )
+
+  // Its key comes from the environment.
+  await page.getByLabel('Environment', { exact: true }).selectOption('local')
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page.locator('.status-pill')).toContainText('200')
+  // The collection's status check stood in for the endpoint's, so only it made one.
+  await expect(collection.locator('.script-chip')).toHaveText('✓ 1')
+  await expect(collection.locator('.cm-check-mark')).toHaveText(['✓'])
+  await expect(
+    tests.locator('li', { hasText: 'the endpoint’s' }).locator('.script-chip')
+  ).toHaveCount(0)
+  // The check file says what it checked, on its own line, and the step's line that called it.
+  const ids = files.locator('li')
+  await expect(ids.locator('.script-chip')).toHaveText('✓ 1')
+  await ids.locator('.shared-script-toggle').click()
+  await expect(ids.locator('.cm-check-mark')).toHaveText(['✓'])
+  await expect(ids.locator('.cm-check-gutter .cm-gutterElement').nth(2)).toHaveText('✓')
+  await expect(
+    page.locator('.scripts-pane .code-editor:not(.read-only) .cm-check-mark')
+  ).toHaveText(['✓'])
+
+  const results = page.locator('.test-results')
+  await expect(
+    results.locator('.check', { hasText: 'Status is 200' }).locator('.check-source')
+  ).toHaveText(['collection'])
+  await expect(
+    results.locator('.check', { hasText: 'id is "7"' }).locator('.check-source')
+  ).toHaveText(['checks/ids.js'])
 })
 
 test('a result shows the request as sent: every header, resolved, and a secret hidden', async () => {

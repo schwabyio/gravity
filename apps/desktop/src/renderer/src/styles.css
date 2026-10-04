@@ -438,8 +438,53 @@ button:disabled {
   padding-left: 20px;
 }
 
-.collection-script-note li.unused {
+.collection-script-note li.unused .shared-script-toggle {
   text-decoration: line-through;
+}
+
+/* The scripts around a step's own, each folded to a line until opened. */
+.shared-scripts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.collection-script-note li + li {
+  margin-top: 2px;
+}
+
+.shared-script-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shared-script-toggle {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: left;
+}
+
+.shared-script-toggle::before {
+  content: '▸';
+  display: inline-block;
+  width: 12px;
+  color: var(--text-dim);
+}
+
+.shared-script-toggle[aria-expanded='true']::before {
+  content: '▾';
+}
+
+.shared-script-toggle:hover {
+  color: var(--text);
+}
+
+.collection-script-note .code-editor {
+  margin: 4px 0 6px;
 }
 
 /* Which layer a heading or a line is about: users.yml, GET /users/{id}, auth. */
@@ -2826,6 +2871,21 @@ button.status-pill.focused {
 .code-editor {
   flex: 1;
   min-height: 220px;
+}
+
+/* A script shown from elsewhere: as tall as its lines, up to a point, then it scrolls. */
+.code-editor.read-only {
+  flex: none;
+  min-height: 0;
+}
+
+.code-editor.read-only .cm-editor {
+  height: auto;
+  max-height: 240px;
+}
+
+.code-editor.read-only .cm-scroller {
+  min-height: 0;
 }
 
 .script-error {
@@ -5751,4 +5811,26 @@ button.console-line:hover {
 .check.ignored .check-icon,
 .check.ignored .check-name {
   color: var(--text-dim);
+}
+
+/* Where a check came from, when not the step's own script: `collection`, `checks/common.js`. */
+.check-head:has(.check-sources) {
+  flex-wrap: wrap;
+}
+
+.check-sources {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.check-source {
+  white-space: nowrap;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--surface-alt);
+  color: var(--text-dim);
+  font-family: system-ui, sans-serif;
+  font-size: 10.5px;
+  line-height: 16px;
 }

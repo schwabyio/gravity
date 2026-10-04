@@ -169,6 +169,12 @@ describe('a request under its endpoint’s base', () => {
     expect(
       result?.assertions.map((assertion) => `${assertion.target}:${assertion.path ?? ''}`)
     ).toEqual(['header:content-type', 'status:', 'body:id'])
+    // Each says whose script made it: the endpoints file's own tests, then the endpoint's.
+    expect(result?.assertions.map((assertion) => assertion.source)).toEqual([
+      { script: 'endpoint-file', line: 1 },
+      { script: 'endpoint', line: 1 },
+      { script: 'endpoint', line: 2 }
+    ])
   })
 
   it('lets a step’s own check replace the base’s check of the same thing', async () => {

@@ -87,19 +87,38 @@ export const ReceivedResponseSchema = z.object({
 export type ReceivedResponse = z.infer<typeof ReceivedResponseSchema>
 
 /**
- * Whose script something came from: an endpoint base's, the base collection's,
- * the collection's, the request set's, the step's own, or the tests on the use
- * step that ran the set.
+ * Whose script something came from: an endpoints file's own, an endpoint
+ * base's, the base collection's, the collection's, the request set's, the
+ * step's own, or the tests on the use step that ran the set.
  */
-export const ScriptOwnerSchema = z.enum(['endpoint', 'base', 'collection', 'set', 'step', 'use'])
+export const ScriptOwnerSchema = z.enum([
+  'endpoint-file',
+  'endpoint',
+  'base',
+  'collection',
+  'set',
+  'step',
+  'use'
+])
 export type ScriptOwner = z.infer<typeof ScriptOwnerSchema>
 
 /**
  * Where a script made a check, or ignored a property: whose `tests`, and the
  * line there, 1-based. The innermost line of that script on the stack, so a
- * check a check file makes is the line that called it.
+ * check a check file makes is the line that called it; `check` is then the
+ * check file's own line that made it.
  */
-export const ScriptSourceSchema = z.object({ script: ScriptOwnerSchema, line: z.number() })
+export const ScriptSourceSchema = z.object({
+  script: ScriptOwnerSchema,
+  line: z.number(),
+  check: z
+    .object({
+      /** As a stack names it: relative to the project, `checks/pagination.js`. */
+      file: z.string(),
+      line: z.number()
+    })
+    .optional()
+})
 export type ScriptSource = z.infer<typeof ScriptSourceSchema>
 
 /** `custom` is a named check from `gta.test()` in a step's `tests`. */

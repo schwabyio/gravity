@@ -1,7 +1,7 @@
 import { bodyAsObject } from '../model/bodyObject.js'
 import { formatPath, parsePath, sortArraysBy } from '../model/path.js'
 import type { AssertionResult, IgnoredPath, ScriptOwner } from '../model/run.js'
-import { scriptLine } from '../runtime/sandbox.js'
+import { innermostFrame, scriptLine } from '../runtime/sandbox.js'
 import {
   checkBody,
   checkScalarTarget,
@@ -42,17 +42,24 @@ export class CheckSession {
   }> = []
   /** Items of each array unordered checks matched, by the array's path. */
   private readonly claims = new Map<string, Set<number>>()
-  /** The script running now, whose lines each check it makes is noted against. */
-  private running: { script: ScriptOwner; filename: string } | undefined
+  /** The script running now, whose lines each check it makes is noted against, and its check files. */
+  private running:
+    { script: ScriptOwner; filename: string; checkFiles: readonly string[] } | undefined
 
   constructor(private readonly context: CheckContext) {}
 
   /**
    * Note each check `run` makes against the line of `script` that made it,
-   * found by its `filename` on the stack, so the app can mark the line.
+   * found by its `filename` on the stack, so the app can mark the line — and,
+   * for a check one of `checkFiles` made, that file's own line too.
    */
-  async madeBy<T>(script: ScriptOwner, filename: string, run: () => Promise<T>): Promise<T> {
-    this.running = { script, filename }
+  async madeBy<T>(
+    script: ScriptOwner,
+    filename: string,
+    run: () => Promise<T>,
+    checkFiles: readonly string[] = []
+  ): Promise<T> {
+    this.running = { script, filename, checkFiles }
     try {
       return await run()
     } finally {
@@ -69,7 +76,13 @@ export class CheckSession {
     const stack = new Error().stack ?? ''
     Error.stackTraceLimit = limit
     const line = scriptLine(stack, this.running.filename)
-    return line === undefined ? undefined : { script: this.running.script, line }
+    if (line === undefined) return undefined
+    const check = innermostFrame(stack, this.running.checkFiles)
+    return {
+      script: this.running.script,
+      line,
+      ...(check ? { check: { file: check.filename, line: check.line } } : {})
+    }
   }
 
   /** Turn strict validation on or off. The last word wins. */

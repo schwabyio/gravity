@@ -753,6 +753,8 @@ export class ProjectService {
             : undefined)
       })),
       checks: checks.map((check) => check.name),
+      // A file of the global project's lies outside this one: its path climbs out.
+      checkFiles: checks.map((check) => ({ ...check, shared: check.filename.startsWith('../') })),
       endpointFiles: endpointFiles.map((file) => libraryFile(file, endpointProblem)),
       endpoints: endpoints.map((endpoint) => ({
         method: endpoint.method,
@@ -1306,6 +1308,7 @@ const placeholder = (entry: ProjectEntry, workspaceId: string): ProjectView => (
   environments: [],
   requestSets: [],
   checks: [],
+  checkFiles: [],
   endpointFiles: [],
   endpoints: [],
   bases: [],

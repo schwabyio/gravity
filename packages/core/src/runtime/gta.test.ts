@@ -1253,7 +1253,8 @@ describe('where each check was made', () => {
     expect(result.error).toBeNull()
     expect(lines(result)).toEqual([
       { script: 'step', line: 1 },
-      { script: 'step', line: 2 }
+      // The line that called it, and the check file's own line that made it.
+      { script: 'step', line: 2, check: { file: 'checks/common.js', line: 2 } }
     ])
   })
 

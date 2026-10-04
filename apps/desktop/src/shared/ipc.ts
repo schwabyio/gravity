@@ -307,6 +307,16 @@ export interface CaFileView {
   problem: string | null
 }
 
+/** A check file, as a step's scripts reach it: `checks.<name>`. */
+export interface CheckFileView {
+  name: string
+  /** As a run names it in a stack, relative to the project: `checks/common.js`. */
+  filename: string
+  code: string
+  /** From the global project. */
+  shared: boolean
+}
+
 /** One project: a folder with `collections/`, and git if it is in a repository. */
 export interface ProjectView {
   id: string
@@ -342,6 +352,8 @@ export interface ProjectView {
   requestSets: RequestSetView[]
   /** Check files scripts can call as `checks.<name>`. */
   checks: string[]
+  /** The same check files with their code, to show what a script's `checks.<name>()` runs. */
+  checkFiles: CheckFileView[]
   /** Files in `endpoints/`, the project's and its global project's, to open and edit. */
   endpointFiles: LibraryFileView[]
   /** Every endpoint base, the project's first: what a step's request is matched with. */

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { EndpointView, LibraryFileView, RequestSetView } from '@shared/ipc.js'
+import type { CheckFileView, EndpointView, LibraryFileView, RequestSetView } from '@shared/ipc.js'
 import {
   findEndpoint,
   type Collection,
@@ -58,6 +58,8 @@ interface Props {
   onEditCollectionScript: (kind: 'pre-request' | 'tests') => void
   /** The project's base collections, to find the one the collection `extends:`. */
   bases: LibraryFileView[]
+  /** The project's check files, to show those the step's scripts call. */
+  checkFiles: CheckFileView[]
   /** Open a base collection's file. */
   onOpenBase: (path: string) => void
 
@@ -504,6 +506,7 @@ export default function RequestView(props: Props) {
             tab={scriptTab}
             onTab={setScriptTab}
             layers={layers}
+            checkFiles={props.checkFiles}
             onOpenLayer={openLayer}
             result={result}
             checks={checks}

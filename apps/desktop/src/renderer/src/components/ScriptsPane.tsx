@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { LogEntry, RunError, RunResult } from '@schwabyio/gravity-core/model'
+import type { CheckFileView } from '@shared/ipc.js'
 import { checkLines } from '../checkLines.js'
+import { sourceTags } from '../checkSources.js'
 import type { PaneWidth } from '../hooks/usePaneWidth.js'
 import type { InheritedLayer } from '../inheritance.js'
 import type { EditorState } from '../requestState.js'
@@ -10,7 +12,7 @@ import CodeEditor from './CodeEditor.js'
 import DocsEditor from './DocsEditor.js'
 import Markdown from './Markdown.js'
 import PencilIcon from './PencilIcon.js'
-import InheritedScripts from './InheritedScripts.js'
+import SharedScripts from './SharedScripts.js'
 import Resizer from './Resizer.js'
 import TestResults from './TestResults.js'
 import Tooltip from './Tooltip.js'
@@ -31,6 +33,8 @@ interface Props {
 
   /** The layers around the step whose scripts run with its own, and a way to each. */
   layers: InheritedLayer[]
+  /** The project's check files, to show those its scripts call. */
+  checkFiles: CheckFileView[]
   onOpenLayer: (kind: ScriptKind) => (layer: InheritedLayer) => void
 
   result: RunResult | null
@@ -109,6 +113,7 @@ export default function ScriptsPane(props: Props) {
         </Tooltip>
       </div>
 
+      {/* Keyed by tab: each tab's editors are its own, never one rebuilt for the other. */}
       {tab === 'docs' ? (
         <div className="scripts-body" key="docs">
           <div className="tab-body docs-tab">
@@ -148,7 +153,7 @@ export default function ScriptsPane(props: Props) {
           </div>
         </div>
       ) : tab === 'tests' ? (
-        <div className="scripts-body">
+        <div className="scripts-body" key="tests">
           <div className="script-editor">
             {props.use ? (
               <p className="hint">
@@ -156,19 +161,21 @@ export default function ScriptsPane(props: Props) {
                 as this step passed them. Check files are there as <code>checks.&lt;file&gt;</code>.
               </p>
             ) : (
-              <>
-                <p className="hint">
-                  Runs after the response. xtest is built in as <code>gta</code> — type{' '}
-                  <code>gta.</code> for its functions — alongside any JavaScript, <code>res</code>{' '}
-                  and <code>assert</code>.
-                </p>
-                <InheritedScripts
-                  kind="tests"
-                  layers={props.layers}
-                  onOpen={props.onOpenLayer('tests')}
-                />
-              </>
+              <p className="hint">
+                Runs after the response. xtest is built in as <code>gta</code> — type{' '}
+                <code>gta.</code> for its functions — alongside any JavaScript, <code>res</code> and{' '}
+                <code>assert</code>.
+              </p>
             )}
+            <SharedScripts
+              kind="tests"
+              // A use step's tests run after its set, under none of the step's layers.
+              layers={props.use ? [] : props.layers}
+              onOpen={props.onOpenLayer('tests')}
+              own={request.tests}
+              checkFiles={props.checkFiles}
+              result={result}
+            />
             <CodeEditor
               kind="tests"
               value={request.tests}
@@ -194,21 +201,25 @@ export default function ScriptsPane(props: Props) {
               scriptError={scriptError}
               ignored={ignored}
               strict={checks.some((check) => check.assertion.target === 'strict')}
+              tagsOf={(source) => sourceTags(source, props.use ? 'use' : 'step', props.layers)}
             />
           )}
         </div>
       ) : (
-        <div className="scripts-body">
+        <div className="scripts-body" key="pre-request">
           <div className="script-editor">
             <p className="hint">
               Runs before the request is built. Set the variables the request uses with{' '}
               <code>gta.set(name, value)</code> — for example <code>gta.uuidv7()</code> or{' '}
               <code>gta.date(…)</code>.
             </p>
-            <InheritedScripts
+            <SharedScripts
               kind="pre-request"
               layers={props.layers}
               onOpen={props.onOpenLayer('pre-request')}
+              own={request.preRequest}
+              checkFiles={props.checkFiles}
+              result={result}
             />
             <CodeEditor
               kind="pre-request"

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { IgnoredPath, LogEntry, RunError } from '@schwabyio/gravity-core/model'
+import type { IgnoredPath, LogEntry, RunError, ScriptSource } from '@schwabyio/gravity-core/model'
 import type { Check } from '../testLinks.js'
 
 interface Props {
@@ -17,6 +17,8 @@ interface Props {
   ignored: IgnoredPath[]
   /** Whether strict validation was on, without which an ignore changes nothing. */
   strict: boolean
+  /** Where a check came from, said as tags: nothing for the step's own. */
+  tagsOf: (source: ScriptSource | undefined) => string[]
 }
 
 const GROUPS: Array<{ target: Check['assertion']['target'] | 'other'; label: string }> = [
@@ -100,6 +102,7 @@ export default function TestResults(props: Props) {
                   <CheckRow
                     key={check.index}
                     check={check}
+                    tags={props.tagsOf(check.assertion.source)}
                     selected={selected === check.index}
                     onSelect={() => props.onSelect(selected === check.index ? null : check.index)}
                     onHover={(on) => props.onHover(on ? check.index : null)}
@@ -131,6 +134,7 @@ export default function TestResults(props: Props) {
                       –
                     </span>
                     <span className="check-name">{entry.path}</span>
+                    <SourceTags tags={props.tagsOf(entry.source)} />
                   </button>
                 </li>
               ))}
@@ -155,8 +159,23 @@ export default function TestResults(props: Props) {
   )
 }
 
+/** Where a check or an ignore came from, when not the step's own script. */
+function SourceTags({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return null
+  return (
+    <span className="check-sources">
+      {tags.map((tag) => (
+        <span key={tag} className="check-source">
+          {tag}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 function CheckRow(props: {
   check: Check
+  tags: string[]
   selected: boolean
   onSelect: () => void
   onHover: (on: boolean) => void
@@ -183,6 +202,7 @@ function CheckRow(props: {
           {pass ? '✓' : '✗'}
         </span>
         <span className="check-name">{assertion.name}</span>
+        <SourceTags tags={props.tags} />
       </button>
       {showDetail && (
         <div className="check-detail">

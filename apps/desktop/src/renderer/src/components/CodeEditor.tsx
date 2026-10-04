@@ -54,6 +54,11 @@ interface Props {
    * empty, and the gutter keeps its room, so marks arriving move nothing.
    */
   checks?: CheckLine[] | undefined
+  /**
+   * Shown, not edited: a script that lives elsewhere — a collection's, a check
+   * file's — sized to its lines rather than to the pane.
+   */
+  readOnly?: boolean
 }
 
 /**
@@ -71,7 +76,8 @@ export default function CodeEditor({
   ariaLabel,
   placeholder,
   errorLine,
-  checks
+  checks,
+  readOnly = false
 }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -97,6 +103,7 @@ export default function CodeEditor({
           theme,
           errorLineField,
           ...(checks !== undefined ? [checkField, checkGutter] : []),
+          ...(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
           ...(placeholder ? [placeholderText(placeholder)] : []),
           EditorView.updateListener.of((update) => {
@@ -137,7 +144,7 @@ export default function CodeEditor({
     if (checks) view.current?.dispatch({ effects: setChecks.of(checks) })
   }, [checks])
 
-  return <div className="code-editor" ref={host} />
+  return <div className={`code-editor${readOnly ? ' read-only' : ''}`} ref={host} />
 }
 
 /* ----------------------------------------------------------- completions -- */
