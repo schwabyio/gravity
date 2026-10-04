@@ -23,10 +23,10 @@ import InheritedHeaders from './InheritedHeaders.js'
 import KeyValueEditor from './KeyValueEditor.js'
 import MultipartEditor, { FileBodyEditor } from './MultipartEditor.js'
 import QueryParamsEditor from './QueryParamsEditor.js'
+import PaneHead from './PaneHead.js'
 import ResponsePane, { type LiveView, type ResponseTab } from './ResponsePane.js'
 import { ConnectionField, ReadBar } from './ConnectionStep.js'
 import ScriptsPane, { ScriptsStrip, type ScriptKind, type ScriptTab } from './ScriptsPane.js'
-import Tooltip from './Tooltip.js'
 import { UseBar, UseStepEditor } from './UseStep.js'
 import VariableInput from './VariableInput.js'
 import {
@@ -112,6 +112,8 @@ export default function RequestView(props: Props) {
   // it is collapsed by hand again.
   const [requestOpen, setRequestOpen] = useState(true)
   const [pinnedOpen, setPinnedOpen] = useState(false)
+  // Hidden by hand until shown again by hand, whatever comes back meanwhile.
+  const [responseHidden, setResponseHidden] = useState(false)
   const [scriptsHidden, setScriptsHidden] = useStoredFlag('pane.scripts.hidden')
   const scriptsPane = usePaneWidth('pane.scripts', 380, 260, 720)
 
@@ -134,10 +136,26 @@ export default function RequestView(props: Props) {
   const own = props.request.use !== null ? 'use' : 'step'
   const errorLine = (phase: ScriptKind) =>
     result?.error?.phase === phase && result.error.script === own ? result.error.line : undefined
-  // Before anything is sent, the response has nothing to show.
-  const responseShown =
+  // Before anything is sent, the response has nothing to show; hidden by hand, it gives way.
+  const hasResponse =
     result !== null || props.running || props.error !== null || (props.live ?? null) !== null
+  const responseShown = hasResponse && !responseHidden
   const editorShown = requestOpen || !responseShown
+  const collapseEditor = () => {
+    setRequestOpen(false)
+    setPinnedOpen(false)
+  }
+  const editorHead = (
+    <PaneHead
+      title="Request"
+      hide={{
+        text: '◂ Hide',
+        label: 'Hide the request editor',
+        tooltip: 'Collapse the request editor to give the response more room',
+        onClick: collapseEditor
+      }}
+    />
+  )
 
   useEffect(() => {
     setSelected(null)
@@ -316,21 +334,19 @@ export default function RequestView(props: Props) {
         ) : request.use !== null ? (
           <section className="pane request-pane" ref={requestEl}>
             {both && <Resizer pane={requestPane} label="Resize the request pane" />}
+            {editorHead}
             <UseStepEditor
               request={request}
               sets={props.sets}
               onChange={props.onChange}
               previews={props.previews}
               onCopyVariable={props.onCopyVariable}
-              onCollapse={() => {
-                setRequestOpen(false)
-                setPinnedOpen(false)
-              }}
             />
           </section>
         ) : (
           <section className="pane request-pane" ref={requestEl}>
             {both && <Resizer pane={requestPane} label="Resize the request pane" />}
+            {editorHead}
             <div className="tabs">
               {!reads && (
                 <>
@@ -361,19 +377,6 @@ export default function RequestView(props: Props) {
                 Settings{' '}
                 {Object.keys(request.settings).length > 0 && <span className="count dot">•</span>}
               </button>
-              <Tooltip text="Collapse the request editor to give the response more room">
-                <button
-                  type="button"
-                  className="pane-toggle"
-                  onClick={() => {
-                    setRequestOpen(false)
-                    setPinnedOpen(false)
-                  }}
-                  aria-label="Hide the request editor"
-                >
-                  ◂ Hide
-                </button>
-              </Tooltip>
             </div>
 
             <div className="tab-body">
@@ -466,6 +469,15 @@ export default function RequestView(props: Props) {
 
         {responseShown ? (
           <section className="pane" ref={responseEl}>
+            <PaneHead
+              title="Response"
+              hide={{
+                text: 'Hide',
+                label: 'Hide the response',
+                tooltip: 'Hide the response to give the request editor more room',
+                onClick: () => setResponseHidden(true)
+              }}
+            />
             {props.resultCaption && result && (
               <p className="result-iteration" aria-label="Result from">
                 {props.resultCaption}
@@ -486,6 +498,24 @@ export default function RequestView(props: Props) {
               {...(props.onStop ? { onStop: props.onStop } : {})}
             />
           </section>
+        ) : hasResponse ? (
+          <button
+            type="button"
+            className="pane-strip"
+            onClick={() => setResponseHidden(false)}
+            aria-label="Show the response"
+          >
+            <span>
+              Response
+              {result?.response
+                ? ` · ${result.response.status}`
+                : props.running
+                  ? ' · sending…'
+                  : props.error || result?.error
+                    ? ' · error'
+                    : ''}
+            </span>
+          </button>
         ) : (
           <button type="button" className="pane-strip" disabled aria-label="No response yet">
             <span>No response yet</span>

@@ -11,6 +11,7 @@ import type { Check } from '../testLinks.js'
 import CodeEditor from './CodeEditor.js'
 import DocsEditor from './DocsEditor.js'
 import Markdown from './Markdown.js'
+import PaneHead from './PaneHead.js'
 import PencilIcon from './PencilIcon.js'
 import SharedScripts from './SharedScripts.js'
 import Resizer from './Resizer.js'
@@ -85,6 +86,15 @@ export default function ScriptsPane(props: Props) {
   return (
     <section className="scripts-pane" aria-label="Scripts">
       <Resizer pane={props.pane} label="Resize the scripts pane" edge="left" />
+      <PaneHead
+        title="Scripts"
+        hide={{
+          text: 'Hide ▸',
+          label: 'Hide the scripts',
+          tooltip: 'Hide the scripts to give the response more room',
+          onClick: props.onHide
+        }}
+      />
       <div className="tabs">
         {!props.use && (
           <button
@@ -101,16 +111,6 @@ export default function ScriptsPane(props: Props) {
         <button className={tab === 'docs' ? 'active' : ''} onClick={() => props.onTab('docs')}>
           Docs {docs && <span className="count dot">•</span>}
         </button>
-        <Tooltip text="Hide the scripts to give the response more room">
-          <button
-            type="button"
-            className="pane-toggle"
-            onClick={props.onHide}
-            aria-label="Hide the scripts"
-          >
-            Hide ▸
-          </button>
-        </Tooltip>
       </div>
 
       {/* Keyed by tab: each tab's editors are its own, never one rebuilt for the other. */}

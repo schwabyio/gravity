@@ -2563,13 +2563,37 @@ body.resizing.resizing-rows * {
 }
 
 /* The tooltip wraps the toggle in a span, so that is what gets pushed right. */
-.tabs > :has(> .pane-toggle) {
-  align-self: center;
-  margin-left: auto;
+/* A pane's name and its Hide, above its tabs, where a narrow pane never scrolls Hide away. */
+.pane-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 26px;
+  padding: 4px 8px 0 12px;
+  background: var(--surface);
 }
 
-.tabs .pane-toggle {
-  border-bottom: none;
+/* The name gives way in a narrow pane; Hide never does. */
+.pane-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pane-head > .tooltip-trigger {
+  flex: none;
+}
+
+.pane-head + .tabs {
+  padding-top: 0;
 }
 
 .pane-toggle:hover {

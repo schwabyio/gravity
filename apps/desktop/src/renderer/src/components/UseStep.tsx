@@ -81,7 +81,6 @@ interface EditorProps {
   onChange: (changes: Partial<EditorState>) => void
   previews: VariablePreviews
   onCopyVariable: (name: string) => Promise<boolean>
-  onCollapse: () => void
 }
 
 export function UseStepEditor(props: EditorProps) {
@@ -106,16 +105,6 @@ export function UseStepEditor(props: EditorProps) {
             <span className="count">{Object.keys(given).length}</span>
           )}
         </button>
-        <Tooltip text="Collapse the editor to give the response more room">
-          <button
-            type="button"
-            className="pane-toggle"
-            onClick={props.onCollapse}
-            aria-label="Hide the request editor"
-          >
-            ◂ Hide
-          </button>
-        </Tooltip>
       </div>
 
       <div className="tab-body">
