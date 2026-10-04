@@ -57,6 +57,12 @@ export class VariableScope {
   runValues: Map<string, VarValue> | null = null
   /** In setup and teardown, every value set lasts the run. */
   runWide = false
+  /**
+   * Every value the run sets or captures, whatever it lasts, for whoever ran
+   * it from code: a Playwright test reading the token a login step captured.
+   * Null when nobody asked.
+   */
+  produced: Map<string, VarValue> | null = null
   private readonly values = new Map<string, VarValue>()
   private readonly origins = new Map<string, string>()
   private readonly secrets = new Set<string>()
@@ -107,6 +113,7 @@ export class VariableScope {
     this.values.set(name, value)
     this.origins.set(name, source)
     if (this.runWide) this.runValues?.set(name, value)
+    this.produced?.set(name, value)
   }
 
   /** `set`, and keep the value for every row after this one and for teardown. */

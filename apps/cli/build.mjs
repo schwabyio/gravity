@@ -1,15 +1,20 @@
 /**
- * Bundle gta into dist/: `gta.js` (the bin) and `worker.js` (one per running
- * collection), sharing a chunk that holds the core.
+ * Bundle gta into dist/: `gta.js` (the bin), `worker.js` (one per running
+ * collection), and the library — `index.js` for `@schwabyio/gta` and
+ * `playwright.js` for `@schwabyio/gta/playwright` — sharing a chunk that holds
+ * the core.
  *
  * Everything is bundled — the core, undici, yaml, zod — so a global install is
  * a folder with no dependencies to resolve, and it runs wherever Node does.
- * Beside the code go SPEC.md, which gta's messages cite, FUNCTIONS.md, which
- * SPEC.md links to, and the licenses of the packages the bundle took in.
+ * Only Playwright is not: a test that imports the library brings its own.
+ * Beside the code go the library's `.d.ts` files, SPEC.md, which gta's
+ * messages cite, FUNCTIONS.md, which SPEC.md links to, and the licenses of the
+ * packages the bundle took in.
  */
 import { chmod, copyFile, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { build } from 'esbuild'
+import ts from 'typescript'
 
 const here = import.meta.dirname
 const outdir = path.join(here, 'dist')
@@ -17,7 +22,14 @@ const pkg = JSON.parse(await readFile(path.join(here, 'package.json'), 'utf8'))
 
 await rm(outdir, { recursive: true, force: true })
 const { metafile } = await build({
-  entryPoints: { gta: 'src/gta.ts', worker: 'src/worker.ts' },
+  entryPoints: {
+    gta: 'src/gta.ts',
+    worker: 'src/worker.ts',
+    index: 'src/library/index.ts',
+    playwright: 'src/library/playwright.ts'
+  },
+  // The test's own Playwright: a second copy would not be the runner's.
+  external: ['@playwright/test'],
   absWorkingDir: here,
   outdir,
   bundle: true,
@@ -43,10 +55,41 @@ const { metafile } = await build({
 // npm never marks the bin executable: the build does, every time it rewrites it.
 await chmod(path.join(outdir, 'gta.js'), 0o755)
 
+await writeLibraryTypes()
+
 for (const doc of ['SPEC.md', 'FUNCTIONS.md']) {
   await copyFile(path.join(here, '..', '..', doc), path.join(outdir, doc))
 }
 await writeFile(path.join(outdir, 'THIRD_PARTY_NOTICES.txt'), await notices(metafile))
+
+/**
+ * The library's `.d.ts` files, each made from its own source alone: every
+ * export says its type outright, and the types it names are written out in
+ * `types.ts`, so nothing points into the core, which does not ship. A file
+ * that would need another to say its types stops the build.
+ */
+async function writeLibraryTypes() {
+  for (const name of ['index', 'playwright', 'types']) {
+    const fileName = path.join(here, 'src', 'library', `${name}.ts`)
+    const { outputText, diagnostics = [] } = ts.transpileDeclaration(
+      await readFile(fileName, 'utf8'),
+      {
+        fileName,
+        reportDiagnostics: true,
+        compilerOptions: {
+          isolatedDeclarations: true,
+          module: ts.ModuleKind.ESNext,
+          target: ts.ScriptTarget.ES2023
+        }
+      }
+    )
+    if (diagnostics.length > 0) {
+      const messages = diagnostics.map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'))
+      throw new Error(`src/library/${name}.ts cannot be declared alone:\n${messages.join('\n')}`)
+    }
+    await writeFile(path.join(outdir, `${name}.d.ts`), outputText)
+  }
+}
 
 /**
  * Each npm package the bundle took in, with its license. MIT and ISC ask for the

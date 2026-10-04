@@ -50,11 +50,23 @@ export interface CollectionTally {
   problems: RunResult[]
 }
 
-export function tally(target: RunTarget, outcome: JobOutcome, durationMs: number): CollectionTally {
+export const tally = (
+  target: RunTarget,
+  outcome: JobOutcome,
+  durationMs: number
+): CollectionTally => tallyOf(target.id, stepCountOf(target), outcome, durationMs)
+
+/** `tally` for a run with no target: a collection, or a request set, run from code. */
+export function tallyOf(
+  id: string,
+  stepCount: number,
+  outcome: JobOutcome,
+  durationMs: number
+): CollectionTally {
   if (!outcome.ok) {
-    const total = stepCountOf(target)
+    const total = stepCount
     return {
-      id: target.id,
+      id,
       passed: false,
       durationMs,
       steps: { total, passed: 0, failed: 0, errored: 0, skipped: total },
@@ -68,7 +80,7 @@ export function tally(target: RunTarget, outcome: JobOutcome, durationMs: number
   const assertions = summary.results.flatMap((r) => r.assertions)
   const failed = assertions.filter((a) => a.status === 'fail').length
   return {
-    id: target.id,
+    id,
     passed: summary.failed === 0 && summary.errored === 0,
     durationMs,
     steps: {

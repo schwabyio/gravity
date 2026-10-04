@@ -74,6 +74,8 @@ async function suite(
     bail?: boolean
     signal?: AbortSignal
     flags?: Record<string, boolean>
+    vars?: Record<string, string>
+    produced?: Map<string, unknown>
   } = {}
 ) {
   seen = []
@@ -93,6 +95,8 @@ async function suite(
     rows: options.rows ?? null,
     bail: options.bail ?? false,
     ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.vars ? { vars: options.vars } : {}),
+    ...(options.produced ? { produced: options.produced as Map<string, never> } : {}),
     onResult: (index, result, iteration) => reported.push({ index, result, row: iteration?.index })
   })
   return { summary, reported, names: summary.results.map(resultName) }
@@ -266,6 +270,36 @@ describe('values that last the run', () => {
       'DELETE /last/b'
     ])
     expect(summary.errored).toBe(0)
+  })
+
+  it('start from values the caller gives, over the environment and under a row', async () => {
+    const { summary } = await suite(
+      {
+        vars: { who: 'collection', where: 'collection' },
+        steps: [{ GET: `${origin}/given/{{who}}/{{where}}` }]
+      },
+      { vars: { who: 'caller', where: 'caller' }, rows: rows({ who: 'row' }) }
+    )
+    expect(seen).toEqual(['GET /given/row/caller'])
+    expect(summary.errored).toBe(0)
+  })
+
+  it('report every value set or captured, setup and rows alike, the last one winning', async () => {
+    const produced = new Map<string, unknown>()
+    await suite(
+      {
+        setup: [
+          {
+            GET: `${origin}/login`,
+            tests:
+              "gta.expectResponseBodyToHaveProperty('token', 'token', 'setAsCollectionVariable')"
+          }
+        ],
+        steps: [{ GET: `${origin}/row/{{who}}`, tests: "gta.set('last', gta.get('who'))" }]
+      },
+      { vars: { given: 'kept out' }, rows: rows({ who: 'a' }, { who: 'b' }), produced }
+    )
+    expect(Object.fromEntries(produced)).toEqual({ token: 'tok-1', last: 'b' })
   })
 
   it('refuses a scope it does not know', async () => {

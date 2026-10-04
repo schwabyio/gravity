@@ -13,7 +13,8 @@
     "cli",
     "yaml",
     "junit",
-    "ci"
+    "ci",
+    "playwright"
   ],
   "license": "MIT",
   "homepage": "https://github.com/schwabyio/gravity#readme",
@@ -28,6 +29,18 @@
   "bin": {
     "gta": "dist/gta.js"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./playwright": {
+      "types": "./dist/playwright.d.ts",
+      "default": "./dist/playwright.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
@@ -37,14 +50,24 @@
   "publishConfig": {
     "access": "public"
   },
+  "peerDependencies": {
+    "@playwright/test": ">=1.51.0"
+  },
+  "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    }
+  },
   "scripts": {
     "build": "node build.mjs",
     "prepack": "node build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@schwabyio/gravity-core": "*",
     "esbuild": "0.28.2",
+    "typescript": "5.9.3",
     "yaml": "2.9.1",
     "zod": "4.6.5"
   }

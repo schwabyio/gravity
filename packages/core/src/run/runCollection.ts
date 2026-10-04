@@ -264,6 +264,7 @@ function withRun(scope: VariableScope, run: CollectionRunOptions['run']): Variab
   const built = new VariableScope([{ source: 'run', vars: Object.fromEntries(run.values) }])
   built.runValues = run.values
   built.runWide = run.wide === true
+  built.produced = run.produced ?? null
   return built
 }
 

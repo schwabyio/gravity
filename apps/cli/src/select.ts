@@ -70,6 +70,22 @@ const normalize = (selector: string): { name: string; directoryOnly: boolean } =
   }
 }
 
+/**
+ * The collection a name means on its own: its id, or its place in
+ * `collections/`. Undefined for a folder, or no match.
+ */
+export function findCollection(
+  collections: readonly LoadedCollection[],
+  selector: string
+): LoadedCollection | undefined {
+  const { name, directoryOnly } = normalize(selector)
+  if (directoryOnly) return undefined
+  return (
+    collections.find((c) => idOf(c) === name) ??
+    collections.find((c) => placeOf(c).normalize('NFC') === name)
+  )
+}
+
 export function selectCollections(
   collections: readonly LoadedCollection[],
   request: Request,
@@ -88,11 +104,8 @@ export function selectCollections(
     const unknown: string[] = []
     chosen = []
     for (const selector of request.selectors) {
-      const { name, directoryOnly } = normalize(selector)
-      const exact = directoryOnly
-        ? undefined
-        : (collections.find((c) => idOf(c) === name) ??
-          collections.find((c) => placeOf(c).normalize('NFC') === name))
+      const { name } = normalize(selector)
+      const exact = findCollection(collections, selector)
       const inDirectory = collections.filter((c) => c.directory?.normalize('NFC') === name)
       const found = exact ? [exact] : inDirectory.length > 0 ? inGroup(inDirectory) : null
       if (found) chosen.push(...found.filter((c) => !chosen.includes(c)))

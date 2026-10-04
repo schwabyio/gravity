@@ -50,9 +50,10 @@ export interface ScopeContext {
    * What lasts the whole collection run (SPEC.md §2.10): setup's values and
    * `gta.set(…, { scope: 'run' })`'s, a layer over the environment and under
    * the data row, and where such values are written. `wide`: every value set
-   * lasts, as in setup and teardown.
+   * lasts, as in setup and teardown. `produced`: where every value the run
+   * sets or captures is kept, for whoever ran it from code.
    */
-  run?: { values: Map<string, VarValue>; wide?: boolean }
+  run?: { values: Map<string, VarValue>; wide?: boolean; produced?: Map<string, VarValue> }
   /**
    * The run's feature flag values (SPEC.md §2.9), as gta and the app resolve
    * them — command output and overrides included. Absent: the environment
@@ -120,6 +121,7 @@ export async function buildScope(context: ScopeContext): Promise<VariableScope> 
   if (context.run) {
     scope.runValues = context.run.values
     scope.runWide = context.run.wide === true
+    scope.produced = context.run.produced ?? null
   }
   scope.flags =
     context.flags !== undefined

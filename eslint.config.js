@@ -4,7 +4,14 @@ import prettier from 'eslint-config-prettier'
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/out/**', '**/coverage/**', '**/node_modules/**']
+    ignores: [
+      '**/dist/**',
+      '**/out/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      // Test output, gitignored: a test that stops early can leave its files here.
+      '**/test-results/**'
+    ]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

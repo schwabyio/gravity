@@ -9,7 +9,9 @@ import {
   runSuite,
   secretValues,
   type CollectionRunSummary,
-  type Stage
+  type RunResult,
+  type Stage,
+  type VarValue
 } from '@schwabyio/gravity-core'
 
 /** One collection to run, as sent to a worker: plain data only. */
@@ -23,6 +25,17 @@ export interface CollectionJob {
   bail: boolean
   /** The run's feature flag values, resolved once for every collection (SPEC.md §2.9). */
   flags: Record<string, string | number | boolean>
+  /** Values to start with, over the environment and under a data row: given by code, never by gta. */
+  vars?: Record<string, VarValue>
+}
+
+/** What only a caller in the same thread can give a job: a worker gets plain data. */
+export interface JobHooks {
+  /** As each request finishes: its result, secrets hidden, and the step it came from. */
+  onResult?: (result: RunResult, step: StepRef) => void
+  signal?: AbortSignal
+  /** Filled with every value the run sets or captures, by name. Not redacted. */
+  produced?: Map<string, VarValue>
 }
 
 /**
@@ -78,7 +91,7 @@ export type JobOutcome =
  * The file is read again here rather than passed in, so a worker gets a path
  * and nothing else it would have to trust.
  */
-export async function runJob(job: CollectionJob): Promise<JobOutcome> {
+export async function runJob(job: CollectionJob, hooks: JobHooks = {}): Promise<JobOutcome> {
   try {
     const loaded = await loadCollection(job.file, job.projectRoot)
     if (loaded.problems.length > 0) {
@@ -94,6 +107,7 @@ export async function runJob(job: CollectionJob): Promise<JobOutcome> {
     const context = { collectionPath: loaded.path, environmentName: job.environment }
     const lines = await stepLines(loaded.path)
     const data = loaded.dataFile ? await readDataFile(loaded.dataFile.path) : null
+    const secrets = await secretValues(context)
 
     // Setup, then the steps once per data row (SPEC.md §2.8) — each row with a
     // scope of its own — or once without a data file, then teardown (§2.10).
@@ -110,21 +124,26 @@ export async function runJob(job: CollectionJob): Promise<JobOutcome> {
           }))
         : null,
       bail: job.bail,
+      ...(job.vars ? { vars: job.vars } : {}),
+      ...(hooks.produced ? { produced: hooks.produced } : {}),
+      ...(hooks.signal ? { signal: hooks.signal } : {}),
       // Each result reports the step it ran under — a use step's requests all under it.
       onResult: (index, result, iteration) => {
         const stage = result.stage
         const step = stage ? index : job.steps ? (job.steps[index] ?? index) : index
-        refs.push({
+        const ref: StepRef = {
           index: step,
           line: lines[stage ?? 'steps'][step] ?? null,
           ...(stage ? { stage } : {}),
           ...(iteration ? { iteration } : {})
-        })
+        }
+        refs.push(ref)
+        hooks.onResult?.(redact(result, secrets), ref)
       }
     })
     return {
       ok: true,
-      summary: redact(summary, await secretValues(context)),
+      summary: redact(summary, secrets),
       steps: refs,
       data: loaded.dataFile
         ? { file: `${COLLECTIONS_DIR}/${loaded.dataFile.relativePath}`, rows: loaded.dataFile.rows }
@@ -136,7 +155,9 @@ export async function runJob(job: CollectionJob): Promise<JobOutcome> {
 }
 
 /** The line each step of a collection file starts on, from 1, in each of its lists. */
-async function stepLines(file: string): Promise<Record<'steps' | Stage, Array<number | null>>> {
+export async function stepLines(
+  file: string
+): Promise<Record<'steps' | Stage, Array<number | null>>> {
   const lines = { setup: [], steps: [], teardown: [] }
   try {
     const counter = new LineCounter()

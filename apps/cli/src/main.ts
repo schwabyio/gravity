@@ -5,18 +5,11 @@ import {
   canonical,
   isInside,
   samePath,
-  discoverProject,
-  environmentNames,
-  loadProjectCollections,
-  loadProjectTls,
-  projectEnvironments,
-  readProject,
   referenceProblems,
-  relativePosix,
-  type LoadedCollection
+  type FlagResolution
 } from '@schwabyio/gravity-core'
 import { parseArgs, UsageError } from './args.js'
-import { flagOverrides, resolveFlags, type FlagResolution } from '@schwabyio/gravity-core'
+import { loadProject, ProjectError, type OpenProject } from './project.js'
 import { runPool, type Runner } from './pool.js'
 import {
   failureDetails,
@@ -50,13 +43,10 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_SOURCE,
   envNameOf,
-  loadSettings,
   SETTING_KEYS,
-  SETTINGS_FILE,
   SettingsError,
   type SettingKey,
-  type Settings,
-  type SettingSources
+  type Settings
 } from './settings.js'
 
 declare const __GTA_VERSION__: string | undefined
@@ -85,11 +75,6 @@ export interface CliContext {
   runner: (settings: Settings) => Runner
   /** Open a written report in the browser, for `autoOpenTestResultHtml`. */
   open: (file: string) => void
-}
-
-/** Something about the folder `gta` was run in that stops it. */
-export class ProjectError extends Error {
-  override name = 'ProjectError'
 }
 
 export async function main(argv: readonly string[], cli: CliContext): Promise<number> {
@@ -169,94 +154,13 @@ export async function main(argv: readonly string[], cli: CliContext): Promise<nu
   }
 }
 
-interface OpenProject {
-  root: string
-  name: string
-  settings: Settings
-  /** Where each setting came from: the global project's settings.yml, the project's, … */
-  settingSources: SettingSources
-  /** The run's feature flags: fixed values, the environment's command, overrides (SPEC.md §2.9). */
-  flags: FlagResolution
-  collections: LoadedCollection[]
-  environments: string[]
-  /** `tls.ca`, the project's then its global project's, each with what it holds (SPEC.md §1.1). */
-  caFiles: string[]
-  warnings: string[]
-}
-
 /** The project `gta` was run in, its settings, and everything in `collections/`. */
-async function openProject(
+const openProject = async (
   ctx: CliContext,
   overrides: Record<string, string | true>,
   flagArgs: readonly string[] = []
-): Promise<OpenProject> {
-  const root = await canonical(ctx.cwd)
-  if (!(await isDirectory(path.join(root, COLLECTIONS_DIR)))) {
-    throw new ProjectError(
-      `There is no ${COLLECTIONS_DIR}/ in ${root}.\n` +
-        `gta runs from a project folder: the one holding ${COLLECTIONS_DIR}/ and ${SETTINGS_FILE}.`
-    )
-  }
-  const info = await readProject(root)
-  const { settings, sources: settingSources } = await loadSettings({
-    root,
-    global: info.global,
-    overrides,
-    env: ctx.env
-  })
-  const layout = await discoverProject(root)
-  // Ids checked against each other too: a shared id is reported on both files.
-  const collections = await loadProjectCollections(root, layout.files)
-  const environments = environmentNames(await projectEnvironments(root, info.global))
-
-  if (settings.environmentType && !environments.includes(settings.environmentType)) {
-    throw new ProjectError(
-      `environmentType (from ${settingSources.environmentType}): there is no environment called "${settings.environmentType}". ` +
-        (environments.length > 0
-          ? `This project has: ${environments.join(', ')}`
-          : `This project has no environments/.`)
-    )
-  }
-
-  // Fresh before the run: the environment's command, if it has one, runs now, once.
-  let flags: FlagResolution
-  try {
-    flags = await resolveFlags({
-      root,
-      environmentName: settings.environmentType,
-      overrides: flagOverrides(flagArgs, ctx.env),
-      env: { ...process.env, ...ctx.env }
-    })
-  } catch (cause) {
-    throw new ProjectError((cause as Error).message)
-  }
-
-  // Every request that needs a broken tls.ca file would fail, and less clearly than this.
-  const tls = await loadProjectTls(root, info)
-  if (tls.problems.length > 0) {
-    throw new ProjectError(
-      `A certificate in tls.ca cannot be used:\n` +
-        tls.problems.map((problem) => `  ${problem.path}: ${problem.message}`).join('\n')
-    )
-  }
-
-  return {
-    root,
-    name: info.doc?.name ?? path.basename(root),
-    settings,
-    settingSources,
-    flags,
-    collections,
-    environments,
-    caFiles: tls.files.map(
-      (file) =>
-        `${relativePosix(root, file.file)} (${file.certificates.map((c) => c.subject).join(', ')})`
-    ),
-    warnings: [...info.problems, ...layout.problems].map((problem) =>
-      problem.path ? `${problem.path}: ${problem.message}` : problem.message
-    )
-  }
-}
+): Promise<OpenProject> =>
+  loadProject({ root: await canonical(ctx.cwd), env: ctx.env, overrides, flagArgs })
 
 const selectFor = (project: OpenProject, request: Request): Selection =>
   selectCollections(project.collections, request, {
@@ -638,14 +542,6 @@ export function usage(p: Paint): string {
     '',
     `  ${p.bold('Exit code:')} 0 passed, 1 failed, 2 could not run (or write a report).`
   ].join('\n')
-}
-
-async function isDirectory(target: string): Promise<boolean> {
-  try {
-    return (await fs.stat(target)).isDirectory()
-  } catch {
-    return false
-  }
 }
 
 const wantsHtml = (settings: Settings) =>

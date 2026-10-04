@@ -152,6 +152,107 @@ even an empty one.
     apiKey: ${{ secrets.STAGING_API_KEY }}
 ```
 
+## From Playwright and other code
+
+The package is also a library. A test written in code can run a collection or a request
+set, then use the values it saved, such as a token or the id of a user it created, in a
+browser test.
+
+### Playwright
+
+`@schwabyio/gta/playwright` gives you Playwright's `test` with a `gta` fixture. Point it
+at the project in `playwright.config.ts`:
+
+```ts
+// playwright.config.ts
+import { defineConfig } from '@playwright/test'
+import type { GravityConfig } from '@schwabyio/gta/playwright'
+
+export default defineConfig<{}, GravityConfig>({
+  use: {
+    gravity: { project: '../api-tests', environment: 'staging' }
+  }
+})
+```
+
+```ts
+// tests/dashboard.spec.ts
+import { test, expect } from '@schwabyio/gta/playwright'
+
+test('a new user sees their dashboard', async ({ page, gta }) => {
+  // requests/create-user.yml, run as a use: step would run it
+  const user = await gta.use('create-user', { plan: 'pro' })
+
+  await page.goto(`/users/${user.values.userId}`)
+  await expect(page.getByRole('heading')).toHaveText('Welcome')
+
+  // collections/billing.yml, starting from what create-user saved
+  await gta.run('billing', { vars: user.values })
+})
+```
+
+- Each `gta.run` and `gta.use` call is a step in Playwright's report. Each request is a
+  step inside it, linked to its step in the YAML, with the request and response attached.
+- A run that fails fails the test at the line that called it, with what failed. With
+  `soft: true` the test goes on and fails at the end, as `expect.soft` does.
+- `project` is relative to the folder `playwright.config.ts` is in, and defaults to it.
+  `environment`, `flags`, `bail` and `timeoutCollection` go beside it. The project opens
+  once per worker, so an environment's flag command runs once per worker.
+- A run counts toward the test's timeout, and one still going when the test ends is
+  stopped.
+- To use this `test` with fixtures of your own, combine them with Playwright's
+  `mergeTests`.
+
+It needs `@playwright/test` 1.51 or later, which installing `gta` does not install.
+
+### Any other code
+
+```js
+import { openProject } from '@schwabyio/gta'
+
+const project = await openProject('api-tests', { environment: 'staging' })
+const login = await project.use('login', { username: 'alice' })
+const checkout = await project.run('checkout', { vars: login.values })
+if (!checkout.passed) throw new Error(checkout.failures)
+```
+
+**`openProject(folder, options)`** opens the project in `folder`, the one holding
+`collections/`. The options are `environment`, `flags`, `bail` and `timeoutCollection`.
+Each one you leave out comes from `settings.yml`, the same way `gta` reads it, but here
+the project does not need a `settings.yml`.
+
+**`project.run(collection, options)`** runs a collection the way `gta` runs it: setup,
+then the steps once for each data row, then teardown. Name the collection by its id or
+its place in `collections/` (`checkout/sessions`). `tags` and `notTags` don't apply,
+since you name what runs, and a collection with `exclude: true` runs too. The options:
+
+| Option     | What it does                                                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `steps`    | Run only these steps, named as reports name them or numbered from 1. They run in the file's order, and setup and teardown still run. |
+| `vars`     | Values the run starts with. They sit over the environment and under a data row.                                                      |
+| `bail`     | Stop at the first failing step.                                                                                                      |
+| `signal`   | An `AbortSignal` that stops the run.                                                                                                 |
+| `onResult` | `(result, step) => void`, called as each request finishes.                                                                           |
+
+**`project.use(set, params, options)`** runs a request set as a `use:` step would:
+`login` is `requests/login.yml`, in the project or its global project. `params` are what
+`with:` gives, and a param you leave out takes its default. The options are those of
+`run`, without `steps`.
+
+Both resolve to the same outcome, however the steps fare:
+
+| Field      | What it holds                                                                                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `passed`   | `true` when nothing failed or errored and the run finished.                                                                                                     |
+| `values`   | Every value the run set or captured, by name: `gta.set`, and checks that save what they read, such as `'setAsCollectionVariable'`. Secrets are not hidden here. |
+| `summary`  | Totals, and every request's result as gta's JSON report holds it, with secrets shown as `[secret: NAME]`.                                                       |
+| `steps`    | Where each result's step is: its file and line.                                                                                                                 |
+| `failures` | What went wrong, as `gta` prints it under Failures. Empty when the run passed.                                                                                  |
+| `error`    | Why the run did not start or finish: a file that will not load, `timeoutCollection`, or a cancel. Otherwise `null`.                                             |
+
+They reject only when a collection, step or request set doesn't exist, or a value isn't a
+string, number, boolean or null. Types ship with the package.
+
 ## The file format
 
 [SPEC.md](https://github.com/schwabyio/gravity/blob/main/SPEC.md) specifies every file,

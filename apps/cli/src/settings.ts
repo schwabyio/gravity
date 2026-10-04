@@ -113,7 +113,14 @@ export interface LoadSettingsOptions {
   global?: { root: string; uses: string } | null
   /** From the command line, as typed: a string, or `true` for a bare `--flag`. */
   overrides?: Record<string, string | true>
+  /** How messages and sources name an override: `--limitConcurrency` by default. */
+  overrideLabel?: (key: string) => string
   env?: Record<string, string | undefined>
+  /**
+   * The project may have no `settings.yml`: it runs on the defaults. gta needs
+   * one; a project run from code, such as by a Playwright test, does not.
+   */
+  optionalFile?: boolean
 }
 
 /** Where a setting came from when nothing set it. */
@@ -134,9 +141,10 @@ export interface LoadedSettings {
 /** Read, layer and check a project's settings. Throws `SettingsError` saying what to fix. */
 export async function loadSettings(options: LoadSettingsOptions): Promise<LoadedSettings> {
   const { root, global = null, overrides = {}, env = process.env } = options
+  const overrideLabel = options.overrideLabel ?? ((key: string) => `--${key}`)
 
   const own = await readSettingsFile(path.join(root, SETTINGS_FILE), SETTINGS_FILE)
-  if (own === null) {
+  if (own === null && !options.optionalFile) {
     throw new SettingsError(
       `There is no ${SETTINGS_FILE} in ${root}.\n` +
         `gta runs from a project folder: the one holding collections/ and ${SETTINGS_FILE}.\n` +
@@ -172,9 +180,9 @@ export async function loadSettings(options: LoadSettingsOptions): Promise<Loaded
     origin.set(key, envNameOf(key))
   }
   for (const [key, value] of Object.entries(overrides)) {
-    checkKey(key, `--${key}`)
-    merged[key] = coerce(key as SettingKey, value, `--${key}`)
-    origin.set(key, `--${key}`)
+    checkKey(key, overrideLabel(key))
+    merged[key] = coerce(key as SettingKey, value, overrideLabel(key))
+    origin.set(key, overrideLabel(key))
   }
 
   const result = SettingsSchema.safeParse(merged)

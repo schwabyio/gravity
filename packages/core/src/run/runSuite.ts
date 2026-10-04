@@ -49,6 +49,16 @@ export interface SuiteRunOptions {
   connections?: Connections
   /** For an event stream: the app's live view of its events, and its Stop button. */
   watch?: StreamWatch
+  /**
+   * Values the run starts with, for a caller running it from code: they last
+   * the run, as setup's do, over the environment and under a data row (SPEC.md §4).
+   */
+  vars?: Record<string, VarValue>
+  /**
+   * Where to keep every value the run sets or captures, by name, the last one
+   * set winning: what a caller running it from code reads when it ends.
+   */
+  produced?: Map<string, VarValue>
 }
 
 /**
@@ -78,7 +88,8 @@ async function runStages(
 ): Promise<CollectionRunSummary> {
   const { collection, collectionPath = null, context, signal, bail = false, onResult } = options
   const shared = { connections, ...(options.watch ? { watch: options.watch } : {}) }
-  const values = new Map<string, VarValue>()
+  const values = new Map<string, VarValue>(Object.entries(options.vars ?? {}))
+  const produced = options.produced ? { produced: options.produced } : {}
   const summaries: CollectionRunSummary[] = []
   /** Setup and teardown run with no data row, and everything they set lasts. */
   const once = (stage: 'setup' | 'teardown', stopEarly: boolean) =>
@@ -86,7 +97,7 @@ async function runStages(
       collection,
       collectionPath,
       stage,
-      run: { values, wide: true },
+      run: { values, wide: true, ...produced },
       ...shared,
       ...(context ? { context: { ...context, dataRow: null } } : {}),
       ...(signal ? { signal } : {}),
@@ -114,7 +125,7 @@ async function runStages(
     const summary = await runCollection({
       collection,
       collectionPath,
-      run: { values },
+      run: { values, ...produced },
       ...shared,
       ...(context
         ? {

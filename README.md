@@ -80,6 +80,25 @@ The exit code is `0` when everything passed, `1` when something failed, and `2` 
 `gta` could not run. `gta --help` lists every setting. Projects that share a global
 project share its `settings.yml` too, under their own ([SPEC.md §1.3](./SPEC.md)).
 
+## From Playwright
+
+The same package lets a Playwright test run collections and request sets, then use what
+they saved. Each run and each request shows up as a step in Playwright's report, and a
+failing run fails the test.
+
+```ts
+import { test, expect } from '@schwabyio/gta/playwright'
+
+test('a new user sees their dashboard', async ({ page, gta }) => {
+  const user = await gta.use('create-user', { plan: 'pro' }) // requests/create-user.yml
+  await page.goto(`/users/${user.values.userId}`)
+  await expect(page.getByRole('heading')).toHaveText('Welcome')
+})
+```
+
+[apps/cli/README.md](./apps/cli/README.md#from-playwright-and-other-code) covers the
+setup, and running from any other code with `openProject`.
+
 ## Running from source
 
 You need Node.js 22.12 or later.
