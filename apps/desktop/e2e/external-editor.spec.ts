@@ -120,10 +120,31 @@ test('App settings choose a custom command, and Test opens the app’s settings 
   expect(settings.editor.kind).toBe('custom')
 })
 
-test('the collection header opens its file at the selected step', async () => {
+test('the collection header opens its file, and the selected step opens at its line', async () => {
   await page.locator('.step-open', { hasText: 'broken' }).click()
-  await page.getByRole('button', { name: `${label}: orders.yml, at broken` }).click()
+  const header = page.locator('.collection-header')
+  await header.getByRole('button', { name: `${label}: orders.yml`, exact: true }).click()
+  await expect.poll(lastOpened).toEqual(opened('collections/orders.yml', 1))
+
+  // Beside the selected step's name, at the line it starts on.
+  const step = page.locator('.collection-step')
+  await step.getByRole('button', { name: `${label}: orders.yml, at broken` }).click()
   await expect.poll(lastOpened).toEqual(opened('collections/orders.yml', 7))
+  await page.locator('.step-open', { hasText: 'list' }).click()
+  await step.getByRole('button', { name: `${label}: orders.yml, at list` }).click()
+  await expect.poll(lastOpened).toEqual(opened('collections/orders.yml', 5))
+})
+
+test('each step’s menu opens the file at that step, selected or not', async () => {
+  await page.getByRole('button', { name: 'More actions for broken' }).click()
+  await page.getByRole('menuitem', { name: label }).click()
+  await expect.poll(lastOpened).toEqual(opened('collections/orders.yml', 7))
+  await expect(page.getByRole('menu')).toHaveCount(0)
+
+  // Right-click opens the same menu.
+  await page.locator('.step-open', { hasText: 'list' }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: label }).click()
+  await expect.poll(lastOpened).toEqual(opened('collections/orders.yml', 5))
 })
 
 test('a collection’s, a request set’s and the project’s menus open their files', async () => {
@@ -191,7 +212,10 @@ test('an editor that will not start says why, in the status bar, until dismissed
   await dialog.getByLabel('Command').press('Enter')
   await dialog.getByRole('button', { name: 'Close settings' }).click()
 
-  await page.getByRole('button', { name: `${label}: orders.yml, at broken` }).click()
+  await page
+    .locator('.collection-step')
+    .getByRole('button', { name: /^Open in editor/ })
+    .click()
   const message = page.locator('.status-bar .status-message')
   await expect(message).toContainText('Open in editor failed: Could not start')
   await message.getByRole('button', { name: 'Dismiss' }).click()

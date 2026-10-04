@@ -1635,6 +1635,13 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* The selected step's "Open in …", close beside its name. */
+.collection-step > .tooltip-trigger {
+  flex: none;
+  align-self: center;
+  margin-left: -4px;
+}
+
 .run-summary {
   display: flex;
   gap: 10px;

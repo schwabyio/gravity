@@ -213,11 +213,9 @@ export default function CollectionView(props: Props) {
   // The connections the collection's steps open, for steps to read.
   const opened = connectionNames(props.collection)
 
+  const fileName = props.relativePath.split('/').pop()!
   // The id a file must have is its name; `id:` in the editor may still say otherwise.
-  const fileId = props.relativePath
-    .split('/')
-    .pop()!
-    .replace(/\.yml$/, '')
+  const fileId = fileName.replace(/\.yml$/, '')
   const idWrong = props.collection.id !== fileId
 
   // What each step's feature flags mean with the current values: skipped, or a flag nobody declared.
@@ -298,6 +296,7 @@ export default function CollectionView(props: Props) {
     return (
       <StepList
         list={list}
+        path={props.path}
         steps={listSteps}
         visible={list === 'steps' ? visible : new Set(listSteps.map((_, index) => index))}
         showTags={stepTagsOn && list === 'steps'}
@@ -435,16 +434,12 @@ export default function CollectionView(props: Props) {
                 </button>
               </Tooltip>
             )}
+            {/* The file itself; the selected step's own opens beside its name, below. */}
             <OpenInEditor
               className="collection-open-button"
               size={15}
-              what={`${props.relativePath.split('/').pop()}${selectedStep ? `, at ${stepLabel(selectedStep)}` : ''}`}
-              target={{
-                path: props.path,
-                ...(selectedStep
-                  ? { step: { list: props.selectedList, index: props.selectedIndex } }
-                  : {})
-              }}
+              what={fileName}
+              target={{ path: props.path }}
             />
             <Tooltip
               text={`Collection settings: group runs, step tags, headers, request settings, variables and scripts${props.changes?.collection ? ' — changed since the last commit' : ''}`}
@@ -475,6 +470,13 @@ export default function CollectionView(props: Props) {
               </span>
               <span className={`method m-${selectedMethod.toLowerCase()}`}>{selectedMethod}</span>
               <span className="collection-step-name">{stepLabel(selectedStep)}</span>
+              <OpenInEditor
+                what={`${fileName}, at ${stepLabel(selectedStep)}`}
+                target={{
+                  path: props.path,
+                  step: { list: props.selectedList, index: props.selectedIndex }
+                }}
+              />
               {stepTagsOn && props.selectedList === 'steps' && (
                 <TagEditor
                   owner="step"

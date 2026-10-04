@@ -22,6 +22,7 @@ import {
 } from '../stepOutcome.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
+import { useExternalEditor } from '../externalEditor.js'
 
 /** A button under the list that adds a step. */
 export interface AddAction {
@@ -35,6 +36,8 @@ export interface AddAction {
 interface Props {
   /** Which of the collection's lists this is: `steps`, or `setup` or `teardown`. */
   list: ListName
+  /** The file the steps are written in, for each step's "Open in …". */
+  path: string
   steps: Step[]
   /** Step indexes to show; the rest are filtered out, but keep their numbers. */
   visible: Set<number>
@@ -93,6 +96,7 @@ export default function StepList(props: Props) {
   /** Where a drag would put its step: before or after the step under the pointer. */
   const [dropAt, setDropAt] = useState<StepDrop | null>(null)
   const count = props.steps.length
+  const editor = useExternalEditor()
 
   /**
    * Steps picked together, the selected one among them, for a menu that acts
@@ -333,6 +337,14 @@ export default function StepList(props: Props) {
                     <div className="step-menu" role="menu">
                       <MenuItem label="Rename" onClick={() => setRenaming(index)} />
                       <MenuItem label="Duplicate" onClick={() => props.onDuplicate(index)} />
+                      {editor && (
+                        <MenuItem
+                          label={editor.label}
+                          onClick={() =>
+                            editor.open({ path: props.path, step: { list: props.list, index } })
+                          }
+                        />
+                      )}
                       <MenuItem
                         label="Move up"
                         disabled={index === 0}
