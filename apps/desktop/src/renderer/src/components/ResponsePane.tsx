@@ -177,9 +177,6 @@ export default function ResponsePane(props: Props) {
         </button>
         <span className="metric">{formatMs(response.timings.totalMs)}</span>
         <span className="metric">{formatSize(response.sizeBytes)}</span>
-        <span className="metric" title="Time to first byte">
-          TTFB {formatMs(response.timings.ttfbMs)}
-        </span>
         {response.redirectCount > 0 && (
           <span className="metric" title={response.url}>
             {response.redirectCount} redirect{response.redirectCount > 1 ? 's' : ''}
@@ -231,10 +228,6 @@ export default function ResponsePane(props: Props) {
               <tr>
                 <td className="header-name">Total</td>
                 <td>{formatMs(response.timings.totalMs)}</td>
-              </tr>
-              <tr>
-                <td className="header-name">Final URL</td>
-                <td className="wrap">{response.url}</td>
               </tr>
             </tbody>
           </table>
