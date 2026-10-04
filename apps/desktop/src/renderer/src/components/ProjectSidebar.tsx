@@ -339,6 +339,7 @@ export default function ProjectSidebar(props: Props) {
 
       <div
         className="sidebar-body"
+        onKeyDown={moveInSidebar}
         // Over anything that would not take it, a dragged collection lands nowhere.
         onDragOver={(event) => {
           if (!event.defaultPrevented && over !== undefined) setOver(undefined)
@@ -588,6 +589,51 @@ export default function ProjectSidebar(props: Props) {
       </div>
     </aside>
   )
+}
+
+/** The sidebar's rows, top to bottom: project headings, folders, collections, library files. */
+const ROWS = '.repo-toggle, .row'
+/** The rows that open something, as a click on them does. */
+const OPENS = '.collection-row, .set-row'
+
+/**
+ * The sidebar from the keyboard, as a tree: with a row focused, ↑ and ↓ go to
+ * the row above or below — opening a collection or library file as they land
+ * on it, as a click would, and only focusing a project or a folder — Home and
+ * End the first and last, → opens a closed project or folder and ← closes an
+ * open one. Rows in a closed one are not there to land on. A row is a button,
+ * so a click leaves it focused; typing in a filter is left alone.
+ */
+function moveInSidebar(event: React.KeyboardEvent<HTMLElement>) {
+  const target = event.target as HTMLElement
+  if (!target.matches(ROWS)) return
+  const expanded = target.getAttribute('aria-expanded')
+  if (
+    (event.key === 'ArrowRight' && expanded === 'false') ||
+    (event.key === 'ArrowLeft' && expanded === 'true')
+  ) {
+    event.preventDefault()
+    target.click()
+    return
+  }
+  const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(ROWS)]
+  const at = rows.indexOf(target as HTMLButtonElement)
+  const to =
+    event.key === 'ArrowDown'
+      ? at + 1
+      : event.key === 'ArrowUp'
+        ? at - 1
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? rows.length - 1
+            : null
+  if (to === null) return
+  event.preventDefault()
+  const row = rows[to]
+  if (!row || row === target) return
+  row.focus()
+  if (row.matches(OPENS)) row.click()
 }
 
 /**
