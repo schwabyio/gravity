@@ -471,26 +471,29 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       const code = layer.tests
       if (!code || testsError) continue
       const pending: Promise<unknown>[] = []
+      const filename = filenameOf(layer, 'tests')
       const run = () =>
-        runScript(code, {
-          phase: 'tests',
-          filename: filenameOf(layer, 'tests'),
-          logs,
-          ...(checks ? { checks } : {}),
-          pending: () => pending,
-          globals: (adopt) => ({
-            ...shared(adopt, index),
-            gta: testsGta({
-              session,
-              scope,
-              pending,
-              control,
-              warn: (message) => logs.push({ level: 'warn', phase: 'tests', message })
-            }),
-            req: requestView(outcome.request, adopt),
-            res: responseView(response, adopt)
+        session.madeBy(layer.script, filename, () =>
+          runScript(code, {
+            phase: 'tests',
+            filename,
+            logs,
+            ...(checks ? { checks } : {}),
+            pending: () => pending,
+            globals: (adopt) => ({
+              ...shared(adopt, index),
+              gta: testsGta({
+                session,
+                scope,
+                pending,
+                control,
+                warn: (message) => logs.push({ level: 'warn', phase: 'tests', message })
+              }),
+              req: requestView(outcome.request, adopt),
+              res: responseView(response, adopt)
+            })
           })
-        })
+        )
       // An endpoint base's checks are defaults: the step's own replace them.
       const scriptError = layer.defaults ? await session.asDefaults(run) : await run()
       if (scriptError) testsError = { ...scriptError, script: layer.script }
@@ -510,6 +513,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
     request: outcome.request,
     response,
     assertions: checked.assertions,
+    ...(checked.ignored ? { ignored: checked.ignored } : {}),
     ...(checked.sortedBy ? { sortedBy: checked.sortedBy } : {}),
     ...withLogs(),
     error: testsError,

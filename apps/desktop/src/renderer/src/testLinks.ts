@@ -18,26 +18,36 @@ import {
  * and how each of those lines is marked.
  */
 
-export type Mark = 'pass' | 'fail' | 'unasserted'
+/** `ignored`: no check, but strict validation counts it as checked (`gta.ignoreResponseBodyProperty`). */
+export type Mark = 'pass' | 'fail' | 'unasserted' | 'ignored'
 
 export interface Check {
   index: number
   assertion: AssertionResult
-  /** Body paths this check is about, as patterns over the body's lines. */
+  /** Body paths this check is about, everything inside each included, as patterns over the lines. */
   patterns: PathSegment[][]
+  /** Body paths this check is about without what is inside: the line of the path it named. */
+  exact: PathSegment[][]
 }
 
+/**
+ * The lines a check is about: for a body check, the line of the path it named
+ * and what its content vouched for — not every line inside an array whose
+ * items an unordered check matched by one property, only those properties.
+ */
 export function buildChecks(assertions: AssertionResult[]): Check[] {
-  return assertions.map((assertion, index) => ({
-    index,
-    assertion,
-    patterns:
-      assertion.target === 'body' && assertion.path !== undefined
-        ? [parsePath(assertion.path)]
-        : assertion.target === 'strict'
-          ? (assertion.unasserted ?? []).map(parsePath)
-          : []
-  }))
+  return assertions.map((assertion, index) => {
+    if (assertion.target === 'body' && assertion.path !== undefined) {
+      const named = parsePath(assertion.path)
+      // A result from before checks said what they covered: all of the path, as then.
+      return assertion.covered === undefined
+        ? { index, assertion, patterns: [named], exact: [] }
+        : { index, assertion, patterns: assertion.covered.map(parsePath), exact: [named] }
+    }
+    const patterns =
+      assertion.target === 'strict' ? (assertion.unasserted ?? []).map(parsePath) : []
+    return { index, assertion, patterns, exact: [] }
+  })
 }
 
 export interface BodyLine {
@@ -98,14 +108,29 @@ function markOf(about: Check[]): Mark | null {
   return mark
 }
 
-/** An assertion on `roles` claims every line beneath it, not just its own. */
-export function markLines(lines: BodyLine[], checks: Check[]): Marked[] {
-  const relevant = checks.filter((check) => check.patterns.length > 0)
+/**
+ * An assertion on `roles` claims every line beneath it, not just its own. So
+ * does an ignored path, whose lines are marked ignored where no check is
+ * about them: a check's own verdict always shows over it.
+ */
+export function markLines(
+  lines: BodyLine[],
+  checks: Check[],
+  ignored: PathSegment[][] = []
+): Marked[] {
+  const relevant = checks.filter((check) => check.patterns.length + check.exact.length > 0)
   return lines.map((line) => {
-    const about = relevant.filter((check) =>
-      check.patterns.some((pattern) => pathMatches(pattern, line.path, { prefix: true }))
+    const about = relevant.filter(
+      (check) =>
+        check.patterns.some((pattern) => pathMatches(pattern, line.path, { prefix: true })) ||
+        check.exact.some((pattern) => pathMatches(pattern, line.path))
     )
-    return { about: about.map((c) => c.index), mark: markOf(about) }
+    const mark =
+      markOf(about) ??
+      (ignored.some((pattern) => pathMatches(pattern, line.path, { prefix: true }))
+        ? 'ignored'
+        : null)
+    return { about: about.map((c) => c.index), mark }
   })
 }
 
@@ -125,7 +150,12 @@ export function markStatus(checks: Check[]): Marked {
   return { about: about.map((c) => c.index), mark: markOf(about) }
 }
 
-export const MARK_GLYPH: Record<Mark, string> = { pass: '✓', fail: '✗', unasserted: '!' }
+export const MARK_GLYPH: Record<Mark, string> = {
+  pass: '✓',
+  fail: '✗',
+  unasserted: '!',
+  ignored: '–'
+}
 
 /** Which response tab shows what an assertion is about. */
 export function tabFor(assertion: AssertionResult): 'body' | 'headers' | null {

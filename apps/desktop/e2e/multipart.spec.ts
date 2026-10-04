@@ -77,7 +77,7 @@ test.beforeAll(async () => {
   await page.waitForSelector('.sidebar')
   await (await addProject(app, page, shop)).locator('.collection-row').click()
   await page.waitForSelector('.steps-column')
-  await page.locator('.pane').first().getByRole('button', { name: /^Body/ }).click()
+  await page.locator('.request-pane').getByRole('button', { name: /^Body/ }).click()
 })
 
 test.afterAll(async () => {
@@ -135,6 +135,8 @@ test('a multipart body with a text part and a file chosen from the project', asy
 })
 
 test('a file sent as the whole body', async () => {
+  // The response put the editor aside; opened by hand, it stays open for what follows.
+  await page.getByRole('button', { name: 'Show the request editor' }).click()
   await page.getByLabel('Body type').selectOption('file')
   await pickNext(path.join(shop, 'files', 'avatar.png'))
   await page.getByRole('button', { name: 'Choose file…' }).click()

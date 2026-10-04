@@ -117,10 +117,8 @@ test('selecting an environment resolves the request and sends it', async () => {
   await expect(page.locator('.status-pill')).toHaveText('200 OK', { timeout: 15_000 })
 
   // The collection variable and the folder variable both resolved too.
-  await expect(page.locator('.pane').nth(1).locator('.response-body')).toContainText('/v2/sessions')
-  await expect(page.locator('.pane').nth(1).locator('.response-body')).toContainText(
-    '"realm": "shop"'
-  )
+  await expect(page.locator('.response-body')).toContainText('/v2/sessions')
+  await expect(page.locator('.response-body')).toContainText('"realm": "shop"')
 })
 
 test('the URL field still shows what was authored, not what was sent', async () => {
@@ -213,7 +211,10 @@ test('copying a variable puts its value on the clipboard', async () => {
 })
 
 test('collection variables resolve inside a header value too', async () => {
-  const requestPane = page.locator('.pane').first()
+  // A send above put the editor aside.
+  const show = page.getByRole('button', { name: 'Show the request editor' })
+  if (await show.isVisible()) await show.click()
+  const requestPane = page.locator('.request-pane')
   await requestPane.getByRole('button', { name: /^Headers/ }).click()
 
   const headerToken = requestPane.locator('.var-token', { hasText: '{{realm}}' })
@@ -229,7 +230,7 @@ test('collection variables resolve inside a header value too', async () => {
 })
 
 test('a generated variable is marked dynamic rather than previewed', async () => {
-  const requestPane = page.locator('.pane').first()
+  const requestPane = page.locator('.request-pane')
   await requestPane.getByRole('button', { name: /^Headers/ }).click()
 
   const dynamicToken = requestPane.locator('.var-token', { hasText: '{{$uuid}}' })

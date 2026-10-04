@@ -1,16 +1,15 @@
-import { useState } from 'react'
 import { readParam, type VarValue, type VariablePreviews } from '@schwabyio/gravity-core/model'
 import type { RequestSetView } from '@shared/ipc.js'
 import type { EditorState } from '../requestState.js'
 import { referenceFor, resolveSet } from '../reuse.js'
-import CodeEditor from './CodeEditor.js'
 import Tooltip from './Tooltip.js'
 import VariableInput from './VariableInput.js'
 
 /**
  * A use step (SPEC.md §2.5): in place of a request, the request set it runs
  * and the values it passes. The bar picks the set and runs it; the pane holds
- * the values and the step's own tests, run after the set's last request.
+ * the values. The step's own tests, run after the set's last request, are in
+ * the scripts pane beside it.
  */
 
 interface BarProps {
@@ -82,15 +81,10 @@ interface EditorProps {
   onChange: (changes: Partial<EditorState>) => void
   previews: VariablePreviews
   onCopyVariable: (name: string) => Promise<boolean>
-  /** Where the last run's use tests stopped, if they did. */
-  errorLine: number | undefined
   onCollapse: () => void
 }
 
-type Tab = 'with' | 'tests'
-
 export function UseStepEditor(props: EditorProps) {
-  const [tab, setTab] = useState<Tab>('with')
   const set = resolveSet(props.sets, props.request.use ?? '')
   const given = props.request.with
   const params = Object.entries(set?.params ?? {})
@@ -106,14 +100,11 @@ export function UseStepEditor(props: EditorProps) {
   return (
     <>
       <div className="tabs">
-        <button className={tab === 'with' ? 'active' : ''} onClick={() => setTab('with')}>
+        <button className="active">
           With{' '}
           {Object.keys(given).length > 0 && (
             <span className="count">{Object.keys(given).length}</span>
           )}
-        </button>
-        <button className={tab === 'tests' ? 'active' : ''} onClick={() => setTab('tests')}>
-          Tests {props.request.tests.trim() !== '' && <span className="count dot">•</span>}
         </button>
         <Tooltip text="Collapse the editor to give the response more room">
           <button
@@ -128,68 +119,48 @@ export function UseStepEditor(props: EditorProps) {
       </div>
 
       <div className="tab-body">
-        {tab === 'with' && (
-          <div className="use-with">
-            {!set ? (
-              <p className="setting-error" role="alert">
-                There is no request set called {props.request.use}.
-              </p>
-            ) : (
-              <>
-                {set.problem && (
-                  <p className="setting-error" role="alert">
-                    {set.problem}
-                  </p>
-                )}
-                <p className="hint">
-                  The values this run of <strong>{set.title}</strong> gets, as{' '}
-                  <code>{'{{params.name}}'}</code> in its requests and <code>params.name</code> in
-                  its code. Empty takes the default. A value can use <code>{'{{variables}}'}</code>,
-                  resolved as the set’s first request starts, after the collection’s{' '}
-                  <code>before.script</code>.
-                </p>
-                {params.length === 0 && <p className="hint">This set takes no params.</p>}
-                {params.map(([key, spec]) => (
-                  <ParamField
-                    key={key}
-                    name={key}
-                    spec={readParam(spec)}
-                    value={given[key]}
-                    onChange={(value) => give(key, value)}
-                    previews={props.previews}
-                    onCopyVariable={props.onCopyVariable}
-                  />
-                ))}
-                {unknown.map((key) => (
-                  <p key={key} className="setting-error use-unknown" role="alert">
-                    <code>{key}</code> is not a param of this set, so a run stops here.
-                    <button type="button" onClick={() => give(key, undefined)}>
-                      Remove it
-                    </button>
-                  </p>
-                ))}
-              </>
-            )}
-          </div>
-        )}
-        {tab === 'tests' && (
-          <div className="script-editor">
-            <p className="hint">
-              Runs after the set&rsquo;s last request, on its response — with <code>params</code> as
-              this step passed them. Check files are there as <code>checks.&lt;file&gt;</code>.
+        <div className="use-with">
+          {!set ? (
+            <p className="setting-error" role="alert">
+              There is no request set called {props.request.use}.
             </p>
-            <CodeEditor
-              kind="tests"
-              value={props.request.tests}
-              onChange={(tests) => props.onChange({ tests })}
-              ariaLabel="Tests after the set"
-              placeholder={
-                'No tests of this step’s own — for example:\n  gta.expectResponseStatusCodeToBe(201)'
-              }
-              errorLine={props.errorLine}
-            />
-          </div>
-        )}
+          ) : (
+            <>
+              {set.problem && (
+                <p className="setting-error" role="alert">
+                  {set.problem}
+                </p>
+              )}
+              <p className="hint">
+                The values this run of <strong>{set.title}</strong> gets, as{' '}
+                <code>{'{{params.name}}'}</code> in its requests and <code>params.name</code> in its
+                code. Empty takes the default. A value can use <code>{'{{variables}}'}</code>,
+                resolved as the set’s first request starts, after the collection’s{' '}
+                <code>before.script</code>.
+              </p>
+              {params.length === 0 && <p className="hint">This set takes no params.</p>}
+              {params.map(([key, spec]) => (
+                <ParamField
+                  key={key}
+                  name={key}
+                  spec={readParam(spec)}
+                  value={given[key]}
+                  onChange={(value) => give(key, value)}
+                  previews={props.previews}
+                  onCopyVariable={props.onCopyVariable}
+                />
+              ))}
+              {unknown.map((key) => (
+                <p key={key} className="setting-error use-unknown" role="alert">
+                  <code>{key}</code> is not a param of this set, so a run stops here.
+                  <button type="button" onClick={() => give(key, undefined)}>
+                    Remove it
+                  </button>
+                </p>
+              ))}
+            </>
+          )}
+        </div>
       </div>
     </>
   )

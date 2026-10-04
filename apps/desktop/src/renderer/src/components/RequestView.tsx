@@ -18,17 +18,15 @@ import { usePaneShare, usePaneWidth } from '../hooks/usePaneWidth.js'
 import Resizer from './Resizer.js'
 import { useStoredFlag } from '../hooks/useStoredFlag.js'
 import { buildChecks, tabFor } from '../testLinks.js'
-import CodeEditor from './CodeEditor.js'
 import SettingsTab from './SettingsTab.js'
 import InheritedHeaders from './InheritedHeaders.js'
-import InheritedScripts from './InheritedScripts.js'
 import KeyValueEditor from './KeyValueEditor.js'
 import MultipartEditor, { FileBodyEditor } from './MultipartEditor.js'
 import QueryParamsEditor from './QueryParamsEditor.js'
 import Markdown from './Markdown.js'
 import ResponsePane, { type LiveView, type ResponseTab } from './ResponsePane.js'
 import { ConnectionField, ReadBar } from './ConnectionStep.js'
-import TestResultsPane from './TestResultsPane.js'
+import ScriptsPane, { ScriptsStrip, type ScriptTab } from './ScriptsPane.js'
 import Tooltip from './Tooltip.js'
 import { UseBar, UseStepEditor } from './UseStep.js'
 import VariableInput from './VariableInput.js'
@@ -41,7 +39,8 @@ import {
 } from '../requestState.js'
 import MethodPicker from './MethodPicker.js'
 
-type RequestTab = 'params' | 'headers' | 'body' | 'pre-request' | 'tests' | 'settings' | 'docs'
+/** The request editor's tabs: what the request is made of. Its scripts have a pane of their own. */
+type RequestTab = 'params' | 'headers' | 'body' | 'settings' | 'docs'
 
 interface Props {
   request: EditorState
@@ -101,6 +100,7 @@ interface Props {
 /** One request: where it sits, what it sends, and what came back. */
 export default function RequestView(props: Props) {
   const [tab, setTab] = useState<RequestTab>('params')
+  const [scriptTab, setScriptTab] = useState<ScriptTab>('tests')
   const [responseTab, setResponseTab] = useState<ResponseTab>('body')
 
   // Which assertion is pointed at, shared by the response tabs and the Test Results pane.
@@ -108,40 +108,44 @@ export default function RequestView(props: Props) {
   const [hovered, setHovered] = useState<number | null>(null)
   const [jumpedPath, setJumpedPath] = useState<string | null>(null)
 
-  // The editor steps aside for results: three panes do not fit at full width.
-  // Opening it by hand pins it open until it is collapsed by hand again.
+  // The scripts are always beside the request and its response, and three wide panes do
+  // not fit: whichever of the editor and the response has nothing to show is a strip.
+  // The editor steps aside when a response comes; opening it by hand pins it open until
+  // it is collapsed by hand again.
   const [requestOpen, setRequestOpen] = useState(true)
   const [pinnedOpen, setPinnedOpen] = useState(false)
-  const [testResultsHidden, setTestResultsHidden] = useStoredFlag('pane.testResults.hidden')
-  const testResultsPane = usePaneWidth('pane.testResults', 360, 240, 720)
+  const [scriptsHidden, setScriptsHidden] = useStoredFlag('pane.scripts.hidden')
+  const scriptsPane = usePaneWidth('pane.scripts', 380, 260, 720)
 
   // The request editor and the response split their room by a share the divider between
   // them sets: measured, since the steps pane and the test results pane take theirs first.
   const requestEl = useRef<HTMLElement>(null)
   const responseEl = useRef<HTMLElement>(null)
   const [room, setRoom] = useState(0)
-  const requestPane = usePaneShare('pane.request', 0.5, room, 240)
+  const requestPane = usePaneShare('pane.request', 0.5, room, 180)
 
   const result = props.result
   // A step reading a connection sends nothing: it has no params, headers or body.
   const reads = props.request.reads !== null
   const shownTab: RequestTab =
-    reads && (tab === 'params' || tab === 'headers' || tab === 'body') ? 'tests' : tab
+    reads && (tab === 'params' || tab === 'headers' || tab === 'body') ? 'settings' : tab
   const checks = useMemo(() => buildChecks(result?.assertions ?? []), [result])
   const logs = result?.logs ?? []
   const scriptError = result?.error?.phase === 'tests' ? result.error : null
-  // Anything worth the pane: checks, console output, or a script that stopped.
-  const hasTests = checks.length > 0 || logs.length > 0 || scriptError !== null
-  // Mark the failing line in the editor, when the failing script is this step's own.
-  const errorLine = (phase: 'tests' | 'pre-request') =>
-    result?.error?.phase === phase && result.error.script === 'step' ? result.error.line : undefined
+  // Mark the failing line in an editor, when the failing script is this step's own.
+  const own = props.request.use !== null ? 'use' : 'step'
+  const errorLine = (phase: ScriptTab) =>
+    result?.error?.phase === phase && result.error.script === own ? result.error.line : undefined
+  // Before anything is sent, the response has nothing to show.
+  const responseShown =
+    result !== null || props.running || props.error !== null || (props.live ?? null) !== null
+  const editorShown = requestOpen || !responseShown
 
   useEffect(() => {
     setSelected(null)
     setHovered(null)
     setJumpedPath(null)
-    const worthRoom = (result?.assertions.length ?? 0) > 0 || (result?.logs?.length ?? 0) > 0
-    if (result?.response && worthRoom && !pinnedOpen) setRequestOpen(false)
+    if (result?.response && !pinnedOpen) setRequestOpen(false)
     // Keyed on the result alone: a change of pinning must not re-collapse.
   }, [result])
 
@@ -174,24 +178,20 @@ export default function RequestView(props: Props) {
     }
     measure()
     return () => observer.disconnect()
-  }, [requestOpen, props.request.use])
+  }, [editorShown, responseShown, props.request.use])
 
-  const showTestResults = result?.response != null
+  // Only with both open is there a split between them to drag.
+  const both = editorShown && responseShown
   const columns = [
-    requestOpen ? `minmax(0, ${requestPane.share}fr)` : 'var(--strip)',
-    requestOpen ? `minmax(0, ${1 - requestPane.share}fr)` : 'minmax(0, 1fr)',
-    ...(showTestResults
-      ? [hasTests && !testResultsHidden ? `${testResultsPane.width}px` : 'var(--strip)']
-      : [])
+    !editorShown ? 'var(--strip)' : both ? `minmax(0, ${requestPane.share}fr)` : 'minmax(0, 1fr)',
+    !responseShown
+      ? 'var(--strip)'
+      : both
+        ? `minmax(0, ${1 - requestPane.share}fr)`
+        : 'minmax(0, 1fr)',
+    scriptsHidden ? 'var(--strip)' : `${scriptsPane.width}px`
   ].join(' ')
-  const failed = checks.filter((c) => c.assertion.status === 'fail').length + (scriptError ? 1 : 0)
   const { request } = props
-
-  const showScript = () => {
-    setRequestOpen(true)
-    setPinnedOpen(true)
-    setTab('tests')
-  }
 
   const paramCount = readQueryParams(request.url).length
   // Everything the step inherits, as a run builds it: endpoint base, base collection, collection.
@@ -303,7 +303,7 @@ export default function RequestView(props: Props) {
       )}
 
       <div className="panes" style={{ gridTemplateColumns: columns }}>
-        {!requestOpen ? (
+        {!editorShown ? (
           <button
             type="button"
             className="pane-strip"
@@ -317,18 +317,13 @@ export default function RequestView(props: Props) {
           </button>
         ) : request.use !== null ? (
           <section className="pane request-pane" ref={requestEl}>
-            <Resizer pane={requestPane} label="Resize the request pane" />
+            {both && <Resizer pane={requestPane} label="Resize the request pane" />}
             <UseStepEditor
               request={request}
               sets={props.sets}
               onChange={props.onChange}
               previews={props.previews}
               onCopyVariable={props.onCopyVariable}
-              errorLine={
-                result?.error?.phase === 'tests' && result.error.script === 'use'
-                  ? result.error.line
-                  : undefined
-              }
               onCollapse={() => {
                 setRequestOpen(false)
                 setPinnedOpen(false)
@@ -337,7 +332,7 @@ export default function RequestView(props: Props) {
           </section>
         ) : (
           <section className="pane request-pane" ref={requestEl}>
-            <Resizer pane={requestPane} label="Resize the request pane" />
+            {both && <Resizer pane={requestPane} label="Resize the request pane" />}
             <div className="tabs">
               {!reads && (
                 <>
@@ -361,19 +356,6 @@ export default function RequestView(props: Props) {
                   </button>
                 </>
               )}
-              <button
-                className={shownTab === 'pre-request' ? 'active' : ''}
-                onClick={() => setTab('pre-request')}
-              >
-                Pre-request{' '}
-                {request.preRequest.trim() !== '' && <span className="count dot">•</span>}
-              </button>
-              <button
-                className={shownTab === 'tests' ? 'active' : ''}
-                onClick={() => setTab('tests')}
-              >
-                Tests {request.tests.trim() !== '' && <span className="count dot">•</span>}
-              </button>
               <button
                 className={shownTab === 'settings' ? 'active' : ''}
                 onClick={() => setTab('settings')}
@@ -443,50 +425,6 @@ export default function RequestView(props: Props) {
                   onChange={(settings) => props.onChange({ settings })}
                 />
               )}
-              {shownTab === 'tests' && (
-                <div className="script-editor">
-                  <p className="hint">
-                    Runs after the response. xtest is built in as <code>gta</code> — type{' '}
-                    <code>gta.</code> for its functions — alongside any JavaScript, <code>res</code>{' '}
-                    and <code>assert</code>.
-                  </p>
-                  <InheritedScripts kind="tests" layers={layers} onOpen={openLayer('tests')} />
-                  <CodeEditor
-                    kind="tests"
-                    value={request.tests}
-                    onChange={(tests) => props.onChange({ tests })}
-                    ariaLabel="Tests"
-                    placeholder={
-                      "No tests for this step yet — for example:\n  gta.expectResponseStatusCodeToBe(200)\n  gta.expectResponseBodyToHaveProperty('id', 7)"
-                    }
-                    errorLine={errorLine('tests')}
-                  />
-                </div>
-              )}
-              {shownTab === 'pre-request' && (
-                <div className="script-editor">
-                  <p className="hint">
-                    Runs before the request is built. Set the variables the request uses with{' '}
-                    <code>gta.set(name, value)</code> — for example <code>gta.uuidv7()</code> or{' '}
-                    <code>gta.date(…)</code>.
-                  </p>
-                  <InheritedScripts
-                    kind="pre-request"
-                    layers={layers}
-                    onOpen={openLayer('pre-request')}
-                  />
-                  <CodeEditor
-                    kind="pre-request"
-                    value={request.preRequest}
-                    onChange={(preRequest) => props.onChange({ preRequest })}
-                    ariaLabel="Pre-request script"
-                    placeholder={
-                      "No pre-request script for this step yet — for example:\n  gta.set('today', gta.date('%Y-%m-%d'))"
-                    }
-                    errorLine={errorLine('pre-request')}
-                  />
-                </div>
-              )}
               {shownTab === 'body' && (
                 <div className="body-editor">
                   <select
@@ -537,66 +475,65 @@ export default function RequestView(props: Props) {
           </section>
         )}
 
-        <section className="pane" ref={responseEl}>
-          {props.resultCaption && result && (
-            <p className="result-iteration" aria-label="Result from">
-              {props.resultCaption}
-            </p>
-          )}
-          <ResponsePane
-            result={result}
-            error={props.error}
-            running={props.running}
-            tab={responseTab}
-            onTab={setResponseTab}
-            checks={checks}
-            focus={hovered ?? selected}
-            selected={selected}
-            jumpedPath={jumpedPath}
-            onPick={pick}
-            live={props.live ?? null}
-            {...(props.onStop ? { onStop: props.onStop } : {})}
-          />
-        </section>
-
-        {showTestResults &&
-          (hasTests && !testResultsHidden ? (
-            <TestResultsPane
+        {responseShown ? (
+          <section className="pane" ref={responseEl}>
+            {props.resultCaption && result && (
+              <p className="result-iteration" aria-label="Result from">
+                {props.resultCaption}
+              </p>
+            )}
+            <ResponsePane
+              result={result}
+              error={props.error}
+              running={props.running}
+              tab={responseTab}
+              onTab={setResponseTab}
               checks={checks}
+              focus={hovered ?? selected}
               selected={selected}
-              onSelect={select}
-              onHover={(index) => {
-                setHovered(index)
-                if (index !== null) setJumpedPath(null)
-              }}
-              onJump={jump}
-              pane={testResultsPane}
-              onHide={() => setTestResultsHidden(true)}
-              logs={logs}
-              scriptError={scriptError}
-              onShowScript={showScript}
+              jumpedPath={jumpedPath}
+              onPick={pick}
+              live={props.live ?? null}
+              {...(props.onStop ? { onStop: props.onStop } : {})}
             />
-          ) : (
-            <button
-              type="button"
-              className={`pane-strip test-results-strip${failed > 0 ? ' failed' : ''}`}
-              onClick={() => setTestResultsHidden(false)}
-              disabled={!hasTests}
-              aria-label={hasTests ? 'Show test results' : 'No test results'}
-            >
-              <span>
-                {!hasTests
-                  ? 'No test results'
-                  : scriptError
-                    ? '◂ Test Results · tests stopped'
-                    : failed > 0
-                      ? `◂ Test Results · ${failed} failed`
-                      : checks.length > 0
-                        ? `◂ Test Results · ${checks.length}/${checks.length}`
-                        : '◂ Test Results'}
-              </span>
-            </button>
-          ))}
+          </section>
+        ) : (
+          <button type="button" className="pane-strip" disabled aria-label="No response yet">
+            <span>No response yet</span>
+          </button>
+        )}
+
+        {scriptsHidden ? (
+          <ScriptsStrip
+            checks={result?.response ? checks : []}
+            scriptError={scriptError}
+            onShow={() => setScriptsHidden(false)}
+          />
+        ) : (
+          <ScriptsPane
+            use={request.use !== null}
+            request={request}
+            onChange={props.onChange}
+            tab={scriptTab}
+            onTab={setScriptTab}
+            layers={layers}
+            onOpenLayer={openLayer}
+            result={result}
+            checks={checks}
+            logs={logs}
+            scriptError={scriptError}
+            errorLines={{ 'pre-request': errorLine('pre-request'), tests: errorLine('tests') }}
+            selected={selected}
+            onSelect={select}
+            onHover={(index) => {
+              setHovered(index)
+              if (index !== null) setJumpedPath(null)
+            }}
+            onJump={jump}
+            pane={scriptsPane}
+            onHide={() => setScriptsHidden(true)}
+          />
+        )}
       </div>
     </div>
   )

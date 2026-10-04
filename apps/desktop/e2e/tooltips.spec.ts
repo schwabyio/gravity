@@ -135,8 +135,7 @@ test('the Pull explanation says why it is unavailable', async () => {
 
 test('explains the header remove and enable controls', async () => {
   await page
-    .locator('.pane')
-    .first()
+    .locator('.request-pane')
     .getByRole('button', { name: /^Headers/ })
     .click()
 
@@ -151,8 +150,7 @@ test('explains the header remove and enable controls', async () => {
 
 test('explains removing a query parameter', async () => {
   await page
-    .locator('.pane')
-    .first()
+    .locator('.request-pane')
     .getByRole('button', { name: /^Params/ })
     .click()
   await page.mouse.move(0, 0)
@@ -176,8 +174,7 @@ test('dismisses on Escape and on pressing the button', async () => {
 
   // Pressing a button should act, not leave an explanation hanging over it.
   await page
-    .locator('.pane')
-    .first()
+    .locator('.request-pane')
     .getByRole('button', { name: /^Headers/ })
     .click()
   await page.mouse.move(0, 0)

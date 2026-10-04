@@ -170,7 +170,7 @@ function toRunError(cause: unknown, phase: RunError['phase'], filename: string):
   const timedOut =
     cause instanceof ScriptTimeout ||
     (typeof shaped?.code === 'string' && shaped.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT')
-  const line = stack ? lineIn(stack, filename) : undefined
+  const line = stack ? scriptLine(stack, filename) : undefined
 
   return {
     phase,
@@ -185,10 +185,15 @@ function toRunError(cause: unknown, phase: RunError['phase'], filename: string):
   }
 }
 
-/** The first line of the author's own file named in a stack. */
-function lineIn(stack: string, filename: string): number | undefined {
+/**
+ * The innermost line of a script named in a stack: the frame of that file
+ * nearest the top. Matched as a whole location — `at tests:3:7`, `(tests:3:7)`,
+ * or a syntax error's leading `tests:3` — so `tests` is never found inside
+ * `collection tests`.
+ */
+export function scriptLine(stack: string, filename: string): number | undefined {
   const escaped = filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = new RegExp(`${escaped}:(\\d+)`).exec(stack)
+  const match = new RegExp(`(?:^|\\(|\\bat (?:async )?)${escaped}:(\\d+)`, 'm').exec(stack)
   return match ? Number(match[1]) : undefined
 }
 

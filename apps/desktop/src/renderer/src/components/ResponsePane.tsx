@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  formatPath,
+  parsePath,
+  pathMatches,
   type EventStreamRead,
   type RunResult,
   type StreamEvent
@@ -263,13 +264,23 @@ function BodyTab(props: Props & { result: RunResult }) {
 
   const differs = checkedDiffersFromRaw(response, result.sortedBy)
   const body = useMemo(() => checkedBody(response, result.sortedBy), [response, result.sortedBy])
-  const marks = useMemo(() => (body.ok ? markLines(body.lines, checks) : []), [body, checks])
+  const ignored = useMemo(
+    () => (result.ignored ?? []).map((entry) => parsePath(entry.path)),
+    [result.ignored]
+  )
+  const marks = useMemo(
+    () => (body.ok ? markLines(body.lines, checks, ignored) : []),
+    [body, checks, ignored]
+  )
   const showRaw = differs && raw
 
   const jumpedLine = useMemo(
     () =>
       jumpedPath !== null && body.ok
-        ? body.lines.findIndex((line) => formatPath(line.path) === jumpedPath)
+        ? // The first line of it: an ignored `account[].id.value` names no line of its own.
+          body.lines.findIndex((line) =>
+            pathMatches(parsePath(jumpedPath), line.path, { prefix: true })
+          )
         : -1,
     [jumpedPath, body]
   )

@@ -10,15 +10,21 @@ import { lintGutter, linter, type Diagnostic } from '@codemirror/lint'
 import {
   Compartment,
   EditorState,
+  RangeSet,
   RangeSetBuilder,
   StateEffect,
-  StateField
+  StateField,
+  type Text,
+  type Transaction
 } from '@codemirror/state'
 import {
   Decoration,
   EditorView,
+  gutter,
+  GutterMarker,
   placeholder as placeholderText,
   tooltips,
+  WidgetType,
   type DecorationSet
 } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
@@ -32,6 +38,7 @@ import {
   type ApiEntry,
   type ScriptKind
 } from '../scriptApi.js'
+import type { CheckLine } from '../checkLines.js'
 
 interface Props {
   value: string
@@ -41,6 +48,12 @@ interface Props {
   placeholder?: string
   /** A line to mark as where the last run's script failed, 1-based. */
   errorLine?: number | undefined
+  /**
+   * The lines the last run's checks were made on, to mark ✓ or ✕ in a gutter
+   * of their own, a failure's message under its line. Given at all, even
+   * empty, and the gutter keeps its room, so marks arriving move nothing.
+   */
+  checks?: CheckLine[] | undefined
 }
 
 /**
@@ -57,13 +70,16 @@ export default function CodeEditor({
   kind,
   ariaLabel,
   placeholder,
-  errorLine
+  errorLine,
+  checks
 }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
   const completions = useRef(new Compartment())
+  const checksRef = useRef(checks)
+  checksRef.current = checks
 
   useEffect(() => {
     const editor = new EditorView({
@@ -80,6 +96,7 @@ export default function CodeEditor({
           syntaxHighlighting(highlight),
           theme,
           errorLineField,
+          ...(checks !== undefined ? [checkField, checkGutter] : []),
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
           ...(placeholder ? [placeholderText(placeholder)] : []),
           EditorView.updateListener.of((update) => {
@@ -100,6 +117,8 @@ export default function CodeEditor({
     const current = editor.state.doc.toString()
     if (current !== value) {
       editor.dispatch({ changes: { from: 0, to: current.length, insert: value } })
+      // A document from outside has the marks by line again, not where its old text went.
+      if (checksRef.current) editor.dispatch({ effects: setChecks.of(checksRef.current) })
     }
   }, [value])
 
@@ -112,6 +131,11 @@ export default function CodeEditor({
   useEffect(() => {
     view.current?.dispatch({ effects: setErrorLine.of(errorLine ?? null) })
   }, [errorLine, value])
+
+  // Only a new run's checks: typing moves the marks with their lines instead.
+  useEffect(() => {
+    if (checks) view.current?.dispatch({ effects: setChecks.of(checks) })
+  }, [checks])
 
   return <div className="code-editor" ref={host} />
 }
@@ -282,11 +306,145 @@ const errorLineField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field)
 })
 
+/* ---------------------------------------------------------- check marks -- */
+
+const setChecks = StateEffect.define<CheckLine[]>()
+
+/** A line a check was made on, where it is now, with the text it had when checked. */
+interface CheckMark {
+  from: number
+  text: string
+  check: CheckLine
+}
+
+interface CheckState {
+  marks: CheckMark[]
+  decorations: DecorationSet
+  gutter: RangeSet<GutterMarker>
+}
+
+class CheckMarker extends GutterMarker {
+  constructor(readonly check: CheckLine) {
+    super()
+  }
+  override eq(other: CheckMarker): boolean {
+    return other.check.status === this.check.status && other.check.title === this.check.title
+  }
+  override toDOM(): Node {
+    const mark = document.createElement('span')
+    mark.className = `cm-check-mark ${this.check.status}`
+    mark.textContent = { pass: '✓', fail: '✕', ignored: '–' }[this.check.status]
+    mark.title = this.check.title
+    mark.setAttribute('aria-label', this.check.title)
+    return mark
+  }
+}
+
+/** Holds the gutter's width before any run, so the first marks move nothing. */
+class SpacerMarker extends GutterMarker {
+  override toDOM(): Node {
+    const space = document.createElement('span')
+    space.className = 'cm-check-spacer'
+    space.textContent = '✕'
+    return space
+  }
+}
+
+const spacer = new SpacerMarker()
+
+/** What a line's failed checks said, under it. */
+class FailureNote extends WidgetType {
+  constructor(readonly failures: string[]) {
+    super()
+  }
+  override eq(other: FailureNote): boolean {
+    return other.failures.join('\n') === this.failures.join('\n')
+  }
+  override toDOM(): HTMLElement {
+    const note = document.createElement('div')
+    note.className = 'cm-check-note'
+    for (const failure of this.failures) {
+      const line = document.createElement('div')
+      line.textContent = failure
+      note.append(line)
+    }
+    return note
+  }
+  override ignoreEvent(): boolean {
+    return true
+  }
+}
+
+const failedLine = Decoration.line({ class: 'cm-check-failed' })
+
+function drawn(marks: CheckMark[], doc: Text): CheckState {
+  const decorations = []
+  const markers = []
+  for (const mark of marks) {
+    const line = doc.lineAt(mark.from)
+    markers.push(new CheckMarker(mark.check).range(line.from))
+    if (mark.check.status === 'fail') {
+      decorations.push(failedLine.range(line.from))
+      if (mark.check.failures.length > 0) {
+        const note = new FailureNote(mark.check.failures)
+        decorations.push(Decoration.widget({ widget: note, block: true, side: 1 }).range(line.to))
+      }
+    }
+  }
+  return {
+    marks,
+    decorations: Decoration.set(decorations, true),
+    gutter: RangeSet.of(markers, true)
+  }
+}
+
+/** A run's checks placed by line, in the document as it is. */
+function placed(checks: CheckLine[], doc: Text): CheckMark[] {
+  return checks
+    .filter((check) => check.line >= 1 && check.line <= doc.lines)
+    .map((check) => {
+      const line = doc.line(check.line)
+      return { from: line.from, text: line.text, check }
+    })
+}
+
+/**
+ * Marks follow their lines through edits; a line whose text changed loses its
+ * mark, since what was checked there is no longer what is written.
+ */
+function followed(marks: CheckMark[], transaction: Transaction): CheckMark[] {
+  return marks.flatMap((mark) => {
+    const line = transaction.state.doc.lineAt(transaction.changes.mapPos(mark.from, 1))
+    return line.text === mark.text ? [{ ...mark, from: line.from }] : []
+  })
+}
+
+const checkField = StateField.define<CheckState>({
+  create: (state) => drawn([], state.doc),
+  update(current, transaction) {
+    let marks = transaction.docChanged ? followed(current.marks, transaction) : current.marks
+    for (const effect of transaction.effects) {
+      if (effect.is(setChecks)) marks = placed(effect.value, transaction.state.doc)
+    }
+    return marks === current.marks ? current : drawn(marks, transaction.state.doc)
+  },
+  provide: (field) => EditorView.decorations.from(field, (state) => state.decorations)
+})
+
+const checkGutter = gutter({
+  class: 'cm-check-gutter',
+  markers: (view) => view.state.field(checkField).gutter,
+  initialSpacer: () => spacer
+})
+
 /* ----------------------------------------------------------------- theme -- */
 
 // Colours come from the app's tokens, so the editor follows light and dark mode.
 const theme = EditorView.theme({
-  '&': {
+  // The editor itself, not `&` alone: the tooltips' holder on the body carries the theme's
+  // class too, and given the editor's full height it ran a window's height past the app,
+  // which then scrolled into empty space.
+  '&.cm-editor': {
     height: '100%',
     backgroundColor: 'var(--surface)',
     color: 'var(--text)',
@@ -320,6 +478,25 @@ const theme = EditorView.theme({
     fontStyle: 'italic'
   },
   '.cm-error-line': { backgroundColor: 'color-mix(in srgb, var(--client) 16%, transparent)' },
+  '.cm-check-gutter .cm-gutterElement': { padding: '0 3px', textAlign: 'center' },
+  '.cm-check-mark, .cm-check-spacer': {
+    fontFamily: 'system-ui, sans-serif',
+    fontSize: '11px',
+    fontWeight: '800'
+  },
+  '.cm-check-mark.pass': { color: 'var(--ok)' },
+  '.cm-check-mark.fail': { color: 'var(--client)' },
+  '.cm-check-mark.ignored': { color: 'var(--text-dim)' },
+  '.cm-check-failed': { backgroundColor: 'color-mix(in srgb, var(--client) 10%, transparent)' },
+  '.cm-check-note': {
+    padding: '0 6px 2px',
+    backgroundColor: 'color-mix(in srgb, var(--client) 10%, transparent)',
+    color: 'var(--client)',
+    fontFamily: 'system-ui, sans-serif',
+    fontSize: '11px',
+    lineHeight: '16px',
+    whiteSpace: 'pre-wrap'
+  },
   '.cm-tooltip': {
     backgroundColor: 'var(--surface)',
     color: 'var(--text)',

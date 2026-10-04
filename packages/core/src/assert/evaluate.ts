@@ -5,7 +5,7 @@ import {
   type Located,
   type PathSegment
 } from '../model/path.js'
-import type { AssertionResult, ReceivedResponse } from '../model/run.js'
+import type { AssertionResult, IgnoredPath, ReceivedResponse } from '../model/run.js'
 import type { VarValue } from '../model/documents.js'
 import type { VariableScope } from '../vars/scope.js'
 
@@ -17,6 +17,8 @@ import type { VariableScope } from '../vars/scope.js'
  */
 export interface CheckOutcome {
   assertions: AssertionResult[]
+  /** Body paths ignored for strict validation, when any were. */
+  ignored?: IgnoredPath[]
   /** The sort applied before comparing, when `sortResponseBodyArrays` asked for one. */
   sortedBy?: string[]
 }
@@ -188,10 +190,11 @@ export function checkBody(
   }
 
   capture(wanted, fanOut ? located.map((l) => l.value) : located[0]!.value, context.scope)
+  const vouched = { covered: covered.map((c) => formatPath(c.pattern)) }
   return {
     assertion: failure
-      ? { ...base, ...actual, name, status: 'fail', message: failure }
-      : { ...base, ...actual, name, status: 'pass' },
+      ? { ...base, ...actual, name, status: 'fail', message: failure, ...vouched }
+      : { ...base, ...actual, name, status: 'pass', ...vouched },
     covered
   }
 }

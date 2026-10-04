@@ -76,20 +76,45 @@ test.afterAll(async () => {
   fs.rmSync(tmp, { recursive: true, force: true })
 })
 
-const results = () => page.locator('.test-results-pane')
+const results = () => page.locator('.test-results')
 const check = (name: string) => results().locator('.check', { hasText: name })
-const requestTab = (name: string) => page.locator('.request-pane .tabs button', { hasText: name })
+const scriptTab = (name: string) => page.locator('.scripts-pane .tabs button', { hasText: name })
 const editor = (label: string) => page.getByRole('textbox', { name: label })
 
-test('the Tests and Pre-request tabs show the step’s code in an editor', async () => {
-  await requestTab('Tests').click()
+test('the scripts pane shows the step’s code, Tests first, Pre-request a tab away', async () => {
+  // Tests is open from the start, beside the request: nothing to click.
+  await expect(scriptTab('Tests')).toHaveClass(/active/)
   await expect(editor('Tests')).toContainText('gta.expectResponseStatusCodeToBe(200)')
-  await requestTab('Pre-request').click()
+  // The request editor keeps only what the request is made of.
+  await expect(page.locator('.request-pane .tabs button', { hasText: 'Tests' })).toHaveCount(0)
+  await expect(page.locator('.request-pane .tabs button', { hasText: 'Pre-request' })).toHaveCount(
+    0
+  )
+  // Pre-request comes first, the order they run.
+  await expect(page.locator('.scripts-pane .tabs button').first()).toContainText('Pre-request')
+  await scriptTab('Pre-request').click()
   await expect(editor('Pre-request script')).toContainText("gta.set('userId', 7)")
 })
 
+test('the page ends where the window does, with the code editor on it', async () => {
+  // Nothing below the app to scroll to: the editor's tooltip holder once ran past it.
+  const sizes = await page.evaluate(() => {
+    const view = globalThis as unknown as {
+      innerHeight: number
+      document: { scrollingElement: { scrollHeight: number } }
+    }
+    return { page: view.document.scrollingElement.scrollHeight, window: view.innerHeight }
+  })
+  expect(sizes.page).toBe(sizes.window)
+})
+
+test('each script tab says what its script holds before a run', async () => {
+  await expect(scriptTab('Pre-request').locator('.script-chip')).toHaveText('1 line')
+  await expect(scriptTab('Tests').locator('.script-chip')).toHaveText(/^\d+ checks?$/)
+})
+
 test('switching steps shows each step’s own code, and says when there is none', async () => {
-  await requestTab('Tests').click()
+  await scriptTab('Tests').click()
   await page.locator('.step-open', { hasText: 'no code' }).click()
   await expect(editor('Tests')).toContainText('No tests for this step yet')
   await expect(page.locator('.cm-placeholder')).toBeVisible()
@@ -102,6 +127,20 @@ test('running the code reports each check, a named test and the console', async 
   await page.getByRole('button', { name: 'Send' }).click()
   // The pre-request script supplied the variable the URL needed.
   await expect(results().locator('.test-results-summary')).toHaveText('1 of 4 failed')
+  // The tabs say how it went; the script stays on top, the results under it.
+  await expect(scriptTab('Tests').locator('.script-chip')).toHaveText('✕ 1 of 4')
+  await expect(scriptTab('Pre-request').locator('.script-chip')).toHaveText('✓')
+  await expect(editor('Tests')).toBeVisible()
+  const script = (await editor('Tests').boundingBox())!
+  expect(script.y).toBeLessThan((await results().boundingBox())!.y)
+  // Each line a check was made on is marked, a failure with what it said under it.
+  const marks = page.locator('.scripts-pane .cm-check-gutter .cm-check-mark')
+  await expect(marks).toHaveText(['✓', '✕', '✓', '✓'])
+  await expect(marks.nth(1)).toHaveAttribute('aria-label', /^✕ user\.name/)
+  await expect(page.locator('.scripts-pane .cm-check-failed')).toHaveText(
+    "gta.expectResponseBodyToHaveProperty('user.name', 'Grace')"
+  )
+  await expect(page.locator('.scripts-pane .cm-check-note')).toContainText('Grace')
   await expect(check('user.name')).toHaveClass(/fail/)
   await expect(check('user.nickname is absent')).toHaveClass(/pass/)
   await expect(
@@ -114,15 +153,22 @@ test('running the code reports each check, a named test and the console', async 
   )
 })
 
-test('an edit to the tests is what the next send runs', async () => {
-  await page.getByRole('button', { name: 'Show the request editor' }).click()
-  await requestTab('Tests').click()
+test('the marks follow their lines through an edit, and the next send marks it afresh', async () => {
+  const marks = page.locator('.scripts-pane .cm-check-gutter .cm-check-mark')
   await editor('Tests').click()
+  // A line pushed down keeps its mark; nothing was checked on the new one yet.
+  await page.keyboard.press('ControlOrMeta+Home')
+  await page.keyboard.press('Enter')
+  await expect(marks).toHaveText(['✓', '✕', '✓', '✓'])
+  await expect(page.locator('.scripts-pane .cm-check-failed')).toContainText("'user.name'")
+  await page.keyboard.press('Backspace')
+
   await page.keyboard.press('ControlOrMeta+End')
   await page.keyboard.press('Enter')
   await page.keyboard.type("gta.test('from the editor', () => assert.ok(true))")
   await page.getByRole('button', { name: 'Send' }).click()
   await expect(check('from the editor')).toHaveClass(/pass/)
+  await expect(marks).toHaveText(['✓', '✕', '✓', '✓', '✓'])
 })
 
 test('the editor completes gta', async () => {
@@ -149,7 +195,8 @@ test('a script that throws is shown with its line, and the editor marks it', asy
   const banner = results().locator('.script-error')
   await expect(banner).toContainText('Tests stopped at line 8')
   await expect(banner).toContainText('ReferenceError: notDefined is not defined')
-  await banner.getByRole('button', { name: 'Show in Tests' }).click()
+  await expect(banner).toContainText('The line is marked in the script above')
+  await expect(scriptTab('Tests').locator('.script-chip')).toHaveText('!')
   await expect(page.locator('.cm-error-line')).toHaveText('notDefined()')
 })
 

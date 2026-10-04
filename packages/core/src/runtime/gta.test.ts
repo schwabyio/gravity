@@ -230,6 +230,13 @@ describe('xtest functions on gta, without the boilerplate', () => {
     expect(strict.unasserted).not.toContain('url')
     expect(strict.unasserted).not.toContain('account[0].balance')
     expect(strict.unasserted).toContain('number.value')
+    // What was ignored is reported, with where, and never counted as a check.
+    expect(result.ignored).toEqual([
+      { path: 'url', source: { script: 'step', line: 3 } },
+      { path: 'account[].balance', source: { script: 'step', line: 4 } }
+    ])
+    expect(result.assertions.map((a) => a.name)).not.toContain('ignoreResponseBodyProperty')
+    expect(result.assertions).toHaveLength(3)
   })
 
   it('turns a misused specialHandling into a failed check and carries on', async () => {
@@ -1168,6 +1175,100 @@ describe('variables, flags and skips, called directly', () => {
     gta.skipRest('later')
     expect(after).toEqual({ skip: null, rest: 'gta.skipRest() in an earlier step' })
     expect(() => gta.skip()).toThrow(/belongs in before\.script/)
+  })
+})
+
+describe('what a body check covered', () => {
+  const coveredBy = async (tests: string) => (await run(tests)).assertions[0]?.covered
+
+  it('is the properties an unordered check matched, in the items it matched', async () => {
+    expect(
+      await coveredBy(
+        "gta.expectResponseBodyToHaveUnorderedArray('account', [{ pathToProperty: 'id.value', expectedValue: 'a' }])"
+      )
+    ).toEqual(['account[1].id.value'])
+  })
+
+  it('is the whole value an equality compared, and nothing a length measured', async () => {
+    expect(
+      await coveredBy("gta.expectResponseBodyToHaveProperty('string', { value: 'r13FS' })")
+    ).toEqual(['string'])
+    expect(
+      await coveredBy("gta.expectResponseBodyToHaveProperty('roles', 2, 'isArrayAndHasLength')")
+    ).toEqual([])
+  })
+})
+
+describe('where each check was made', () => {
+  const lines = (result: RunResult) => result.assertions.map((a) => a.source)
+
+  it('notes the line of the step’s tests each check was made on', async () => {
+    const result = await run(
+      [
+        'gta.expectResponseStatusCodeToBe(200)',
+        '',
+        "gta.expectResponseToHaveHeader('X-Request-Id')",
+        "gta.test('named', () => assert.ok(true))"
+      ].join('\n')
+    )
+    expect(lines(result)).toEqual([
+      { script: 'step', line: 1 },
+      { script: 'step', line: 3 },
+      { script: 'step', line: 4 }
+    ])
+  })
+
+  it('notes a helper’s own line, and a line after an await', async () => {
+    const result = await run(
+      [
+        'function header() {',
+        "  gta.expectResponseToHaveHeader('X-Request-Id')",
+        '}',
+        'header()',
+        'await new Promise((resolve) => setTimeout(resolve, 1))',
+        'gta.expectResponseStatusCodeToBe(200)'
+      ].join('\n')
+    )
+    expect(lines(result)).toEqual([
+      { script: 'step', line: 2 },
+      { script: 'step', line: 6 }
+    ])
+  })
+
+  it('notes a check file’s checks against the line that called it', async () => {
+    const result = await runRequest({
+      step: StepSchema.parse({
+        GET: `${origin}/thing`,
+        tests: 'gta.expectResponseStatusCodeToBe(200)\nchecks.common.ok()'
+      }),
+      checks: [
+        {
+          name: 'common',
+          filename: 'checks/common.js',
+          code: "export function ok() {\n  gta.expectResponseToHaveHeader('X-Request-Id')\n}\n"
+        }
+      ],
+      scope: new VariableScope()
+    })
+    expect(result.error).toBeNull()
+    expect(lines(result)).toEqual([
+      { script: 'step', line: 1 },
+      { script: 'step', line: 2 }
+    ])
+  })
+
+  it('tells the collection’s checks from the step’s, and strict validation’s from both', async () => {
+    const collection: Collection = {
+      steps: [],
+      tests: 'gta.useStrictValidation()\ngta.expectResponseStatusCodeToBe(200)'
+    }
+    const result = await run('\ngta.expectResponseToHaveHeader("X-Request-Id")', {}, collection)
+    expect(lines(result)).toEqual([
+      { script: 'collection', line: 2 },
+      { script: 'step', line: 2 },
+      undefined
+    ])
+    expect(result.assertions[2]?.target).toBe('strict')
   })
 })
 

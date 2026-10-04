@@ -86,6 +86,22 @@ export const ReceivedResponseSchema = z.object({
 })
 export type ReceivedResponse = z.infer<typeof ReceivedResponseSchema>
 
+/**
+ * Whose script something came from: an endpoint base's, the base collection's,
+ * the collection's, the request set's, the step's own, or the tests on the use
+ * step that ran the set.
+ */
+export const ScriptOwnerSchema = z.enum(['endpoint', 'base', 'collection', 'set', 'step', 'use'])
+export type ScriptOwner = z.infer<typeof ScriptOwnerSchema>
+
+/**
+ * Where a script made a check, or ignored a property: whose `tests`, and the
+ * line there, 1-based. The innermost line of that script on the stack, so a
+ * check a check file makes is the line that called it.
+ */
+export const ScriptSourceSchema = z.object({ script: ScriptOwnerSchema, line: z.number() })
+export type ScriptSource = z.infer<typeof ScriptSourceSchema>
+
 /** `custom` is a named check from `gta.test()` in a step's `tests`. */
 export const AssertionTargetSchema = z.enum(['status', 'header', 'body', 'strict', 'custom'])
 export type AssertionTarget = z.infer<typeof AssertionTargetSchema>
@@ -103,8 +119,29 @@ export const AssertionResultSchema = z.object({
   /** What the response had, for display; absent when nothing was there. */
   actual: z.string().optional(),
   /** Strict validation only: body paths nothing asserted, ignored or captured. */
-  unasserted: z.array(z.string()).optional()
+  unasserted: z.array(z.string()).optional(),
+  /**
+   * A body check only: the paths its content vouched for, as strict validation
+   * counts them — the whole value an equality compared, the very properties
+   * an unordered array check matched in the items it matched, nothing inside
+   * a container a length check measured. What a viewer marks as checked.
+   */
+  covered: z.array(z.string()).optional(),
+  /** Where the check was made. Absent for one no line made, such as strict validation's verdict. */
+  source: ScriptSourceSchema.optional()
 })
+
+/**
+ * A body path the tests ignored: under strict validation, counted as checked
+ * without being checked (`gta.ignoreResponseBodyProperty`, SPEC.md §3). Not a
+ * check, so never counted as one.
+ */
+export const IgnoredPathSchema = z.object({
+  /** As a path is written: `subAccounts`, or `account[].id.value` for every item's. */
+  path: z.string(),
+  source: ScriptSourceSchema.optional()
+})
+export type IgnoredPath = z.infer<typeof IgnoredPathSchema>
 export type AssertionResult = z.infer<typeof AssertionResultSchema>
 
 /** A line a script wrote with `console`. */
@@ -138,11 +175,8 @@ export const RunErrorSchema = z.object({
   stack: z.string().optional(),
   /** For a script error: the line in that script, 1-based. */
   line: z.number().optional(),
-  /**
-   * For a script error: whose script it was — the collection's, the request
-   * set's, the step's own, or the tests on the use step that ran the set.
-   */
-  script: z.enum(['endpoint', 'base', 'collection', 'set', 'step', 'use']).optional()
+  /** For a script error: whose script it was. */
+  script: ScriptOwnerSchema.optional()
 })
 export type RunError = z.infer<typeof RunErrorSchema>
 
@@ -159,6 +193,8 @@ export const RunResultSchema = z.object({
   request: SentRequestSchema,
   response: ReceivedResponseSchema.nullable(),
   assertions: z.array(AssertionResultSchema),
+  /** Body paths the tests ignored, in the order they did, when they ignored any. */
+  ignored: z.array(IgnoredPathSchema).optional(),
   /**
    * `gta.sortResponseBodyArrays` as applied, when it was. Body paths in `assertions`
    * refer to the body after this sort, so a viewer re-applies it to line up.

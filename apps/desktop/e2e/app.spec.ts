@@ -28,8 +28,8 @@ let origin: string
 let app: ElectronApplication
 let page: Page
 
-const requestPane = () => page.locator('.pane').first()
-const responsePane = () => page.locator('.pane').nth(1)
+const requestPane = () => page.locator('.request-pane')
+const responsePane = () => page.locator('.panes > section.pane:not(.request-pane)')
 
 test.beforeAll(async () => {
   server = http.createServer((req, res) => {
@@ -117,6 +117,8 @@ test('sends a request and renders the response', async () => {
 })
 
 test('sends request headers the user adds', async () => {
+  // A response put the editor aside; opened by hand, it stays open from here on.
+  await page.getByRole('button', { name: 'Show the request editor' }).click()
   await requestPane()
     .getByRole('button', { name: /^Headers/ })
     .click()

@@ -107,7 +107,7 @@ test('an open stream stops at Max events, and its events are checked like any bo
   await page.getByRole('button', { name: 'Send' }).click()
   await expect(page.locator('.status-pill')).toContainText('200')
   await expect(streamMetric()).toHaveText('3 events · max events reached')
-  await expect(page.locator('.test-results-pane .test-results-summary')).toHaveText('All 3 passed')
+  await expect(page.locator('.test-results .test-results-summary')).toHaveText('All 3 passed')
 
   await expect(line('"event": "subscribed"')).toHaveClass(/mark-pass/)
   await expect(line('"price": 100')).toHaveClass(/mark-pass/)
@@ -164,5 +164,5 @@ test('an open stream shows its events as they come, and Stop ends it so its chec
 
   await live.getByRole('button', { name: 'Stop' }).click()
   await expect(streamMetric()).toContainText('stopped')
-  await expect(page.locator('.test-results-pane .test-results-summary')).toHaveText('All 1 passed')
+  await expect(page.locator('.test-results .test-results-summary')).toHaveText('All 1 passed')
 })

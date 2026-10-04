@@ -2250,6 +2250,11 @@ body.resizing.resizing-rows * {
   color: var(--redirect);
 }
 
+/* Ignored for strict validation: accounted for, but nothing checked it. */
+.body-lines .mark-ignored .line-mark {
+  color: var(--text-dim);
+}
+
 .body-lines li.focused {
   border-left-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 16%, transparent);
@@ -2411,12 +2416,12 @@ body.resizing.resizing-rows * {
   font-weight: 400;
 }
 
-.test-results-strip {
+/* The scripts pane hidden: the pane beside it draws the line between them. */
+.scripts-strip {
   border-right: none;
-  border-left: 1px solid var(--border);
 }
 
-.test-results-strip.failed {
+.scripts-strip.failed {
   color: var(--client);
 }
 
@@ -2443,14 +2448,70 @@ body.resizing.resizing-rows * {
   color: var(--accent);
 }
 
-.test-results-pane {
+/* The step's scripts, beside the request and its response. */
+.scripts-pane {
   position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid var(--border);
   background: var(--surface);
+}
+
+.scripts-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* A run's results under the script: up to half the pane, scrolling past that. */
+.test-results {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  max-height: 50%;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+}
+
+.scripts-body > .script-editor {
+  flex: 1;
+  height: auto;
+  padding: 12px;
+  overflow: auto;
+}
+
+/* What a script tab says beside its name: what it holds, or how it went. */
+.script-chip {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.script-chip.idle {
+  background: var(--surface-alt);
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.script-chip.pass {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  color: var(--ok);
+}
+
+.script-chip.fail {
+  background: color-mix(in srgb, var(--client) 15%, transparent);
+  color: var(--client);
+}
+
+.script-chip.error {
+  background: color-mix(in srgb, var(--server) 15%, transparent);
+  color: var(--server);
 }
 
 .resizer-left {
@@ -2496,7 +2557,7 @@ body.resizing.resizing-rows * {
   padding: 0;
 }
 
-.test-results-pane .test-filter {
+.test-results .test-filter {
   padding: 0 12px 8px;
   border-bottom: 1px solid var(--border);
 }
@@ -5572,4 +5633,16 @@ button.console-line:hover {
   color: var(--text-dim);
   font: inherit;
   white-space: pre-wrap;
+}
+
+/* What the tests ignored for strict validation, under their checks. */
+.ignored-note {
+  margin: 0 12px 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.check.ignored .check-icon,
+.check.ignored .check-name {
+  color: var(--text-dim);
 }

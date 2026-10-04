@@ -62,6 +62,14 @@ test.beforeAll(async () => {
       '    tests: |',
       "      gta.sortResponseBodyArrays('id')",
       "      gta.expectResponseBodyToHaveProperty('items.0.id', 1)",
+      '  - name: ignore some',
+      `    GET: "${origin}/user"`,
+      '    tests: |',
+      "      gta.ignoreResponseBodyProperty('user.roles')",
+      '      gta.useStrictValidation()',
+      "      gta.expectResponseBodyToHaveProperty('user.id', 7)",
+      "      gta.expectResponseBodyToHaveProperty('user.name', 'Ada')",
+      "      gta.ignoreResponseBodyProperty('extra')",
       ''
     ].join('\n')
   )
@@ -82,15 +90,16 @@ test.afterAll(async () => {
   fs.rmSync(tmp, { recursive: true, force: true })
 })
 
-const testResults = () => page.locator('.test-results-pane')
+const testResults = () => page.locator('.test-results')
 const response = () => page.locator('.response')
 const line = (text: string) => response().locator('.body-lines li', { hasText: text })
 const check = (name: string) => testResults().locator('.check', { hasText: name })
 const responseTab = (name: string) => response().locator('.tabs button', { hasText: name })
 
-test('results open in their own pane, and the editor steps aside for them', async () => {
+test('results open under the Tests script, and the editor steps aside for them', async () => {
   await expect(testResults().locator('.test-results-title')).toHaveText('Test Results')
   await expect(testResults().locator('.test-results-summary')).toHaveText('2 of 6 failed')
+  await expect(page.locator('.scripts-pane').getByRole('textbox', { name: 'Tests' })).toBeVisible()
   await expect(page.locator('.request-pane')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Show the request editor' })).toBeVisible()
   await expect(page.locator('.step-list .step-mark').first()).toHaveAccessibleName('failed')
@@ -154,11 +163,11 @@ test('failures only hides what passed', async () => {
   await expect(testResults().locator('.check')).toHaveCount(6)
 })
 
-test('the test results pane hides to a strip that still shows the verdict', async () => {
-  await page.getByRole('button', { name: 'Hide test results' }).click()
-  await expect(testResults()).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Show test results' })).toContainText('2 failed')
-  await page.getByRole('button', { name: 'Show test results' }).click()
+test('the scripts pane hides to a strip that still shows the verdict', async () => {
+  await page.getByRole('button', { name: 'Hide the scripts' }).click()
+  await expect(page.locator('.scripts-pane')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Show the scripts' })).toContainText('2 failed')
+  await page.getByRole('button', { name: 'Show the scripts' }).click()
   await expect(testResults()).toBeVisible()
 })
 
@@ -181,4 +190,29 @@ test('a sorted body is shown as checked, with the raw one a click away', async (
 
   await response().getByRole('button', { name: 'Raw' }).click()
   await expect(response().locator('pre.code')).toContainText(/"id": 2[\s\S]*"id": 1/)
+})
+
+test('what the tests ignored is listed, and its lines marked, but never counted as a check', async () => {
+  await page.locator('.step-open', { hasText: 'ignore some' }).click()
+  await page.getByRole('button', { name: 'Send' }).click()
+  // Two checks and strict validation's verdict: the ignores are not among them.
+  await expect(testResults().locator('.test-results-summary')).toHaveText('All 3 passed')
+  const group = testResults().locator('.ignored-group')
+  await expect(group.locator('.check-name')).toHaveText(['user.roles', 'extra'])
+  await expect(group).toContainText('Counted as checked by strict validation')
+  await expect(line('"extra": "x"')).toHaveClass(/mark-ignored/)
+  await expect(line('"extra": "x"').locator('.line-mark')).toHaveText('–')
+  // Every line inside an ignored property, but a checked one keeps its check.
+  await expect(line('"admin"')).toHaveClass(/mark-ignored/)
+  await expect(line('"id": 7')).toHaveClass(/mark-pass/)
+  // The script's ignoring lines are marked as such.
+  await expect(page.locator('.scripts-pane .cm-check-gutter .cm-check-mark')).toHaveText([
+    '–',
+    '✓',
+    '✓',
+    '–'
+  ])
+  // Picking one shows it in the body.
+  await group.getByRole('button', { name: /extra/ }).click()
+  await expect(line('"extra": "x"')).toHaveClass(/focused/)
 })

@@ -111,6 +111,7 @@ test.afterAll(async () => {
 
 const openStep = (name: string) => page.locator('.step-open', { hasText: name }).click()
 const requestTab = (name: string) => page.locator('.request-pane .tabs button', { hasText: name })
+const scriptTab = (name: string) => page.locator('.scripts-pane .tabs button', { hasText: name })
 const fromLayer = (title: string) =>
   page.getByRole('region', { name: `Headers from the ${title}`, exact: true })
 const layerSections = () => page.getByRole('region', { name: /^Headers from the / })
@@ -195,14 +196,14 @@ test('the Settings tab says which layer each inherited setting comes from', asyn
 })
 
 test('the Pre-request and Tests tabs list the scripts that run first, in order', async () => {
-  await requestTab('Pre-request').click()
+  await scriptTab('Pre-request').click()
   const before = page.getByRole('note', { name: 'Scripts before this step’s' })
   await expect(before.locator('li')).toHaveCount(3)
   await expect(before.locator('li').nth(0)).toContainText('the endpoints file’s people.yml')
   await expect(before.locator('li').nth(1)).toContainText('the base collection’s auth')
   await expect(before.locator('li').nth(2)).toContainText('the collection’s')
 
-  await requestTab('Tests').click()
+  await scriptTab('Tests').click()
   const tests = page.getByRole('note', { name: 'Tests before this step’s' })
   await expect(tests.locator('li')).toHaveCount(2)
   await expect(tests.locator('li').nth(0)).toContainText('the endpoint’s GET /users/{id}')
@@ -211,7 +212,7 @@ test('the Pre-request and Tests tabs list the scripts that run first, in order',
     'The endpoint base’s checks give way to this step’s own checks of the same thing.'
   )
 
-  await requestTab('Pre-request').click()
+  await scriptTab('Pre-request').click()
   await before.getByRole('button', { name: 'Open the collection’s pre-request script' }).click()
   const drawer = page.getByRole('dialog', { name: 'Collection settings' })
   await expect(

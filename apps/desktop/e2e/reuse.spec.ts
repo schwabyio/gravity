@@ -176,7 +176,10 @@ test('a new use step runs another set; each of its requests is shown on its own'
   // It goes in after the selected step, and is selected itself.
   await expect(page.locator('.step-list > li').nth(1)).toHaveClass(/selected/)
   await page.getByLabel('Request set', { exact: true }).selectOption('orders')
-  await page.getByRole('button', { name: 'Tests', exact: true }).click()
+  // Its tests are in the scripts pane, open beside it: a use step's only script.
+  await expect(page.locator('.scripts-pane .tabs button', { hasText: 'Pre-request' })).toHaveCount(
+    0
+  )
   await page.getByRole('textbox', { name: 'Tests after the set' }).click()
   await page.keyboard.type('checks.common.ok()')
   await expect
@@ -204,7 +207,9 @@ test('a new use step runs another set; each of its requests is shown on its own'
     .getByRole('button', { name: /check out/ })
     .click()
   await expect(page.locator('.use-shown')).toHaveText('Showing 2 of 2 · check out')
-  await expect(page.locator('.test-results-pane')).toContainText('Status is 200')
+  await expect(page.locator('.test-results')).toContainText('Status is 200')
+  // Made by a check file, called from the use step's own line: that line is marked.
+  await expect(page.locator('.scripts-pane .cm-check-mark')).toHaveText(['✓'])
 })
 
 test('a request set is made in the app, and given params', async () => {

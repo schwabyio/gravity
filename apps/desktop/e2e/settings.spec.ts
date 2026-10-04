@@ -111,7 +111,8 @@ test('a step setting overrides it, and the next send honours it', async () => {
   await expect(page.locator('.status-pill')).toContainText('302')
 
   // Back to inheriting: the key goes, and the redirect is followed again.
-  // (No tests on this step, so the request editor stays open after a send.)
+  // (The response put the editor aside; opened by hand, it stays open.)
+  await page.getByRole('button', { name: 'Show the request editor' }).click()
   await page.getByLabel('Follow redirects for this step').selectOption('')
   await expect.poll(onDisk, { timeout: 5_000 }).not.toContain('followRedirects')
   await page.getByRole('button', { name: 'Send' }).click()

@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { LogEntry, RunError } from '@schwabyio/gravity-core/model'
-import type { PaneWidth } from '../hooks/usePaneWidth.js'
+import type { IgnoredPath, LogEntry, RunError } from '@schwabyio/gravity-core/model'
 import type { Check } from '../testLinks.js'
-import Resizer from './Resizer.js'
-import Tooltip from './Tooltip.js'
 
 interface Props {
   checks: Check[]
@@ -12,14 +9,14 @@ interface Props {
   onHover: (index: number | null) => void
   /** Point the Body tab at one path, from strict validation's leftovers. */
   onJump: (path: string) => void
-  pane: PaneWidth
-  onHide: () => void
   /** What the step's scripts wrote with `console`. */
   logs: LogEntry[]
   /** The error that stopped a `tests` script, if one did. */
   scriptError: RunError | null
-  /** Open the script that failed, at its line. */
-  onShowScript: () => void
+  /** Body paths the tests ignored for strict validation: listed, never counted as checks. */
+  ignored: IgnoredPath[]
+  /** Whether strict validation was on, without which an ignore changes nothing. */
+  strict: boolean
 }
 
 const GROUPS: Array<{ target: Check['assertion']['target'] | 'other'; label: string }> = [
@@ -32,13 +29,13 @@ const GROUPS: Array<{ target: Check['assertion']['target'] | 'other'; label: str
 ]
 
 /**
- * The step's assertions, in a pane of their own beside the response.
+ * The step's assertions, under its Tests script in the scripts pane.
  *
  * Deliberately only the list: the lines and headers each assertion is about are
  * marked in the response tabs themselves, so whichever of Body or Headers is
  * open sits directly beside the results for it.
  */
-export default function TestResultsPane(props: Props) {
+export default function TestResults(props: Props) {
   const { checks, selected } = props
   const [failuresOnly, setFailuresOnly] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
@@ -56,8 +53,7 @@ export default function TestResultsPane(props: Props) {
   }, [selected])
 
   return (
-    <section className="test-results-pane" aria-label="Test Results">
-      <Resizer pane={props.pane} label="Resize the test results pane" edge="left" />
+    <section className="test-results" aria-label="Test Results">
       <div className="test-results-head">
         <span className="test-results-title">Test Results</span>
         <span className={`test-results-summary ${failed === 0 && !scriptError ? 'ok' : 'client'}`}>
@@ -69,16 +65,6 @@ export default function TestResultsPane(props: Props) {
                 ? `All ${checks.length} passed`
                 : `${failed} of ${checks.length} failed`}
         </span>
-        <Tooltip text="Hide the test results pane">
-          <button
-            type="button"
-            className="pane-toggle"
-            onClick={props.onHide}
-            aria-label="Hide test results"
-          >
-            Hide ▸
-          </button>
-        </Tooltip>
       </div>
       <label className="test-filter">
         <input
@@ -98,11 +84,8 @@ export default function TestResultsPane(props: Props) {
               {scriptError.line !== undefined && ` at line ${scriptError.line}`}
             </strong>
             <code>{scriptError.message}</code>
-            {scriptError.script === 'step' && (
-              <button type="button" onClick={props.onShowScript}>
-                Show in Tests
-              </button>
-            )}
+            {(scriptError.script === 'step' || scriptError.script === 'use') &&
+              scriptError.line !== undefined && <p>The line is marked in the script above.</p>}
             {checks.length > 0 && <p>Checks made before it are listed below.</p>}
           </div>
         )}
@@ -127,6 +110,33 @@ export default function TestResultsPane(props: Props) {
             </div>
           )
         })}
+        {props.ignored.length > 0 && !failuresOnly && (
+          <div className="check-group ignored-group">
+            <h3>Ignored</h3>
+            <p className="ignored-note">
+              {props.strict
+                ? 'Counted as checked by strict validation, without a check.'
+                : 'Strict validation is off, so ignoring changes nothing.'}
+            </p>
+            <ul>
+              {props.ignored.map((entry, index) => (
+                <li key={index} className="check ignored">
+                  <button
+                    type="button"
+                    className="check-head"
+                    onClick={() => props.onJump(entry.path)}
+                    title="Show it in the response body"
+                  >
+                    <span className="check-icon" aria-label="Ignored">
+                      –
+                    </span>
+                    <span className="check-name">{entry.path}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {logs.length > 0 && !failuresOnly && (
           <div className="check-group console">
             <h3>Console</h3>

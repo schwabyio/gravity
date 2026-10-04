@@ -101,7 +101,8 @@ test.afterAll(async () => {
 })
 
 const file = () => YAML.parse(fs.readFileSync(path.join(shop, 'collections', 'users.yml'), 'utf8'))
-const note = () => page.getByRole('note').filter({ hasText: 'Endpoint base' })
+// The endpoint note itself: the scripts pane beside it names the endpoint base too.
+const note = () => page.locator('.endpoint-note')
 const openStep = (name: string) => page.locator('.step-open', { hasText: name }).click()
 
 test('a step says which endpoint base its request is under, and what it adds', async () => {
@@ -125,11 +126,11 @@ test('Run all: the base’s headers and checks, a step’s own check replacing t
     'application/json'
   ])
   await openStep('get user')
-  await expect(page.locator('.test-results-pane .check')).toHaveCount(2)
+  await expect(page.locator('.test-results .check')).toHaveCount(2)
   await openStep('missing user')
   // 404 and no id: the step's two checks, in place of the base's 200 and id.
-  await expect(page.locator('.test-results-pane .check')).toHaveCount(2)
-  await expect(page.locator('.test-results-pane .check.fail')).toHaveCount(0)
+  await expect(page.locator('.test-results .check')).toHaveCount(2)
+  await expect(page.locator('.test-results .check.fail')).toHaveCount(0)
 })
 
 test('a step can leave its endpoint base out, and take it back', async () => {

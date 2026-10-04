@@ -199,7 +199,7 @@ test('docs start collapsed', async () => {
 })
 
 test('a step with docs gets a Docs tab', async () => {
-  const requestPane = page.locator('.pane').first()
+  const requestPane = page.locator('.request-pane')
   await requestPane.getByRole('button', { name: 'Docs' }).click()
   await expect(requestPane.locator('.md strong')).toHaveText('bold')
   await expect(requestPane.locator('.md .md-inline-code')).toHaveText('code')

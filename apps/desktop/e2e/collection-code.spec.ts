@@ -75,7 +75,6 @@ const drawerTab = (name: string) =>
   drawer().getByRole('navigation', { name: 'Collection settings sections' }).getByRole('button', {
     name
   })
-const requestTab = (name: string) => page.locator('.request-pane .tabs button', { hasText: name })
 const openDrawer = () => page.getByRole('button', { name: 'Collection settings' }).click()
 
 test('a variable is added with its type, next to the others and their comments', async () => {
@@ -134,9 +133,8 @@ test('a send uses them, and the step says the collection’s scripts run first',
   await expect(page.locator('.test-results-summary')).toHaveText(/1 passed/)
   expect(received).toEqual(['/v2/items?id=abc'])
 
-  // With results to show, the request editor has stepped aside.
-  await page.getByRole('button', { name: 'Show the request editor' }).click()
-  await requestTab('Pre-request').click()
+  // The step's scripts are beside the response, whatever the request editor does.
+  await page.locator('.scripts-pane .tabs button', { hasText: 'Pre-request' }).click()
   const note = page.getByRole('note', { name: 'Scripts before this step’s' })
   await expect(note).toContainText('Before this step’s script, these run in order:the collection’s')
   await note.getByRole('button', { name: 'Open the collection’s pre-request script' }).click()

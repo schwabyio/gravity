@@ -1,6 +1,7 @@
 import { bodyAsObject } from '../model/bodyObject.js'
-import { parsePath, sortArraysBy } from '../model/path.js'
-import type { AssertionResult } from '../model/run.js'
+import { formatPath, parsePath, sortArraysBy } from '../model/path.js'
+import type { AssertionResult, IgnoredPath, ScriptOwner } from '../model/run.js'
+import { scriptLine } from '../runtime/sandbox.js'
 import {
   checkBody,
   checkScalarTarget,
@@ -23,6 +24,8 @@ import { findUnasserted } from './strict.js'
  */
 export class CheckSession {
   readonly assertions: AssertionResult[] = []
+  /** What the tests ignored for strict validation: reported, never counted as checks. */
+  private readonly ignored: IgnoredPath[] = []
   private readonly covered: Coverage[] = []
   private sortKeys: string[] = []
   private strict: boolean | undefined
@@ -39,8 +42,35 @@ export class CheckSession {
   }> = []
   /** Items of each array unordered checks matched, by the array's path. */
   private readonly claims = new Map<string, Set<number>>()
+  /** The script running now, whose lines each check it makes is noted against. */
+  private running: { script: ScriptOwner; filename: string } | undefined
 
   constructor(private readonly context: CheckContext) {}
+
+  /**
+   * Note each check `run` makes against the line of `script` that made it,
+   * found by its `filename` on the stack, so the app can mark the line.
+   */
+  async madeBy<T>(script: ScriptOwner, filename: string, run: () => Promise<T>): Promise<T> {
+    this.running = { script, filename }
+    try {
+      return await run()
+    } finally {
+      this.running = undefined
+    }
+  }
+
+  /** Where in the running script the check being made now was made, if a script is running. */
+  private sourceHere(): AssertionResult['source'] {
+    if (!this.running) return undefined
+    // Deep enough to reach the script through gta, a check file and a helper of its own.
+    const limit = Error.stackTraceLimit
+    Error.stackTraceLimit = 64
+    const stack = new Error().stack ?? ''
+    Error.stackTraceLimit = limit
+    const line = scriptLine(stack, this.running.filename)
+    return line === undefined ? undefined : { script: this.running.script, line }
+  }
 
   /** Turn strict validation on or off. The last word wins. */
   setStrict(strict: boolean): void {
@@ -118,11 +148,16 @@ export class CheckSession {
 
   /** Account for a path under strict validation without asserting anything. */
   ignore(path: string): void {
-    this.covered.push({ pattern: parsePath(path) })
+    const pattern = parsePath(path)
+    this.covered.push({ pattern })
+    const source = this.sourceHere()
+    this.ignored.push({ path: formatPath(pattern), ...(source ? { source } : {}) })
   }
 
   /** Add a result to the report — every check's, and a named check's from code. */
   record(assertion: AssertionResult): AssertionResult {
+    const source = assertion.source ?? this.sourceHere()
+    if (source) assertion.source = source
     this.assertions.push(assertion)
     if (this.recordingDefaults) this.defaults.add(assertion)
     return assertion
@@ -161,8 +196,10 @@ export class CheckSession {
   finish(): CheckOutcome {
     if (this.strict) {
       for (const { assertion, strict } of this.byStrictness) {
+        // Made by the same line either way.
+        const { source } = assertion
         for (const key of Object.keys(assertion)) delete (assertion as Record<string, unknown>)[key]
-        Object.assign(assertion, strict.assertion)
+        Object.assign(assertion, strict.assertion, source ? { source } : {})
         this.covered.push(...strict.covered)
       }
     }
@@ -188,6 +225,7 @@ export class CheckSession {
     }
     return {
       assertions: this.assertions,
+      ...(this.ignored.length > 0 ? { ignored: [...this.ignored] } : {}),
       ...(this.sortKeys.length > 0 ? { sortedBy: [...this.sortKeys] } : {})
     }
   }
@@ -201,11 +239,13 @@ export class CheckSession {
     if (!this.parsed.ok) {
       if (!this.bodyFailureReported) {
         this.bodyFailureReported = true
+        const source = this.sourceHere()
         this.assertions.push({
           name: 'Response body',
           status: 'fail',
           target: 'body',
-          message: this.parsed.message
+          message: this.parsed.message,
+          ...(source ? { source } : {})
         })
       }
       return BODY_UNAVAILABLE

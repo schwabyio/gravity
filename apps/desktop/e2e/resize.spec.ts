@@ -60,7 +60,7 @@ test.beforeAll(async () => {
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(
     file,
-    'id: c\nsteps:\n  - name: one\n    GET: "http://example.test/1"\n  - name: two\n    GET: "http://example.test/2"\n'
+    'id: c\nsteps:\n  - name: one\n    GET: "http://127.0.0.1:1/1"\n  - name: two\n    GET: "http://127.0.0.1:1/2"\n'
   )
 
   await launch()
@@ -133,7 +133,17 @@ test('reports its size to assistive technology', async () => {
   await expect(sidebarHandle()).toHaveAttribute('aria-orientation', 'vertical')
 })
 
+/** Both the request editor and the response open: a send nothing answers leaves the editor out. */
+async function sendUnanswered() {
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(responsePane()).toBeVisible()
+  await expect(requestPane()).toBeVisible()
+}
+
 test('the request pane drags wider, the response giving way, and resets to an even split', async () => {
+  await sendUnanswered()
+  // The scripts pane put aside, for room to drag in.
+  await page.getByRole('button', { name: 'Hide the scripts' }).click()
   const request = await widthOf(requestPane())
   const response = await widthOf(responsePane())
   expect(Math.abs(request - response)).toBeLessThan(3)
@@ -144,13 +154,13 @@ test('the request pane drags wider, the response giving way, and resets to an ev
 
   // Neither crowds out the other.
   await drag(requestHandle(), 3000)
-  expect(await widthOf(responsePane())).toBeCloseTo(240, -1)
+  expect(await widthOf(responsePane())).toBeCloseTo(180, -1)
   await drag(requestHandle(), -3000)
-  expect(await widthOf(requestPane())).toBeCloseTo(240, -1)
+  expect(await widthOf(requestPane())).toBeCloseTo(180, -1)
 
   await requestHandle().focus()
   await page.keyboard.press('ArrowRight')
-  expect(await widthOf(requestPane())).toBeCloseTo(256, -1)
+  expect(await widthOf(requestPane())).toBeCloseTo(196, -1)
 
   await requestHandle().dblclick()
   expect(Math.abs((await widthOf(requestPane())) - (await widthOf(responsePane())))).toBeLessThan(3)
@@ -179,5 +189,8 @@ test('every width survives a restart', async () => {
 
   expect(await widthOf(sidebar())).toBeCloseTo(sidebarWidth, -1)
   expect(await widthOf(stepsColumn())).toBeCloseTo(stepsWidth, -1)
+  // The scripts pane is still hidden: the room is what it was.
+  await expect(page.getByRole('button', { name: 'Show the scripts' })).toBeVisible()
+  await sendUnanswered()
   expect(await widthOf(requestPane())).toBeCloseTo(requestWidth, -1)
 })
