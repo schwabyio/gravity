@@ -277,16 +277,33 @@ test('a result shows the request as sent: every header, resolved, and a secret h
   await expect(page.locator('.status-pill')).toContainText('200')
   expect(received[0]?.headers['x-api-key']).toBe(SECRET)
 
-  await page.locator('.response .tabs button', { hasText: 'Request' }).click()
-  const sent = page.getByRole('region', { name: 'Request as sent' })
-  await expect(sent.locator('.sent-line')).toHaveText(/^GET http:\/\/127\.0\.0\.1:\d+\/users\/7$/)
-  await expect(sent.getByRole('table', { name: 'Headers sent' }).locator('tr')).toHaveText([
-    'X-Request-Idreq-1',
-    'Acceptapplication/xml',
-    'AuthorizationBearer t1',
-    'X-Clientgta',
-    'X-Api-Key[secret: apiKey]'
-  ])
-  await expect(sent).not.toContainText(SECRET)
-  await expect(sent.getByLabel('Body sent')).toHaveCount(0)
+  // The console has the request as sent, raw.
+  await page
+    .locator('.status-bar')
+    .getByRole('button', { name: /^Console/ })
+    .click()
+  const panel = page.getByRole('region', { name: 'Console', exact: true })
+  await panel
+    .locator('.console-row.request', { hasText: 'with key' })
+    .last()
+    .locator('button.console-line')
+    .click()
+  const sent = panel.getByRole('region', { name: 'Raw request' }).locator('pre')
+  await expect(sent).toHaveText(
+    new RegExp(
+      [
+        '^GET http://127\\.0\\.0\\.1:\\d+/users/7',
+        'X-Request-Id: req-1',
+        'Accept: application/xml',
+        'Authorization: Bearer t1',
+        'X-Client: gta',
+        'X-Api-Key: \\[secret: apiKey\\]$'
+      ].join('\n')
+    )
+  )
+  await expect(panel).not.toContainText(SECRET)
+  await page
+    .locator('.status-bar')
+    .getByRole('button', { name: /^Console/ })
+    .click()
 })

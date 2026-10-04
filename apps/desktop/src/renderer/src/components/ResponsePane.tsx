@@ -18,7 +18,7 @@ import {
 } from '../testLinks.js'
 import { formatMs, formatSize } from '../format.js'
 
-export type ResponseTab = 'body' | 'headers' | 'timings' | 'request'
+export type ResponseTab = 'body' | 'headers' | 'timings'
 
 interface Props {
   result: RunResult | null
@@ -204,17 +204,12 @@ export default function ResponsePane(props: Props) {
         <button className={tab === 'timings' ? 'active' : ''} onClick={() => onTab('timings')}>
           Timings
         </button>
-        <button className={tab === 'request' ? 'active' : ''} onClick={() => onTab('request')}>
-          Request
-        </button>
       </div>
 
       <div className={`tab-body${tab === 'body' ? ' body-tab' : ''}`}>
         {tab === 'body' && <BodyTab {...props} result={result} />}
 
         {tab === 'headers' && <HeadersTab {...props} result={result} />}
-
-        {tab === 'request' && <RequestTab result={result} />}
 
         {tab === 'timings' && (
           <table className="kv readonly">
@@ -395,44 +390,6 @@ function LiveStreamView({ live, onStop }: { live: LiveView; onStop?: (() => void
         </ol>
       )}
     </div>
-  )
-}
-
-/**
- * The request as it was sent: every header, whichever layer it came from or
- * whether a script added it, with variables resolved and secrets hidden.
- */
-function RequestTab({ result }: { result: RunResult }) {
-  const { request } = result
-  return (
-    <section className="sent-request" aria-label="Request as sent">
-      <p className="sent-line">
-        <strong>{request.method}</strong> <span>{request.url}</span>
-      </p>
-      <h4>Headers</h4>
-      {request.headers.length > 0 ? (
-        <table className="kv readonly" aria-label="Headers sent">
-          <tbody>
-            {request.headers.map((header, i) => (
-              <tr key={`${header.name}-${i}`}>
-                <td className="header-name">{header.name}</td>
-                <td className="wrap">{header.value}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <p className="hint">None.</p>
-      )}
-      <h4>Body</h4>
-      {request.body !== null && request.body !== '' ? (
-        <pre className="sent-body" aria-label="Body sent">
-          {request.body}
-        </pre>
-      ) : (
-        <p className="hint">None.</p>
-      )}
-    </section>
   )
 }
 
