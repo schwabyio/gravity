@@ -67,15 +67,24 @@ interface Props {
   onRename: (index: number, name: string) => void
   onDuplicate: (index: number) => void
   onDelete: (index: number) => void
+  /** Delete several steps of this list at once: those picked together. */
+  onDeleteMany: (indexes: number[]) => void
   onMove: (index: number, to: number) => void
   /** Per step: whether its feature flags skip it, or name a flag nobody declared. */
   flagStates?: Record<number, FlagState>
 }
 
+const NONE: ReadonlySet<number> = new Set()
+
+/** The key that picks one more, as the platform has it: ⌘ on a Mac, Ctrl elsewhere. */
+const picksWith = (event: React.MouseEvent | React.KeyboardEvent): boolean =>
+  navigator.userAgent.includes('Mac') ? event.metaKey : event.ctrlKey
+
 /**
  * The steps of a collection: each one's last result at a glance, and the
  * place to add, rename, duplicate, delete and reorder them — by drag, or from
- * each step's menu for the keyboard. A step runs on its own by Send.
+ * each step's menu for the keyboard; several picked together are deleted at
+ * once. A step runs on its own by Send.
  */
 export default function StepList(props: Props) {
   const [renaming, setRenaming] = useState<number | null>(null)
@@ -85,8 +94,40 @@ export default function StepList(props: Props) {
   const [dropAt, setDropAt] = useState<StepDrop | null>(null)
   const count = props.steps.length
 
+  /**
+   * Steps picked together, the selected one among them, for a menu that acts
+   * on them all: ⌘- or Ctrl-click adds or drops one, Shift-click a run from
+   * the selected step, ⌘A or Ctrl+A every step shown. A plain click, the
+   * arrows or Escape leave just the one selected; a step added or removed
+   * moves the indexes, so the picks go too.
+   */
+  const [picked, setPicked] = useState<ReadonlySet<number>>(NONE)
+  useEffect(() => setPicked(NONE), [count])
+  const shown = () => [...Array(count).keys()].filter((index) => props.visible.has(index))
+  const togglePick = (index: number) =>
+    setPicked((current) => {
+      const next = new Set(
+        current.size > 0 ? current : props.selectedIndex >= 0 ? [props.selectedIndex] : []
+      )
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  const pickRun = (index: number) => {
+    const from = props.selectedIndex >= 0 ? props.selectedIndex : index
+    const [low, high] = from < index ? [from, index] : [index, from]
+    setPicked(new Set(shown().filter((at) => at >= low && at <= high)))
+  }
+  /** Whether a menu opened on this step acts on every picked step. */
+  const forPicked = (index: number) => picked.size > 1 && picked.has(index)
+
   // A click anywhere else, or another menu opening, closes an open step menu.
   const menus = useMenuDismiss(menu !== null, () => setMenu(null))
+  const openMenu = (index: number) => {
+    if (!forPicked(index)) setPicked(NONE)
+    if (menu !== index) menus.opened()
+    setMenu(index)
+  }
 
   const confirmDelete = (index: number) => {
     const step = props.steps[index]
@@ -95,11 +136,32 @@ export default function StepList(props: Props) {
     }
   }
 
+  const confirmDeleteMany = () => {
+    const indexes = [...picked].sort((a, b) => a - b)
+    if (window.confirm(`Delete ${indexes.length} steps? This removes them from the file.`)) {
+      setPicked(NONE)
+      props.onDeleteMany(indexes)
+    }
+  }
+
   return (
     <div className="step-list-wrap">
       <ol
         className="step-list"
         aria-label={props.list === 'steps' ? 'Steps' : `${props.list} steps`}
+        onKeyDown={(event) => {
+          if (!(event.target as HTMLElement).classList.contains('step-open')) return
+          if (picksWith(event) && event.key.toLowerCase() === 'a') {
+            // Every step shown, not the window's text.
+            event.preventDefault()
+            setPicked(new Set(shown()))
+          } else if (event.key === 'Escape' && picked.size > 0) {
+            event.stopPropagation()
+            setPicked(NONE)
+          } else if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+            setPicked(NONE)
+          }
+        }}
       >
         {props.steps.map((step, index) => {
           const use = isUseStep(step) ? step : null
@@ -124,6 +186,7 @@ export default function StepList(props: Props) {
           const flagState = props.flagStates?.[index] ?? null
           const classes = [
             index === props.selectedIndex ? 'selected' : '',
+            picked.has(index) ? 'picked' : '',
             flagState?.kind === 'skip' ? 'flag-skipped' : '',
             flagState?.kind === 'error' ? 'flag-error' : '',
             dragging === index ? 'dragging' : '',
@@ -177,10 +240,7 @@ export default function StepList(props: Props) {
                 setDragging(null)
                 setDropAt(null)
               }}
-              onContextMenu={onRightClick(() => {
-                if (menu !== index) menus.opened()
-                setMenu(index)
-              })}
+              onContextMenu={onRightClick(() => openMenu(index))}
             >
               {change && (
                 <span
@@ -203,7 +263,12 @@ export default function StepList(props: Props) {
                 ) : (
                   <button
                     className="step-open"
-                    onClick={() => props.onSelect(index)}
+                    onClick={(event) => {
+                      if (picksWith(event)) return togglePick(index)
+                      if (event.shiftKey) return pickRun(index)
+                      setPicked(NONE)
+                      props.onSelect(index)
+                    }}
                     onDoubleClick={() => setRenaming(index)}
                     title={url}
                   >
@@ -246,13 +311,25 @@ export default function StepList(props: Props) {
                     aria-expanded={menu === index}
                     onClick={(event) => {
                       event.stopPropagation()
-                      if (menu !== index) menus.opened()
-                      setMenu(menu === index ? null : index)
+                      if (menu === index) setMenu(null)
+                      else openMenu(index)
                     }}
                   >
                     ⋯
                   </button>
-                  {menu === index && (
+                  {menu === index && forPicked(index) ? (
+                    <div className="step-menu" role="menu">
+                      <MenuItem
+                        label={
+                          picked.size === shown().length
+                            ? `Delete all ${picked.size} steps`
+                            : `Delete ${picked.size} steps`
+                        }
+                        danger
+                        onClick={confirmDeleteMany}
+                      />
+                    </div>
+                  ) : menu === index ? (
                     <div className="step-menu" role="menu">
                       <MenuItem label="Rename" onClick={() => setRenaming(index)} />
                       <MenuItem label="Duplicate" onClick={() => props.onDuplicate(index)} />
@@ -268,7 +345,7 @@ export default function StepList(props: Props) {
                       />
                       <MenuItem label="Delete" danger onClick={() => confirmDelete(index)} />
                     </div>
-                  )}
+                  ) : null}
                 </span>
               </div>
               {tags.length > 0 && (

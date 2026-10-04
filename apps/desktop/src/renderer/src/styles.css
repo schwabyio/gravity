@@ -1738,6 +1738,15 @@ button:disabled {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
+/* Picked with others, for their menu to act on together. */
+.step-list li.picked {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.step-list li.picked:not(.selected) {
+  border-left-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
 .step-open {
   display: flex;
   align-items: baseline;

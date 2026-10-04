@@ -1346,6 +1346,12 @@ export default function App() {
                 const id = idsOf(open, list)[index]
                 if (id) editor.removeStep(id)
               }}
+              onDeleteSteps={(list, indexes) => {
+                const ids = idsOf(open, list)
+                editor.removeSteps(
+                  indexes.map((index) => ids[index]).filter((id): id is string => !!id)
+                )
+              }}
               onMoveStep={(list, index, to) => {
                 const id = idsOf(open, list)[index]
                 if (id) editor.moveStep(id, to)

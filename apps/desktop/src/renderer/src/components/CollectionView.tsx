@@ -90,6 +90,7 @@ interface Props {
   onRenameStep: (list: ListName, index: number, name: string) => void
   onDuplicateStep: (list: ListName, index: number) => void
   onDeleteStep: (list: ListName, index: number) => void
+  onDeleteSteps: (list: ListName, indexes: number[]) => void
   onMoveStep: (list: ListName, index: number, to: number) => void
   /** The selected step's own tags, as the editor holds them. */
   stepTags: string[]
@@ -313,6 +314,7 @@ export default function CollectionView(props: Props) {
         onRename={(index, name) => props.onRenameStep(list, index, name)}
         onDuplicate={(index) => props.onDuplicateStep(list, index)}
         onDelete={(index) => props.onDeleteStep(list, index)}
+        onDeleteMany={(indexes) => props.onDeleteSteps(list, indexes)}
         onMove={(index, to) => props.onMoveStep(list, index, to)}
         flagStates={flagStatesOf(list)}
       />

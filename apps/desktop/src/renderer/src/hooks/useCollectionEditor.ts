@@ -561,14 +561,14 @@ export function useCollectionEditor({
    */
   const structural = useCallback(
     async (
-      edit: CollectionEdit,
+      edit: CollectionEdit | CollectionEdit[],
       list: StepList,
       nextIds: (ids: string[]) => string[],
       select?: string
     ) => {
       if (!openPath) return false
       const before = latest.current[openPath]?.source
-      const ok = await flush(openPath, [edit])
+      const ok = await flush(openPath, Array.isArray(edit) ? edit : [edit])
       // The batch is written whole or not at all; an unchanged base means not.
       if (latest.current[openPath]?.source === before) return false
       const read = await load(openPath).catch(() => null)
@@ -659,6 +659,48 @@ export function useCollectionEditor({
       )
     },
     [session, structural, update]
+  )
+
+  /**
+   * Remove several steps of one list in a single write, the last first so
+   * each edit's index is still the step's. Their unsaved edits go with them.
+   * The selected step stays selected; one removed gives way to the step after
+   * the last of them, or before the first.
+   */
+  const removeSteps = useCallback(
+    (ids: string[]) => {
+      if (!session || ids.length === 0) return
+      const found = ids
+        .map((id) => ({ id, at: locate(session, id) }))
+        .filter((entry): entry is { id: string; at: NonNullable<typeof entry.at> } => !!entry.at)
+      const list = found[0]?.at.list
+      if (!list) return
+      const removing = found.filter((entry) => entry.at.list === list)
+      const gone = new Set(removing.map((entry) => entry.id))
+      update(session.summary.path, (current) => {
+        const drafts = { ...current.drafts }
+        for (const id of gone) delete drafts[id]
+        return { ...current, drafts }
+      })
+      const listed = idsOf(session, list)
+      const indexes = removing.map((entry) => entry.at.index).sort((a, b) => b - a)
+      const last = indexes[0]!
+      const first = indexes[indexes.length - 1]!
+      const neighbour =
+        listed.slice(last + 1).find((id) => !gone.has(id)) ??
+        listed
+          .slice(0, first)
+          .reverse()
+          .find((id) => !gone.has(id)) ??
+        session.ids.find((id) => !gone.has(id))
+      void structural(
+        indexes.map((index) => ({ type: 'removeStep' as const, index, ...listOf(list) })),
+        list,
+        (current) => current.filter((candidate) => !gone.has(candidate)),
+        selectedId !== null && !gone.has(selectedId) ? selectedId : neighbour
+      )
+    },
+    [session, structural, update, selectedId]
   )
 
   /** Move a step to another place in its own list. */
@@ -832,6 +874,7 @@ export function useCollectionEditor({
     addStep,
     duplicateStep,
     removeStep,
+    removeSteps,
     moveStep,
     openCollection,
     close,
