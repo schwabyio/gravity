@@ -243,6 +243,44 @@ test('a new user sees their dashboard', async ({ page, gta }) => {
 
 It needs `@playwright/test` 1.51 or later, which installing `gta` does not install.
 
+**When the project is in another repository**, check it out beside the app's and read
+its path from an environment variable, so a checkout anywhere else can say where it is:
+
+```ts
+// playwright.config.ts
+export default defineConfig<{}, GravityConfig>({
+  use: {
+    gravity: { project: process.env.GTA_PROJECT ?? '../api-tests' }
+  }
+})
+```
+
+`project` names the folder holding `collections/`. A project that `uses:` a global
+project needs the repository checked out whole, since the global project is found from
+it. In CI, check out both:
+
+```yaml
+# .github/workflows/e2e.yml (steps)
+- uses: actions/checkout@v4
+  with:
+    path: web
+- uses: actions/checkout@v4
+  with:
+    repository: your-org/api-tests
+    path: api-tests
+    token: ${{ secrets.API_TESTS_TOKEN }} # when that repository is private
+- uses: actions/setup-node@v4
+  with:
+    node-version: 22
+- run: npm ci && npx playwright install --with-deps
+  working-directory: web
+- run: npx playwright test
+  working-directory: web
+  env:
+    GTA_PROJECT: ${{ github.workspace }}/api-tests
+    apiKey: ${{ secrets.STAGING_API_KEY }}
+```
+
 ### Any other code
 
 ```js
