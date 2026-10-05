@@ -1,6 +1,6 @@
 # The Gravity file format
 
-Version 0.14.0, the version of Gravity and `gta` that reads it: the two are released
+Version 0.14.1, the version of Gravity and `gta` that reads it: the two are released
 together.
 
 This document specifies the YAML files that **Gravity**, the desktop app, and **`gta`**,

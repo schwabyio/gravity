@@ -1,6 +1,6 @@
 {
   "name": "@schwabyio/gta",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "type": "module",
   "description": "gta, the Gravity Test Automation command-line runner: HTTP API tests written as YAML files, run from a terminal or CI.",
   "keywords": [
