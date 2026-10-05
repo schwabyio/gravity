@@ -4,13 +4,8 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { AddressInfo } from 'node:net'
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page
-} from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { launchApp } from './launch'
 import { DEFAULT_WINDOW, sizeWindow } from './window'
 import { addProject } from './addProject'
 
@@ -75,7 +70,7 @@ test.beforeAll(async () => {
     ['name: other', 'vars:', '  baseUrl: http://127.0.0.1:1', ''].join('\n')
   )
 
-  app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
+  app = await launchApp({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
   await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')
@@ -137,7 +132,7 @@ test('switching environments changes where the request goes', async () => {
 
 test('the chosen environment survives a restart', async () => {
   await app.close()
-  app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
+  app = await launchApp({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
   await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.collection-row', { timeout: 15_000 })

@@ -3,14 +3,8 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { AddressInfo } from 'node:net'
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Locator,
-  type Page
-} from '@playwright/test'
+import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
+import { launchApp } from './launch'
 import { DEFAULT_WINDOW, sizeWindow } from './window'
 import { addProject } from './addProject'
 
@@ -72,7 +66,7 @@ test.beforeAll(async () => {
     '  - use: login'
   ])
 
-  app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
+  app = await launchApp({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
   await sizeWindow(app, page, DEFAULT_WINDOW)
   await page.waitForSelector('.sidebar')

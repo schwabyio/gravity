@@ -2,13 +2,8 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page
-} from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { launchApp } from './launch'
 import { sizeWindow } from './window'
 import { addProject } from './addProject'
 
@@ -92,7 +87,7 @@ test.beforeAll(async () => {
   )
   shop = path.join(tmp, 'shop')
 
-  app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
+  app = await launchApp({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1400, height: 860 })
   await page.waitForSelector('.sidebar')

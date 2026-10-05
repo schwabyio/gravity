@@ -2,13 +2,8 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page
-} from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { launchApp } from './launch'
 import { sizeWindow } from './window'
 import { addProject } from './addProject'
 
@@ -32,7 +27,7 @@ test.beforeAll(async () => {
     'id: wide\nsteps:\n  - GET: http://127.0.0.1:9/x\n'
   )
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: shop, stdio: 'pipe' })
-  app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
+  app = await launchApp({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
   await page.waitForSelector('.sidebar')
   await addProject(app, page, shop)

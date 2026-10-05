@@ -6,6 +6,7 @@
  * process means a script that loops forever or calls `process.exit()` costs a
  * worker, not the window, and Cancel can be a real kill.
  */
+import { takeCoverage } from 'node:v8'
 import {
   checkFlags,
   Connections,
@@ -130,9 +131,18 @@ process.parentPort.on('message', (event) => {
     held.get(message.collectionPath)?.close(message.name)
     return
   }
-  if (message.type === 'run') void handleStep(message)
-  if (message.type === 'runCollection') void handleCollection(message)
+  if (message.type === 'run') void handleStep(message).finally(flushCoverage)
+  if (message.type === 'runCollection') void handleCollection(message).finally(flushCoverage)
 })
+
+/**
+ * Under `npm run coverage:e2e`, NODE_V8_COVERAGE is set: write what each run
+ * reached as it ends. A worker is killed when the app quits or a run is
+ * cancelled, and Node writes coverage only on a process's own exit.
+ */
+function flushCoverage(): void {
+  if (process.env['NODE_V8_COVERAGE']) takeCoverage()
+}
 
 /**
  * Variables are resolved here, in the worker, because it is the process with

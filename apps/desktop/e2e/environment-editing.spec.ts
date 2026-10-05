@@ -4,13 +4,8 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { AddressInfo } from 'node:net'
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page
-} from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { launchApp } from './launch'
 import { sizeWindow } from './window'
 import { addProject } from './addProject'
 
@@ -61,7 +56,7 @@ test.beforeAll(async () => {
   // The secrets' values, which never go in an environment file.
   fs.writeFileSync(path.join(repo, '.env'), 'apiKey=k1\ntoken=t1\n')
 
-  app = await electron.launch({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
+  app = await launchApp({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1500, height: 850 })
   await page.waitForSelector('.sidebar')

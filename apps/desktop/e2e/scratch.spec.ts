@@ -4,13 +4,8 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { AddressInfo } from 'node:net'
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page
-} from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { launchApp } from './launch'
 import { sizeWindow } from './window'
 import { addProject } from './addProject'
 
@@ -64,7 +59,7 @@ test.beforeAll(async () => {
 
 /** Start the app on this spec's data folder, with a Trash that deletes and remembers. */
 async function launch() {
-  app = await electron.launch({ args: [MAIN, `--user-data-dir=${userData}`] })
+  app = await launchApp({ args: [MAIN, `--user-data-dir=${userData}`] })
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1400, height: 860 })
   await page.waitForSelector('.sidebar')
