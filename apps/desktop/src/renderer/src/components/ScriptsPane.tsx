@@ -195,9 +195,9 @@ export default function ScriptsPane(props: Props) {
               </p>
             ) : (
               <p className="hint">
-                Runs after the response. xtest is built in as <code>gta</code> — type{' '}
-                <code>gta.</code> for its functions — alongside any JavaScript, <code>res</code> and{' '}
-                <code>assert</code>.
+                Runs after the response. Write any JavaScript, with <code>gta</code>,{' '}
+                <code>res</code> and <code>assert</code> built in — type <code>gta.</code> for its
+                functions.
               </p>
             )}
             <SharedScripts

@@ -432,7 +432,7 @@ test('with no rules, nothing is marked, the editors are as ever and Project sett
   await step('list').locator('.step-open').click()
   await expect(page.locator('.scripts-pane .tests-rule-hint')).toHaveCount(0)
   await expect(page.locator('.scripts-pane .script-editor .hint')).toContainText(
-    'xtest is built in as gta'
+    'with gta, res and assert built in'
   )
 
   await page.getByRole('button', { name: 'Project actions for shop' }).click()

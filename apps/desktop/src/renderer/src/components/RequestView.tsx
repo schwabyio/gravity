@@ -296,7 +296,7 @@ export default function RequestView(props: Props) {
             onChange={(url) => props.onChange({ url })}
             previews={props.previews}
             onCopy={props.onCopyVariable}
-            placeholder="https://xtest-demo.httpsim.schwaby.io/responseStatusCode200"
+            placeholder="https://staging.example.com/sessions"
             ariaLabel="Request URL"
           />
           <button

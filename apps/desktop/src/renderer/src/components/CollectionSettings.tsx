@@ -341,8 +341,8 @@ export default function CollectionSettings(props: Props) {
           {tab === 'tests' && (
             <div className="script-editor">
               <p className="hint">
-                Runs after every step&rsquo;s response, ahead of the step&rsquo;s own tests. xtest
-                is built in as <code>gta</code>.
+                Runs after every step&rsquo;s response, ahead of the step&rsquo;s own tests.{' '}
+                <code>gta</code> is built in — type <code>gta.</code> for its functions.
                 {testsRule && (
                   <>
                     {' '}

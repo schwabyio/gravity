@@ -114,7 +114,7 @@ export const GTA_API: ApiEntry[] = [
   {
     name: 'date',
     signature: "(format, secondsOffset = 0, timeZone = 'local')",
-    info: "strftime date, offset in seconds from now. timeZone: 'local', 'utc', an IANA zone, or an xtest letter."
+    info: "strftime date, offset in seconds from now. timeZone: 'local', 'utc', an IANA zone, or a military zone letter."
   },
   { name: 'assert', signature: '', info: "Node's strict assert (also a global).", type: 'property' }
 ]
