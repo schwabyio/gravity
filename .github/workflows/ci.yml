@@ -69,3 +69,12 @@ jobs:
         run: xvfb-run --auto-servernum npm run test:e2e --workspace @schwabyio/gravity-desktop
       - if: runner.os != 'Linux'
         run: npm run test:e2e --workspace @schwabyio/gravity-desktop
+      # The annotations say what a failed test expected; its trace (kept on failure by
+      # playwright.config.ts) shows what the app showed instead, step by step.
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces-${{ matrix.os }}
+          path: apps/desktop/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
