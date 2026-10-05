@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { parsePath } from '@schwabyio/gravity-core/model'
-import { buildChecks, checkedBody, checkedDiffersFromRaw, markLines } from './testLinks.js'
+import { buildChecks, checkedBody, checkedDiffersFromRaw, markLines } from './checkMarks.js'
+import { parsePath } from './path.js'
 
 describe('marking the lines a check is about', () => {
   it('finds a key holding dots, and the empty key, by their quoted paths', () => {

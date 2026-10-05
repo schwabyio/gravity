@@ -2779,6 +2779,28 @@ button.status-pill.focused {
   padding: 12px 12px 0;
 }
 
+/* An image body as itself, on a checkerboard so transparency shows. */
+.body-image {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px;
+}
+
+.body-image img {
+  max-width: 100%;
+  height: auto;
+  background-color: var(--surface);
+  background-image: conic-gradient(
+    var(--surface-alt) 25%,
+    transparent 0 50%,
+    var(--surface-alt) 0 75%,
+    transparent 0
+  );
+  background-size: 16px 16px;
+}
+
 .body-mode {
   position: sticky;
   top: 0;

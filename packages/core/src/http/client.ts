@@ -1,4 +1,4 @@
-import { Buffer } from 'node:buffer'
+import { Buffer, isUtf8 } from 'node:buffer'
 import { Agent, interceptors, request as undiciRequest, type Dispatcher } from 'undici'
 import type { BodyKind, HeaderEntry, ReceivedResponse, SentRequest } from '../model/run.js'
 import { SETTINGS_DEFAULTS, type Settings } from '../model/documents.js'
@@ -238,15 +238,19 @@ export async function sendHttpRequest(
       ? Buffer.alloc(0)
       : Buffer.from(await response.body.arrayBuffer())
     const totalMs = performance.now() - startedHr
-    const body = buffer.toString('utf8')
+    const text = buffer.toString('utf8')
+    const bodyKind = classifyBody(contentType, text)
+    // Bytes that are not text, an image's, would not survive being read as it: kept as base64.
+    const base64 = bodyKind === 'binary' && !isUtf8(buffer)
 
     return {
       ok: true,
       request: sent,
       response: {
         ...received,
-        body,
-        bodyKind: classifyBody(contentType, body),
+        body: base64 ? buffer.toString('base64') : text,
+        bodyKind,
+        ...(base64 ? { bodyEncoding: 'base64' as const } : {}),
         sizeBytes: buffer.byteLength,
         timings: { startedAt, ttfbMs, totalMs }
       }

@@ -28,6 +28,10 @@ let origin: string
 let app: ElectronApplication
 let page: Page
 
+/** A one-pixel PNG: a body whose bytes are not text. */
+const DOT_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+
 const requestPane = () => page.locator('.request-pane')
 const responsePane = () => page.locator('.panes > section.pane:not(.request-pane)')
 
@@ -38,6 +42,11 @@ test.beforeAll(async () => {
         res.writeHead(200, { 'content-type': 'text/plain' })
         res.end('late')
       }, 5_000)
+      return
+    }
+    if (req.url === '/dot.png') {
+      res.writeHead(200, { 'content-type': 'image/png' })
+      res.end(Buffer.from(DOT_PNG, 'base64'))
       return
     }
     res.writeHead(200, { 'content-type': 'application/json' })
@@ -145,6 +154,18 @@ test('query parameters and the URL stay in sync', async () => {
 
   await page.getByRole('button', { name: 'Send' }).click()
   await expect(responsePane().locator('.response-body')).toContainText('/search?q=hello%20world')
+})
+
+test('shows an image body as the image', async () => {
+  await page.getByLabel('Request URL').fill(`${origin}/dot.png`)
+  await page.getByRole('button', { name: 'Send' }).click()
+
+  await responsePane().getByRole('button', { name: 'Body' }).click()
+  const image = responsePane().locator('.body-image img')
+  await expect(image).toHaveAttribute('src', `data:image/png;base64,${DOT_PNG}`)
+  // Decoded, not just there: the browser read one pixel.
+  await expect(image).toHaveJSProperty('naturalWidth', 1)
+  await expect(responsePane().locator('.body-image')).toContainText('image/png · 70 B')
 })
 
 test('a slow request can be cancelled', async () => {

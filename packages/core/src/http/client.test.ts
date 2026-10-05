@@ -13,6 +13,9 @@ import type { SentRequest } from '../model/run.js'
 let server: http.Server
 let origin: string
 
+/** A PNG's signature and the start of its header: bytes that are not UTF-8. */
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d])
+
 const get = (path: string): SentRequest => ({
   method: 'GET',
   url: `${origin}${path}`,
@@ -31,6 +34,14 @@ beforeAll(async () => {
       case '/empty':
         res.writeHead(204)
         res.end()
+        return
+      case '/png':
+        res.writeHead(200, { 'content-type': 'image/png' })
+        res.end(PNG)
+        return
+      case '/jwt':
+        res.writeHead(200, { 'content-type': 'application/jwt' })
+        res.end('eyJhbGciOiJub25lIn0.e30.')
         return
       case '/slow':
         setTimeout(() => {
@@ -97,6 +108,21 @@ describe('sendHttpRequest', () => {
     expect(outcome.response.status).toBe(204)
     expect(outcome.response.body).toBe('')
     expect(outcome.response.bodyKind).toBe('empty')
+  })
+
+  it('keeps a binary body whose bytes are not text as base64, and one that is text as text', async () => {
+    const png = await sendHttpRequest(get('/png'))
+    if (!png.ok) throw new Error('no response')
+    expect(png.response.bodyKind).toBe('binary')
+    expect(png.response.bodyEncoding).toBe('base64')
+    expect(Buffer.from(png.response.body, 'base64').equals(PNG)).toBe(true)
+    expect(png.response.sizeBytes).toBe(PNG.length)
+
+    const jwt = await sendHttpRequest(get('/jwt'))
+    if (!jwt.ok) throw new Error('no response')
+    expect(jwt.response.bodyKind).toBe('binary')
+    expect(jwt.response.bodyEncoding).toBeUndefined()
+    expect(jwt.response.body).toBe('eyJhbGciOiJub25lIn0.e30.')
   })
 
   it('reports a non-2xx as a normal response rather than a failure', async () => {

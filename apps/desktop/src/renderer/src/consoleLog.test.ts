@@ -258,8 +258,18 @@ describe('raw text', () => {
     const response = result().response!
     expect(rawResponse(response)).toBe('200 OK\ncontent-type: application/json\n\n{"id":7}')
     expect(rawResponse({ ...response, body: '', headers: [] })).toBe('200 OK')
-    expect(rawResponse({ ...response, bodyKind: 'binary', body: '��', sizeBytes: 2048 })).toBe(
-      '200 OK\ncontent-type: application/json\n\n[binary body, 2.0 KB]'
+    expect(
+      rawResponse({
+        ...response,
+        bodyKind: 'binary',
+        body: 'iVBORw0KGgo=',
+        bodyEncoding: 'base64',
+        sizeBytes: 2048
+      })
+    ).toBe('200 OK\ncontent-type: application/json\n\n[binary body, 2.0 KB]')
+    // A binary type whose bytes are text, application/jwt say, is that text.
+    expect(rawResponse({ ...response, bodyKind: 'binary', body: 'eyJhbGciOi.x.y' })).toBe(
+      '200 OK\ncontent-type: application/json\n\neyJhbGciOi.x.y'
     )
   })
 

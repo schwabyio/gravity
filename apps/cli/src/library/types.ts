@@ -43,6 +43,8 @@ export interface ReceivedResponse {
   headers: HeaderEntry[]
   body: string
   bodyKind: 'json' | 'xml' | 'html' | 'text' | 'binary' | 'empty' | 'events'
+  /** `base64` when `body` is the bytes in base64: a binary body that is not text, an image's. */
+  bodyEncoding?: 'base64'
   sizeBytes: number
   redirectCount: number
   timings: {

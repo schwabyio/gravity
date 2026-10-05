@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { environmentLayer, type ScopeContext } from './resolve.js'
 
 /**
@@ -29,10 +30,26 @@ export async function secretValues(
   }
 }
 
-/** Every string in the result with each secret's value replaced by `[secret: NAME]`. */
+/**
+ * Every string in the result with each secret's value replaced by `[secret: NAME]`.
+ *
+ * A body kept as base64 would hide a secret from that, so one whose bytes hold a
+ * secret is read as text instead, and redacted as text is.
+ */
 export function redact<T>(value: T, secrets: ReadonlyArray<[string, string]>): T {
   if (secrets.length === 0) return value
   const walk = (node: unknown): unknown => {
+    if (isBase64Body(node)) {
+      const bytes = Buffer.from(node.body, 'base64')
+      if (secrets.some(([, secret]) => bytes.includes(Buffer.from(secret)))) {
+        const { bodyEncoding: _base64, ...asText } = node
+        return walk({ ...asText, body: bytes.toString('utf8') })
+      }
+      // Its base64 holds no secret's text: the rest of the response still may.
+      return Object.fromEntries(
+        Object.entries(node).map(([key, inner]) => [key, key === 'body' ? inner : walk(inner)])
+      )
+    }
     if (typeof node === 'string') {
       return secrets.reduce(
         (text, [name, secret]) => text.split(secret).join(`[secret: ${name}]`),
@@ -47,3 +64,9 @@ export function redact<T>(value: T, secrets: ReadonlyArray<[string, string]>): T
   }
   return walk(value) as T
 }
+
+const isBase64Body = (node: unknown): node is { body: string; bodyEncoding: 'base64' } =>
+  node !== null &&
+  typeof node === 'object' &&
+  (node as { bodyEncoding?: unknown }).bodyEncoding === 'base64' &&
+  typeof (node as { body?: unknown }).body === 'string'

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import type { CheckMatcher } from '../assert/evaluate.js'
 import { isRegExp, show } from '../assert/evaluate.js'
 import type { CheckSession } from '../assert/session.js'
@@ -584,8 +585,9 @@ export const requestView = (request: SentRequest, adopt: Adopt) =>
 /**
  * What `tests` sees of the response. `body` is parsed — JSON as itself, XML
  * converted as the assertions see it, an event stream as its events, text as
- * the string — and `text` is the body exactly as received. `stream`, for an
- * event stream only, says why the reading stopped and when each event came.
+ * the string — and `text` is the body exactly as received, read as UTF-8 even
+ * when the result keeps its bytes as base64. `stream`, for an event stream
+ * only, says why the reading stopped and when each event came.
  */
 export function responseView(response: ReceivedResponse, adopt: Adopt) {
   const headers: Record<string, string> = {}
@@ -605,7 +607,10 @@ export function responseView(response: ReceivedResponse, adopt: Adopt) {
         : parsed.ok
           ? adopt(parsed.body)
           : undefined,
-    text: response.body,
+    text:
+      response.bodyEncoding === 'base64'
+        ? Buffer.from(response.body, 'base64').toString('utf8')
+        : response.body,
     time: response.timings.totalMs,
     size: response.sizeBytes,
     stream: response.stream ? adopt(response.stream) : undefined

@@ -76,6 +76,12 @@ export const ReceivedResponseSchema = z.object({
   headers: z.array(HeaderEntrySchema),
   body: z.string(),
   bodyKind: BodyKindSchema,
+  /**
+   * `base64` when `body` is the bytes in base64: a binary body whose bytes are
+   * not UTF-8 text, such as an image, so it is kept as it came rather than
+   * garbled. Absent when `body` is text, which every other body is.
+   */
+  bodyEncoding: z.literal('base64').optional(),
   /** Size of the response body on the wire, in bytes; for an event stream, of what `body` kept. */
   sizeBytes: z.number(),
   /** Number of redirects followed to reach this response. */

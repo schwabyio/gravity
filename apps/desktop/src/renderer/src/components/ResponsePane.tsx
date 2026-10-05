@@ -3,6 +3,7 @@ import {
   parsePath,
   pathMatches,
   type EventStreamRead,
+  type ReceivedResponse,
   type RunResult,
   type StreamEvent
 } from '@schwabyio/gravity-core/model'
@@ -288,6 +289,7 @@ function BodyTab(props: Props & { result: RunResult }) {
   }, [selected, jumpedLine, marks, showRaw])
 
   if (response.bodyKind === 'empty') return <div className="placeholder">No response body.</div>
+  if (response.bodyEncoding === 'base64') return <BinaryBody response={response} />
 
   return (
     <div className="body-view">
@@ -341,6 +343,30 @@ function BodyTab(props: Props & { result: RunResult }) {
           })}
         </ol>
       )}
+    </div>
+  )
+}
+
+/** Bytes kept as base64: an image shown as itself, anything else named, not shown as text. */
+function BinaryBody({ response }: { response: ReceivedResponse }) {
+  const type = (response.headers.find((h) => h.name.toLowerCase() === 'content-type')?.value ?? '')
+    .split(';')[0]!
+    .trim()
+    .toLowerCase()
+  if (type.startsWith('image/')) {
+    return (
+      <div className="body-image">
+        <img src={`data:${type};base64,${response.body}`} alt="The response body" />
+        <span className="hint">
+          {type} · {formatSize(response.sizeBytes)}
+        </span>
+      </div>
+    )
+  }
+  return (
+    <div className="placeholder">
+      A binary body{type ? `, ${type}` : ''}, {formatSize(response.sizeBytes)}. It is not text, so
+      it is not shown.
     </div>
   )
 }

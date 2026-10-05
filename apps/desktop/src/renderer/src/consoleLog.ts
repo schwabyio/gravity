@@ -361,9 +361,9 @@ export function rawResponse(response: ReceivedResponse): string {
     `${response.status} ${response.statusText}`.trim(),
     ...response.headers.map(headerLine)
   ].join('\n')
-  // Kept as text, a binary body is not what came: say what there was instead.
+  // Bytes kept as base64 are not text to show: say what there was instead.
   const body =
-    response.bodyKind === 'binary'
+    response.bodyEncoding === 'base64'
       ? `[binary body, ${formatSize(response.sizeBytes)}]`
       : response.body
   return body ? `${head}\n\n${body}` : head

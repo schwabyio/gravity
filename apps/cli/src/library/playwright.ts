@@ -268,7 +268,9 @@ function exchangeOf(result: RunResult): string {
       `${response.status} ${response.statusText} · ${Math.round(response.timings.totalMs)} ms · ${response.sizeBytes} bytes`
     )
     for (const header of response.headers) lines.push(`${header.name}: ${header.value}`)
-    if (response.body) lines.push('', clip(response.body))
+    if (response.bodyEncoding === 'base64')
+      lines.push('', `[binary body, ${response.sizeBytes} bytes]`)
+    else if (response.body) lines.push('', clip(response.body))
   } else {
     lines.push(result.error ? `No response: ${result.error.message}` : 'No response')
   }

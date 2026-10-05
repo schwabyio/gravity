@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -13,6 +14,7 @@ import {
   GtaUsageError,
   newStepControl,
   preRequestGta,
+  responseView,
   SPECIAL_HANDLING,
   testsGta,
   uuidv7,
@@ -1384,5 +1386,27 @@ describe('generated values', () => {
     expect(zoneFor('IST')).toBe('Asia/Kolkata')
     expect(zoneFor('utc')).toBe('utc')
     expect(zoneFor('local')).toBe('local')
+  })
+})
+
+describe('responseView', () => {
+  it('gives scripts a body kept as base64 as its text, read as UTF-8', () => {
+    const view = responseView(
+      {
+        status: 200,
+        statusText: 'OK',
+        url: 'http://x/doc.pdf',
+        headers: [{ name: 'content-type', value: 'application/pdf' }],
+        body: Buffer.concat([Buffer.from('%PDF-1.7 '), Buffer.from([0xe2])]).toString('base64'),
+        bodyKind: 'binary',
+        bodyEncoding: 'base64',
+        sizeBytes: 10,
+        redirectCount: 0,
+        timings: { startedAt: 0, ttfbMs: 1, totalMs: 1 }
+      },
+      (value) => value
+    )
+    expect(view.text).toBe('%PDF-1.7 \ufffd')
+    expect(view.body).toBeUndefined()
   })
 })
