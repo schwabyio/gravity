@@ -344,7 +344,7 @@ test('a scratch pad is renamed from its menu, its folder too, and an open collec
   expect(exists(pad('collections', 'ping-check.yml'))).toBe(true)
 })
 
-test('a collection’s menu adds a request, and a new request set it uses', async () => {
+test('a collection’s menu adds a request, and a new reusable requests file it uses', async () => {
   const steps = () =>
     (read(pad('collections', 'ping-check.yml')).match(/- name: New step/g) ?? []).length
   const before = steps()
@@ -358,8 +358,8 @@ test('a collection’s menu adds a request, and a new request set it uses', asyn
   await expect(page.locator('.step-list > li').last()).toHaveClass(/selected/)
   await expect(page.getByLabel('Request URL')).toHaveValue('')
 
-  await rowMenu('Scratch pad', 'ping-check', 'New request set')
-  const id = page.getByLabel('New request set id, used in ping-check')
+  await rowMenu('Scratch pad', 'ping-check', 'New reusable requests file')
+  const id = page.getByLabel('New reusable requests file id, used in ping-check')
   await id.fill('login-flow')
   await id.press('Enter')
   await expect
@@ -367,7 +367,7 @@ test('a collection’s menu adds a request, and a new request set it uses', asyn
     .toBe('id: login-flow\nparams: {}\nsteps: []\n')
   await expect.poll(() => read(pad('collections', 'ping-check.yml'))).toContain('use: login-flow')
   await expect(
-    page.getByRole('group', { name: 'Request sets of Scratch pad' }).locator('.set-row')
+    page.getByRole('group', { name: 'Reusable requests of Scratch pad' }).locator('.set-row')
   ).toHaveText(['login-flow'])
 })
 
@@ -419,7 +419,7 @@ test('opening one ⋯ menu closes any other open one', async () => {
   await row.hover()
   await open(row, 'Collection actions for ping-check')
   await expect(menu()).toHaveCount(1)
-  await expect(menu()).toContainText('New request set')
+  await expect(menu()).toContainText('New reusable requests file')
 
   // Another of the same list: its row's menu replaces it.
   const folder = project('Scratch pad').locator('.folder-item', { hasText: 'smoke' })
@@ -452,7 +452,7 @@ test('right-clicking a row opens its ⋯ menu', async () => {
   const rows: Array<[ReturnType<typeof page.locator>, string]> = [
     [
       project('Scratch pad').locator('.collection-item', { hasText: 'ping-check' }),
-      'New request set'
+      'New reusable requests file'
     ],
     [project('Scratch pad').locator('.folder-item', { hasText: 'smoke' }), 'New collection'],
     [project('Scratch pad').locator('.repo-head'), 'New folder'],

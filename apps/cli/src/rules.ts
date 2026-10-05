@@ -114,11 +114,11 @@ export async function rulesCommand(root: string, { out, emit, p }: Output): Prom
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
-/** `14 collections, 3 request sets, 1 base collection, 2 endpoints files`. */
+/** `14 collections, 3 reusable requests files, 1 base collection, 2 endpoints files`. */
 function checkedLine(checked: LintResult['checked']): string {
   return [
     plural(checked.collections, 'collection', 'collections'),
-    plural(checked.requests, 'request set', 'request sets'),
+    plural(checked.requests, 'reusable requests file', 'reusable requests files'),
     plural(checked.bases, 'base collection', 'base collections'),
     plural(checked.endpoints, 'endpoints file', 'endpoints files')
   ].join(', ')

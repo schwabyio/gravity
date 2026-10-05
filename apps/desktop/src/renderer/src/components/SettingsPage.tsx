@@ -161,8 +161,8 @@ export default function SettingsPage({ settings, onChange, onClose }: Props) {
               <div className="setting-text">
                 <label htmlFor="setting-editor">Open files in</label>
                 <p>
-                  Where “Open in …” opens a collection, request set, check file, data or environment
-                  file — at the step or the script’s line where there is one.{' '}
+                  Where “Open in …” opens a collection, reusable requests file, check file, data or
+                  environment file — at the step or the script’s line where there is one.{' '}
                   {EDITOR_NOTES[settings.editor.kind]}
                 </p>
               </div>

@@ -326,8 +326,8 @@ test('a library file’s row is marked, its finding opens it, and the app refuse
   }
 
   await page.getByRole('button', { name: 'Project actions for shop' }).click()
-  await page.getByRole('menuitem', { name: 'New request set' }).click()
-  await page.getByLabel('New request set id').fill('get-order')
+  await page.getByRole('menuitem', { name: 'New reusable requests file' }).click()
+  await page.getByLabel('New reusable requests file id').fill('get-order')
   await page.keyboard.press('Enter')
   await refused('id: get-order is not camelCase (rule ids.requests in rules.yml)')
   expect(fs.existsSync(path.join(shop, 'requests/get-order.yml'))).toBe(false)

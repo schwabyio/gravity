@@ -1,6 +1,6 @@
 /**
  * The types of gta's library, `@schwabyio/gta`: a project's collections and
- * request sets run from code, such as a Playwright test.
+ * reusable requests run from code, such as a Playwright test.
  *
  * Written out here rather than taken from the core, so the published `.d.ts`
  * files stand alone: the core's are zod's inferences, and neither ships.
@@ -125,7 +125,10 @@ export interface RunResult {
   /** Why a skipped step did not run. */
   skipped?: { reason: string }
   durationMs: number
-  /** For a request a use step ran: the set, the use step's name, and which of the set's steps, from 0. */
+  /**
+   * For a request a use step ran: the reusable requests as `use` named them,
+   * the use step's name, and which of their steps, from 0.
+   */
   use?: { set: string; name?: string; child: number; of: number }
   /** For a setup or teardown step. */
   stage?: 'setup' | 'teardown'
@@ -147,7 +150,7 @@ export interface CollectionRunSummary {
 
 /** Where a result's step is written, for a person to go and look. */
 export interface StepRef {
-  /** The file, absolute: the collection's, or for `use`, the request set's. */
+  /** The file, absolute: the collection's, or for `use`, the reusable requests file's. */
   file: string
   /** The step's line in it, from 1; null when it cannot be told. */
   line: number | null
@@ -191,7 +194,7 @@ export type UseOptions = Omit<RunOptions, 'steps'>
 export interface RunOutcome {
   /** Nothing failed or errored, and the run finished. */
   passed: boolean
-  /** The collection's id, or the request set as `use` named it. */
+  /** The collection's id, or the reusable requests as `use` named them. */
   id: string
   /** Its file, absolute. */
   file: string
@@ -233,11 +236,11 @@ export interface GravityProject {
    */
   run(collection: string, options?: RunOptions): Promise<RunOutcome>
   /**
-   * Run a request set as a use step would (SPEC.md §2.5): `login` is
+   * Run reusable requests as a use step would (SPEC.md §2.5): `login` is
    * `requests/login.yml`, in the project or its global project. A param left
    * out takes its default.
    */
-  use(set: string, params?: Record<string, VarValue>, options?: UseOptions): Promise<RunOutcome>
+  use(name: string, params?: Record<string, VarValue>, options?: UseOptions): Promise<RunOutcome>
 }
 
 /** Open the project in `folder`, the one holding `collections/`. */

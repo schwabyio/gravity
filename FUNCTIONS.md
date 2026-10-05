@@ -49,7 +49,7 @@ goes, the order it runs in, and the other globals: `res`, `req`, `assert`, `para
 ## How calls behave
 
 - **Every `tests` script of a step feeds one list of checks**: the collection's, the
-  step's, and those of an endpoint base, a base collection or a request set it runs
+  step's, and those of an endpoint base, a base collection or reusable requests it runs
   under (SPEC.md §2.5–§2.7). Strict validation counts them all together.
 - **A check that fails does not stop the script.** The checks after it still run, and
   the step fails.

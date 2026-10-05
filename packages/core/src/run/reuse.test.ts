@@ -222,7 +222,7 @@ describe('finding what a project can reuse', () => {
       'no login.yml in the global project'
     )
     await expect(resolveRequestSet(shop, null, 'not-a-set')).rejects.toThrow(
-      'has no params, so it is not a request set'
+      'has no params, so it is not a reusable requests file'
     )
     await expect(resolveRequestSet(shop, null, '../x')).rejects.toThrow(
       'not a name of a file in requests/'
@@ -539,7 +539,7 @@ describe('a set that saves under the caller’s name, and checks a step of its c
 
   it('refuses useTests outside a request set, and on two steps of one', () => {
     expect(() => CollectionSchema.parse({ steps: [{ GET: 'http://x', useTests: true }] })).toThrow(
-      /useTests marks the request set step .* not a request set/
+      /useTests marks the step of a reusable requests file .* not a reusable requests file/
     )
     expect(() =>
       CollectionSchema.parse({

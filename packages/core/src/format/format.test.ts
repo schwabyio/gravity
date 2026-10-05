@@ -143,7 +143,7 @@ describe('validation', () => {
   it('rejects a connection on a use step, or beside forEach, and a name with spaces', () => {
     expect(() =>
       parseCollection('steps:\n  - use: login\n    connection: orders\n', 'a.yml')
-    ).toThrow(/a use: step runs a request set, so it cannot have connection/)
+    ).toThrow(/a use: step runs reusable requests, so it cannot have connection/)
     expect(() =>
       parseCollection(
         'steps:\n  - GET: "http://x"\n    connection: orders\n    forEach: "[1]"\n',

@@ -216,7 +216,7 @@ export default function ProjectHeading(props: Props) {
             <div className="project-menu" role="menu">
               {item('New collection', props.onNewCollection)}
               {item('New folder', props.onNewDirectory)}
-              {item('New request set', props.onNewSet)}
+              {item('New reusable requests file', props.onNewSet)}
               {item('New endpoints file', props.onNewEndpoints)}
               {item('New base collection', props.onNewBase)}
               {git && item('Changes and commit', () => props.onChanges('changes'))}

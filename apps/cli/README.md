@@ -310,7 +310,7 @@ since you name what runs, and a collection with `exclude: true` runs too. The op
 | `signal`   | An `AbortSignal` that stops the run.                                                                                                 |
 | `onResult` | `(result, step) => void`, called as each request finishes.                                                                           |
 
-**`project.use(set, params, options)`** runs a request set as a `use:` step would:
+**`project.use(name, params, options)`** runs reusable requests as a `use:` step would:
 `login` is `requests/login.yml`, in the project or its global project. `params` are what
 `with:` gives, and a param you leave out takes its default. The options are those of
 `run`, without `steps`.
@@ -326,8 +326,8 @@ Both resolve to the same outcome, however the steps fare:
 | `failures` | What went wrong, as `gta` prints it under Failures. Empty when the run passed.                                                                                  |
 | `error`    | Why the run did not start or finish: a file that will not load, `timeoutCollection`, or a cancel. Otherwise `null`.                                             |
 
-They reject only when a collection, step or request set doesn't exist, or a value isn't a
-string, number, boolean or null. Types ship with the package.
+They reject only when a collection, step or reusable requests file doesn't exist, or a
+value isn't a string, number, boolean or null. Types ship with the package.
 
 ## The file format
 

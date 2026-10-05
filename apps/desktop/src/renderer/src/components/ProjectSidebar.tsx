@@ -373,7 +373,7 @@ export default function ProjectSidebar(props: Props) {
           const libraries = (
             [
               [
-                'Request sets',
+                'Reusable requests',
                 'requests',
                 project.requestSets.map((set) => ({ ...set, stepCount: set.steps.length }))
               ],
@@ -730,7 +730,7 @@ const FILTER_FROM = 5
 
 /** What each kind of library file is called, in a sentence. */
 const LIBRARY_NAMES = {
-  set: 'request set',
+  set: 'reusable requests file',
   endpoints: 'endpoints file',
   base: 'base collection'
 } as const

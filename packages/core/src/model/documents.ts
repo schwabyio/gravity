@@ -307,7 +307,7 @@ export const StepSchema = z
         ctx.addIssue({
           code: 'custom',
           path: [key],
-          message: `a use: step runs a request set, so it cannot have ${key} of its own (SPEC.md §2.5)`
+          message: `a use: step runs reusable requests, so it cannot have ${key} of its own (SPEC.md §2.5)`
         })
       }
       return
@@ -544,7 +544,7 @@ export const CollectionSchema = z
         ctx.addIssue({
           code: 'custom',
           path: [stage],
-          message: `a request set runs inside another collection, so it has no ${stage} (SPEC.md §2.10)`
+          message: `a reusable requests file runs inside another collection, so it has no ${stage} (SPEC.md §2.10)`
         })
       }
       collection[stage].forEach((step, index) => {
@@ -563,7 +563,7 @@ export const CollectionSchema = z
         code: 'custom',
         path: ['steps', marked[0]!, 'useTests'],
         message:
-          "useTests marks the request set step whose response a use step's tests check; this collection has no params, so it is not a request set (SPEC.md §2.5)"
+          "useTests marks the step of a reusable requests file whose response a use step's tests check; this collection has no params, so it is not a reusable requests file (SPEC.md §2.5)"
       })
     }
     if (marked.length > 1) {
@@ -580,7 +580,7 @@ export const CollectionSchema = z
           ctx.addIssue({
             code: 'custom',
             path: ['steps', index, 'use'],
-            message: 'a request set cannot use another one (SPEC.md §2.5)'
+            message: 'a reusable requests file cannot use another one (SPEC.md §2.5)'
           })
         }
       })
@@ -588,7 +588,7 @@ export const CollectionSchema = z
         ctx.addIssue({
           code: 'custom',
           path: ['vars'],
-          message: 'a request set takes params, not vars (SPEC.md §2.5)'
+          message: 'a reusable requests file takes params, not vars (SPEC.md §2.5)'
         })
       }
     }

@@ -226,7 +226,7 @@ describe('setup and teardown', () => {
   it('are refused where they cannot run: in a request set, a base or endpoints, and with tags', () => {
     expect(() =>
       CollectionSchema.parse({ params: {}, setup: [{ GET: '/x' }], steps: [{ GET: '/y' }] })
-    ).toThrow('a request set runs inside another collection, so it has no setup')
+    ).toThrow('a reusable requests file runs inside another collection, so it has no setup')
     expect(() =>
       CollectionSchema.parse({ setup: [{ GET: '/x', tags: ['smoke'] }], steps: [] })
     ).toThrow('a setup step runs whenever its collection does, so it has no tags')

@@ -232,12 +232,14 @@ test('a shared project is added as it is, with no collections/ made for it', asy
   await expect(added.locator('.shared-project')).toHaveText(
     'A shared project, with no collections of its own. Used by shop.'
   )
-  await expect(added.getByRole('group', { name: 'Request sets of Shared' })).toContainText('ping')
+  await expect(added.getByRole('group', { name: 'Reusable requests of Shared' })).toContainText(
+    'ping'
+  )
   expect(asked).toBe('')
   expect(fs.existsSync(path.join(shared, 'collections'))).toBe(false)
 })
 
-test('a folder of request sets alone, with no project.yml, is added as a shared project too', async () => {
+test('a folder of reusable requests alone, with no project.yml, is added as a shared project too', async () => {
   const library = path.join(tmp, 'platform', 'library')
   fs.mkdirSync(path.join(library, 'requests'), { recursive: true })
   fs.writeFileSync(

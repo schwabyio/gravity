@@ -142,7 +142,7 @@ test('each step’s menu opens the file at that step, selected or not', async ()
   await expect.poll(lastOpened).toEqual(opened('collections/orders.yml', 5))
 })
 
-test('a collection’s, a request set’s and the project’s menus open their files', async () => {
+test('a collection’s, a reusable requests file’s and the project’s menus open their files', async () => {
   const row = page.locator('.collection-item', { hasText: 'orders' })
   await row.locator('.collection-row').click({ button: 'right' })
   await page.getByRole('menuitem', { name: label }).click()

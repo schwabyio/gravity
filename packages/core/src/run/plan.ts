@@ -56,7 +56,7 @@ export async function planSteps(
       project ??= await projectOf(collectionPath)
       const set = await resolveRequestSet(project.root, project.global, step.use)
       checkWith(step.use, set.doc, step.with ?? {})
-      if (set.doc.steps.length === 0) throw new Error(`use: ${step.use} — the set has no steps`)
+      if (set.doc.steps.length === 0) throw new Error(`use: ${step.use} — the file has no steps`)
       const planSet: PlannedSet = {
         name: step.use,
         useName: step.name?.trim() ? step.name : undefined,

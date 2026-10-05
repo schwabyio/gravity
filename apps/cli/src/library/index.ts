@@ -1,5 +1,5 @@
 /**
- * `@schwabyio/gta`: a project's collections and request sets, run from code
+ * `@schwabyio/gta`: a project's collections and reusable requests, run from code
  * on the engine `gta` runs them on.
  *
  *     import { openProject } from '@schwabyio/gta'

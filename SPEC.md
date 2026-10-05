@@ -35,7 +35,7 @@ is a complete, valid project to start from.
 | `project.yml`                 | The project folder                      | Name, global project, variables, trust      | §1.1 |
 | `settings.yml`                | The project folder                      | How `gta` runs the project                  | §1.3 |
 | `rules.yml`                   | The project folder                      | How the project's files are written         | §1.4 |
-| `requests/<id>.yml`           | `requests/`, or one folder inside it    | A request set, run by `use:`                | §2.5 |
+| `requests/<id>.yml`           | `requests/`, or one folder inside it    | Reusable requests, run by `use:`            | §2.5 |
 | `endpoints/<id>.yml`          | `endpoints/`, or one folder inside it   | Defaults and checks per method and path     | §2.6 |
 | `bases/<id>.yml`              | `bases/`, or one folder inside it       | A base collection, for `extends:`           | §2.7 |
 | `checks/<name>.js`            | `checks/`                               | Shared check functions                      | §5   |
@@ -101,7 +101,7 @@ payments/                     a project
 ├── environments/
 │   ├── local.yml
 │   └── staging.yml
-├── requests/                 request sets (§2.5)
+├── requests/                 reusable requests (§2.5)
 ├── endpoints/                endpoint bases (§2.6)
 ├── bases/                    base collections (§2.7)
 ├── checks/                   check files (§5)
@@ -177,8 +177,8 @@ variables, `environments/`, `requests/`, `endpoints/`, `bases/`, `checks/`,
   so does its `rules.yml` (§1.4).
 - A global project's own `collections/` is **not** shared: a project using it never
   sees or runs those collections. A global project needs none. It may have one for a
-  single purpose: **testing what it shares**. A collection there can `use:` its request
-  sets, `extends:` its bases and call its checks, against its own environments, so a
+  single purpose: **testing what it shares**. A collection there can `use:` its reusable
+  requests, `extends:` its bases and call its checks, against its own environments, so a
   broken shared piece fails in one place, before every project relying on it does.
   Those collections run only when the global project itself does, as a project in
   Gravity or with `gta` in its folder, such as its own CI job.
@@ -340,25 +340,25 @@ guide: |
 `gta lint` reports it, and a CI job running `gta lint` fails on it. Gravity marks it, and
 flags what `tests.only` does not allow as a script is typed.
 
-| Rule                 | Value                  | What it checks                                                            |
-| -------------------- | ---------------------- | ------------------------------------------------------------------------- |
-| `ids.collections`    | style or pattern       | Each collection's id, its file name (§2).                                 |
-| `ids.requests`       | style or pattern       | Each request set's id (§2.5).                                             |
-| `ids.bases`          | style or pattern       | Each base collection's id (§2.7).                                         |
-| `ids.endpoints`      | style or pattern       | Each endpoints file's id (§2.6).                                          |
-| `layout.folders`     | `required`             | Every collection sits in a folder of `collections/`, none at its top.     |
-| `layout.folderNames` | list, style or pattern | Each folder of `collections/`: one of the list, or following the format.  |
-| `layout.maxSteps`    | integer ≥ 1            | The most steps a collection has in `steps`; `setup` and `teardown` aside. |
-| `steps.names`        | `required`             | Every step has a `name`, and no other step of its file has the same one.  |
-| `steps.url`          | pattern                | Every request step's URL, as written, matches it (below).                 |
-| `docs.collections`   | `required`             | Every collection has `docs`.                                              |
-| `docs.requests`      | `required`             | Every request set has `docs`.                                             |
-| `docs.steps`         | `required`             | Every step of a collection or request set has `docs`, in every list.      |
-| `tags.allowed`       | list of tags           | Every tag on a collection or a step is one of these.                      |
-| `tags.collections`   | `required`             | Every collection has `tags` of its own.                                   |
-| `tests.only`         | list (below)           | What a `tests` script may call.                                           |
-| `tests.everyStep`    | `required`             | Every step that sends a request or reads a connection is checked (below). |
-| `tests.statusCode`   | `required`             | Every request step's checks include its status code (below).              |
+| Rule                 | Value                  | What it checks                                                                  |
+| -------------------- | ---------------------- | ------------------------------------------------------------------------------- |
+| `ids.collections`    | style or pattern       | Each collection's id, its file name (§2).                                       |
+| `ids.requests`       | style or pattern       | Each reusable requests file's id (§2.5).                                        |
+| `ids.bases`          | style or pattern       | Each base collection's id (§2.7).                                               |
+| `ids.endpoints`      | style or pattern       | Each endpoints file's id (§2.6).                                                |
+| `layout.folders`     | `required`             | Every collection sits in a folder of `collections/`, none at its top.           |
+| `layout.folderNames` | list, style or pattern | Each folder of `collections/`: one of the list, or following the format.        |
+| `layout.maxSteps`    | integer ≥ 1            | The most steps a collection has in `steps`; `setup` and `teardown` aside.       |
+| `steps.names`        | `required`             | Every step has a `name`, and no other step of its file has the same one.        |
+| `steps.url`          | pattern                | Every request step's URL, as written, matches it (below).                       |
+| `docs.collections`   | `required`             | Every collection has `docs`.                                                    |
+| `docs.requests`      | `required`             | Every reusable requests file has `docs`.                                        |
+| `docs.steps`         | `required`             | Every step of a collection or reusable requests file has `docs`, in every list. |
+| `tags.allowed`       | list of tags           | Every tag on a collection or a step is one of these.                            |
+| `tags.collections`   | `required`             | Every collection has `tags` of its own.                                         |
+| `tests.only`         | list (below)           | What a `tests` script may call.                                                 |
+| `tests.everyStep`    | `required`             | Every step that sends a request or reads a connection is checked (below).       |
+| `tests.statusCode`   | `required`             | Every request step's checks include its status code (below).                    |
 
 - Any other group or rule is an error, as is a value of the wrong type.
 - A rule that takes `required` also takes `optional`, which turns it off.
@@ -375,8 +375,8 @@ flags what `tests.only` does not allow as a script is typed.
   `endpoints/`. A global project's files follow the global project's `rules.yml`, checked
   when `gta lint` runs in its folder.
 - `steps.*`, `docs.steps`, `tests.everyStep` and `tests.statusCode` are about the steps of
-  collections and request sets. An endpoint is a method and a path pattern, not a step
-  that runs, so they leave endpoints files alone.
+  collections and reusable requests files. An endpoint is a method and a path pattern,
+  not a step that runs, so they leave endpoints files alone.
 
 **`steps.url`** is a JavaScript regular expression that each request step's URL, as
 written with its `{{variables}}`, must match. Unlike an id pattern it is not anchored:
@@ -387,9 +387,9 @@ out in a step. A use step and a step reading a connection have no URL of their o
 response, wherever it is written: the step's own `tests`, its file's, its base
 collection's (§2.7) and its endpoint's (§2.6), unless the step has `base: false`. With
 `tests.statusCode`, one of them calls `gta.expectResponseStatusCodeToBe`, in any branch,
-or calls a check function (§5) whose own code does. A use step is left to its request
-set, whose steps are checked there. A step reading a connection needs tests under
-`tests.everyStep`, but has no status code of its own to check.
+or calls a check function (§5) whose own code does. A use step is left to its reusable
+requests file, whose steps are checked there. A step reading a connection needs tests
+under `tests.everyStep`, but has no status code of its own to check.
 
 **`tests.only`** lists what a `tests` script may call. It must list `gta`:
 
@@ -425,8 +425,8 @@ tests: |
 ```
 
 `tests.only` checks every `tests` script: a collection's own and each of its steps', and
-those of request sets, base collections and endpoints files. `before.script` is not
-checked.
+those of reusable requests files, base collections and endpoints files.
+`before.script` is not checked.
 
 **`guide`** is Markdown, for what no rule can check: how steps are named, which request
 set a login goes through, what a collection is for. `gta rules` prints it after the
@@ -496,24 +496,24 @@ steps:
 
 Any key not listed here is an error.
 
-| Key        | Type                | Required | Default | Meaning                                                                        |
-| ---------- | ------------------- | -------- | ------- | ------------------------------------------------------------------------------ |
-| `id`       | string              | **yes**  |         | The file name without `.yml` (below).                                          |
-| `steps`    | list of steps       | no       | `[]`    | The requests, in run order (§2.1).                                             |
-| `setup`    | list of steps       | no       |         | Run once before `steps`; what it sets lasts the run (§2.10).                   |
-| `teardown` | list of steps       | no       |         | Run once after the rest, even when a step failed (§2.10).                      |
-| `docs`     | string              | no       |         | Markdown.                                                                      |
-| `tags`     | list of tags        | no       |         | Tags that select the whole collection (§2.4).                                  |
-| `stepTags` | boolean             | no       | `false` | `true` lets steps carry their own tags (§2.4).                                 |
-| `exclude`  | boolean             | no       | `false` | `true` leaves it out of group runs (§2.4).                                     |
-| `flags`    | map                 | no       |         | Feature flags the whole collection needs (§2.9).                               |
-| `headers`  | map                 | no       |         | Sent with every step; a step's own header of the same name wins (§2.3).        |
-| `settings` | map                 | no       |         | Defaults for every step (§2.3).                                                |
-| `vars`     | map of plain values | no       |         | Collection variables (§4).                                                     |
-| `before`   | map                 | no       |         | `script:` run before every step (§5).                                          |
-| `tests`    | string              | no       |         | JavaScript run after every step, before the step's own (§5).                   |
-| `extends`  | string              | no       |         | A base collection to build on (§2.7).                                          |
-| `params`   | map                 | no       |         | The inputs it takes as a request set (§2.5). Only in `requests/`, in practice. |
+| Key        | Type                | Required | Default | Meaning                                                                                   |
+| ---------- | ------------------- | -------- | ------- | ----------------------------------------------------------------------------------------- |
+| `id`       | string              | **yes**  |         | The file name without `.yml` (below).                                                     |
+| `steps`    | list of steps       | no       | `[]`    | The requests, in run order (§2.1).                                                        |
+| `setup`    | list of steps       | no       |         | Run once before `steps`; what it sets lasts the run (§2.10).                              |
+| `teardown` | list of steps       | no       |         | Run once after the rest, even when a step failed (§2.10).                                 |
+| `docs`     | string              | no       |         | Markdown.                                                                                 |
+| `tags`     | list of tags        | no       |         | Tags that select the whole collection (§2.4).                                             |
+| `stepTags` | boolean             | no       | `false` | `true` lets steps carry their own tags (§2.4).                                            |
+| `exclude`  | boolean             | no       | `false` | `true` leaves it out of group runs (§2.4).                                                |
+| `flags`    | map                 | no       |         | Feature flags the whole collection needs (§2.9).                                          |
+| `headers`  | map                 | no       |         | Sent with every step; a step's own header of the same name wins (§2.3).                   |
+| `settings` | map                 | no       |         | Defaults for every step (§2.3).                                                           |
+| `vars`     | map of plain values | no       |         | Collection variables (§4).                                                                |
+| `before`   | map                 | no       |         | `script:` run before every step (§5).                                                     |
+| `tests`    | string              | no       |         | JavaScript run after every step, before the step's own (§5).                              |
+| `extends`  | string              | no       |         | A base collection to build on (§2.7).                                                     |
+| `params`   | map                 | no       |         | The inputs it takes as a reusable requests file (§2.5). Only in `requests/`, in practice. |
 
 A collection has no `name` key. Its `id` is its name, and a file with `name:` is
 rejected with a message saying so.
@@ -547,29 +547,29 @@ key**, in capitals, whose value is the URL as a string.
 
 Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
 
-| Key          | Type         | Required | Meaning                                                                   |
-| ------------ | ------------ | -------- | ------------------------------------------------------------------------- |
-| `<METHOD>`   | string       | **yes**  | The URL, query string included.                                           |
-| `name`       | string       | no       | Display name. Defaults to the method and URL.                             |
-| `headers`    | map          | no       | Over the collection's headers (§2.3).                                     |
-| `body`       | map          | no       | Exactly one kind of body (§2.2).                                          |
-| `settings`   | map          | no       | Over the collection's settings (§2.3).                                    |
-| `before`     | map          | no       | `script:` run before the request (§5).                                    |
-| `tests`      | string       | no       | The checks, as JavaScript: calls on `gta` (§3) and any other code (§5).   |
-| `tags`       | list of tags | no       | The step's own tags. Only with `stepTags: true` on the collection (§2.4). |
-| `flags`      | map          | no       | Feature flags the step needs (§2.9).                                      |
-| `forEach`    | string       | no       | Send the request once for each item of a list (below).                    |
-| `useTests`   | `true`       | no       | In a request set: the use step's `tests` check this response (§2.5).      |
-| `connection` | string       | no       | Keep the event stream this request opens as a connection (§2.11).         |
-| `base`       | `false`      | no       | `false` leaves the step's endpoint base out (§2.6).                       |
-| `docs`       | string       | no       | Markdown.                                                                 |
+| Key          | Type         | Required | Meaning                                                                         |
+| ------------ | ------------ | -------- | ------------------------------------------------------------------------------- |
+| `<METHOD>`   | string       | **yes**  | The URL, query string included.                                                 |
+| `name`       | string       | no       | Display name. Defaults to the method and URL.                                   |
+| `headers`    | map          | no       | Over the collection's headers (§2.3).                                           |
+| `body`       | map          | no       | Exactly one kind of body (§2.2).                                                |
+| `settings`   | map          | no       | Over the collection's settings (§2.3).                                          |
+| `before`     | map          | no       | `script:` run before the request (§5).                                          |
+| `tests`      | string       | no       | The checks, as JavaScript: calls on `gta` (§3) and any other code (§5).         |
+| `tags`       | list of tags | no       | The step's own tags. Only with `stepTags: true` on the collection (§2.4).       |
+| `flags`      | map          | no       | Feature flags the step needs (§2.9).                                            |
+| `forEach`    | string       | no       | Send the request once for each item of a list (below).                          |
+| `useTests`   | `true`       | no       | In a reusable requests file: the use step's `tests` check this response (§2.5). |
+| `connection` | string       | no       | Keep the event stream this request opens as a connection (§2.11).               |
+| `base`       | `false`      | no       | `false` leaves the step's endpoint base out (§2.6).                             |
+| `docs`       | string       | no       | Markdown.                                                                       |
 
 - A step with two method keys is an error, and so is a step with none, unless it is a
   use step or reads a connection.
 - **The URL is authoritative, query string included.** There is no separate block of
   query parameters. Editors show a parameter table as a view over the URL.
-- A step may instead run a request set with `use:` (§2.5). A use step has no method
-  key.
+- A step may instead run reusable requests with `use:` (§2.5). A use step has no
+  method key.
 - A step may also read a connection, an event stream an earlier step keeps open, with
   `connection:` and no method key (§2.11).
 - **Any other key is an error**, so a misspelled key such as `heders:` fails at once
@@ -663,13 +663,14 @@ declared multipart type without a boundary, such as `multipart/mixed`, gets one 
 A declared boundary is used as written.
 
 **Files**, in `body.file` and a multipart part's `file`, are read from the folder of
-the project the step belongs to. For a step of a request set, that is the set's own
-project, which may be a global one. The path is the same wherever the collection sits
-inside `collections/`.
+the project the step belongs to. For a step of a reusable requests file, that is the
+file's own project, which may be a global one. The path is the same wherever the
+collection sits inside `collections/`.
 
-A file that is not there is looked for in the global project (§1.1), as a request set
-or a base collection is, so projects can share one copy of a file. A project's own file
-of the same path wins. `global:` before the path reads only the global project's:
+A file that is not there is looked for in the global project (§1.1), as a reusable
+requests file or a base collection is, so projects can share one copy of a file. A
+project's own file of the same path wins. `global:` before the path reads only the
+global project's:
 
 ```yaml
 body:
@@ -810,11 +811,12 @@ tags, and a folder named to `gta`. Named on its own, it still runs. Use it for w
 progress, a manual-only collection, or one waiting on a fix. `gta` lists what it left
 out, so a suite never shrinks without saying so.
 
-### 2.5 Request sets and `use:`
+### 2.5 Reusable requests and `use:`
 
-A **request set** is a collection in `requests/`, directly or one folder down, with a
-`params:` key: the inputs it takes. A step elsewhere runs it with **`use:`**, and passes
-values with **`with:`**.
+**Reusable requests** are one or more requests that any step can run with **`use:`**,
+passing values with **`with:`**. They are written in a **reusable requests file**: a
+collection in `requests/`, directly or one folder down, with a `params:` key, the
+inputs it takes.
 
 ```yaml
 # requests/login.yml
@@ -859,39 +861,40 @@ values. No variable can take the place of a `params.` name.
 
 A default may name variables and other params, as in
 `email: '{{params.accountId}}@example.com'`. Like a `with:` value, it is resolved once
-for each use, so `accountId: '{{$uuid}}'` is one id wherever the set reads it.
+for each use, so `accountId: '{{$uuid}}'` is one id wherever the file reads it.
 
 **A use step** holds only `use`, `with`, `name`, `tags`, `flags`, `docs` and `tests`. A
 method key, `headers`, `body`, `settings` or `before` on it is an error, and `with`
 without `use` is an error too.
 
-- **Finding the set.** `use: login` is `requests/login.yml` in the project, else in its
+- **Finding the file.** `use: login` is `requests/login.yml` in the project, else in its
   global project. `use: auth/login` is one folder down. `use: global:login` looks
   only in the global project.
 - **`with:`** gives plain values; a param left out takes its default. A string may hold
-  `{{variables}}`, resolved as the set's first request starts, just after the
+  `{{variables}}`, resolved as the file's first request starts, just after the
   collection's `before.script` has run for it: a value that script sets for each step
-  (§4) reaches the set. A missing required value, a name the set does not take, or a
-  value or default that cannot be resolved stops the set's steps before anything is
-  sent.
-- **Running.** A use step runs each of the set's steps in turn, in the collection's
+  (§4) reaches the file's requests. A missing required value, a name the file does not
+  take, or a value or default that cannot be resolved stops the file's steps before
+  anything is sent.
+- **Running.** A use step runs each of the file's steps in turn, in the collection's
   variable scope, so what one sets the next can read, and so can the steps after the use
   step. Each request is reported as its own result. When the use step has a `name`,
-  reports use it: `sign in` for a set of one step, `sign in › get profile` for a longer
+  reports use it: `sign in` for a file of one step, `sign in › get profile` for a longer
   one.
-- **Layers.** Headers and settings: the collection's, under the set's, under each
-  step's own. Scripts run collection, then set, then step: `before.script` before the
+- **Layers.** Headers and settings: the collection's, under the file's, under each
+  step's own. Scripts run collection, then file, then step: `before.script` before the
   request and `tests` after. The use step's own `tests` run last, on the response of
-  the set's step marked `useTests: true`, or else its last step. `params` is the set's
-  alone: the collection's scripts, and a base collection's or an endpoint's (§2.6,
-  §2.7), never see it. In an endpoint's `before.script`, a segment written as
+  the file's step marked `useTests: true`, or else its last step. `params` is the
+  file's alone: the collection's scripts, and a base collection's or an endpoint's
+  (§2.6, §2.7), never see it. In an endpoint's `before.script`, a segment written as
   `{{params.id}}` reads as written.
-- **One level.** A request set must not `use:` another, and has `params`, not `vars`. A
-  file in `requests/` without `params` is not a request set.
+- **One level.** A reusable requests file must not `use:` another, and has `params`,
+  not `vars`. A file in `requests/` without `params` is not a reusable requests file.
 
-**Saving under the caller's name.** A set can take the name to save a value under as a
-param, save it with `gta.set(params.saveAs, …)`, and read it back in its later steps
-with `{{@params.saveAs}}` (§4). The caller then reads it by the name it chose:
+**Saving under the caller's name.** A reusable requests file can take the name to save
+a value under as a param, save it with `gta.set(params.saveAs, …)`, and read it back in
+its later steps with `{{@params.saveAs}}` (§4). The caller then reads it by the name it
+chose:
 
 ```yaml
 # requests/create-user.yml
@@ -920,7 +923,8 @@ steps:
   headers: { Authorization: 'Bearer {{token1}}' }
 ```
 
-Only one step of a set may have `useTests`, and only a set's steps.
+Only one step of a reusable requests file may have `useTests`, and no other file's
+steps.
 
 ### 2.6 Endpoint bases
 
@@ -961,8 +965,8 @@ steps:
   `endpoint.id` is `42` for `{{baseUrl}}/users/{{userId}}` with `userId: 42`.
 - **What applies**, outermost first: the endpoints file's own `headers`, `settings`,
   `before` and `tests`, then the endpoint's, then the base collection's (§2.7), the
-  collection's, the request set's (§2.5) and the step's. Nearer headers and settings
-  win.
+  collection's, the reusable requests file's (§2.5) and the step's. Nearer headers and
+  settings win.
 - **A step's own check replaces the base's check of the same thing**: the status, a
   header by name, or a body property by path. A negative test only says what it expects,
   so checking for a 404 replaces the base's 200. Checks of other things stay, and named
@@ -1062,8 +1066,8 @@ steps:
 ```
 
 - **Every flag named must have the value given.** A collection's `flags` apply to each
-  of its steps, and a use step's to each request of its set. Values compare as text, so
-  `true` matches `true` or `"true"`, and `2` matches `"2"`.
+  of its steps, and a use step's to each of its reusable requests. Values compare as
+  text, so `true` matches `true` or `"true"`, and `2` matches `"2"`.
 - **A step whose flags do not hold is skipped**, not failed. It sends nothing and is
   reported as skipped with the reason, such as `feature flag newCheckout is off`. A
   skipped step never fails a run.
@@ -1147,7 +1151,8 @@ steps: # once per row of approved-domains.csv, as before
 - **The collection applies to them**: its headers, settings, `before`, `tests` and
   flags, as to any step. Their steps may be use steps and may use `forEach`, but carry
   no `tags`: they run whenever the collection does.
-- A request set, a base collection and an endpoints file have no setup or teardown.
+- A reusable requests file, a base collection and an endpoints file have no setup or
+  teardown.
 - Reports name their results `setup › log in` and `teardown › remove the grant`. Running
   a single step in the desktop app does not run them.
 
@@ -1410,7 +1415,7 @@ to. Whitespace inside the braces is ignored. In code, read a variable with
 - **`{{@name}}` reads the variable `name` names.** With `saveAs: token1`,
   `{{@saveAs}}` is the value of `token1`. The name may itself be built from variables.
   A name that is not text, or names no variable, fails like an unknown variable. A
-  request set uses it to read what it saved under its caller's name (§2.5).
+  reusable requests file uses it to read what it saved under its caller's name (§2.5).
 - **In YAML, quote a value that starts with `{{`.** Unquoted, YAML reads `{` as a map.
 
 ### Built-in variables
@@ -1523,7 +1528,7 @@ military zone letter (`U` is -08:00, not UTC).
 | `req`      | `method`, `url`, `headers`, `body`: as sent in `tests`, as written in `before.script`, where a script may change `headers` and `body` (below).                                                                                              |
 | `assert`   | Node's strict `assert`, for use inside `gta.test`.                                                                                                                                                                                          |
 | `console`  | Captured into the step's result.                                                                                                                                                                                                            |
-| `params`   | A request set's params (§2.5), in its own scripts and in the tests of the use step running it.                                                                                                                                              |
+| `params`   | A reusable requests file's params (§2.5), in its own scripts and in the tests of the use step running it.                                                                                                                                   |
 | `endpoint` | An endpoint base's `{name}` values (§2.6), in its scripts and in every script of a step under it.                                                                                                                                           |
 | `checks`   | The project's check files (below).                                                                                                                                                                                                          |
 
@@ -1704,7 +1709,8 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - There is no `expect:` key; checks go in `tests`.
 - `base` is only ever `false`.
 - `forEach` is a string, and a use step has none.
-- `useTests` is only ever `true`, only on a request set's step, and on one step at most.
+- `useTests` is only ever `true`, only on a reusable requests file's step, and on one
+  step at most.
 - A step reading a connection has no `headers`, `body`, `base` or `forEach`. A step
   opening one has no `forEach`, and a use step has no `connection` (§2.11).
 
@@ -1729,7 +1735,8 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 
 **Library files**
 
-- A request set (`requests/`) has `params`, uses no other set, and has no `vars`.
+- A reusable requests file (`requests/`) has `params`, uses no other, and has no
+  `vars`.
 - A base collection (`bases/`) has no `steps`, `setup`, `teardown` or `params`, and no
   `extends`.
 - An endpoint (`endpoints/`) has a URL that is a path starting with `/`, and no use
@@ -1768,7 +1775,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
   seconds, printing a JSON object.
 - Every file a body names can be read from the project folder, or its global
   project's (§2.2).
-- Every `use:` and `extends:` names a usable file, and every `with:` suits its set.
+- Every `use:` and `extends:` names a usable file, and every `with:` suits its file.
   `gta get` checks these, and the body files named without `{{variables}}`, without
   running anything (§1.3).
 - A step's `forEach` resolves to a JSON array.

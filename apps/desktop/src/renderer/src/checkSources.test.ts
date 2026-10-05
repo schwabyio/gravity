@@ -66,7 +66,7 @@ describe('the check files a script calls', () => {
 
 describe('sourceTags without a layer to name', () => {
   it('names the request set, or the script, and the check file a check came from', () => {
-    expect(sourceTags({ script: 'set', line: 1 }, 'step', [])).toEqual(['request set'])
+    expect(sourceTags({ script: 'set', line: 1 }, 'step', [])).toEqual(['reusable requests'])
     expect(sourceTags({ script: 'collection', line: 1 }, 'step', [])).toEqual(['collection'])
     expect(
       sourceTags(

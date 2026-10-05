@@ -122,7 +122,7 @@ export async function resolveRequestSet(
   const set = await resolveIn(root, global, reference, REQUESTS_DIR, 'use')
   if (!set.doc.params) {
     throw new Error(
-      `use: ${reference} — ${set.name}.yml has no params, so it is not a request set (SPEC.md §2.5)`
+      `use: ${reference} — ${set.name}.yml has no params, so it is not a reusable requests file (SPEC.md §2.5)`
     )
   }
   return set

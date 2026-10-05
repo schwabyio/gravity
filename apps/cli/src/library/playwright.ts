@@ -1,6 +1,6 @@
 /**
  * `@schwabyio/gta/playwright`: Playwright's `test` with a `gta` fixture, which
- * runs the project's collections and request sets. Each run is a step in
+ * runs the project's collections and reusable requests. Each run is a step in
  * Playwright's report, and each request a step inside it, with what was sent
  * and received attached. A run that fails fails the test.
  *
@@ -71,8 +71,8 @@ export interface Gta {
   readonly project: GravityProject
   /** `project.run`, reported as a step, failing the test when the run fails. */
   run(collection: string, options?: GtaRunOptions): Promise<RunOutcome>
-  /** `project.use`, reported as a step, failing the test when the set fails. */
-  use(set: string, params?: Record<string, VarValue>, options?: GtaUseOptions): Promise<RunOutcome>
+  /** `project.use`, reported as a step, failing the test when the run fails. */
+  use(name: string, params?: Record<string, VarValue>, options?: GtaUseOptions): Promise<RunOutcome>
 }
 
 export interface GravityFixtures {

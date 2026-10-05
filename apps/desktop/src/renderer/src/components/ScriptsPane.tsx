@@ -184,8 +184,9 @@ export default function ScriptsPane(props: Props) {
           <div className="script-editor">
             {props.use ? (
               <p className="hint">
-                Runs after the set&rsquo;s last request, on its response — with <code>params</code>{' '}
-                as this step passed them. Check files are there as <code>checks.&lt;file&gt;</code>.
+                Runs after the reusable requests, on the last one&rsquo;s response — with{' '}
+                <code>params</code> as this step passed them. Check files are there as{' '}
+                <code>checks.&lt;file&gt;</code>.
               </p>
             ) : testsRule ? (
               <p className="hint tests-rule-hint">
@@ -214,7 +215,7 @@ export default function ScriptsPane(props: Props) {
               kind="tests"
               value={request.tests}
               onChange={(tests) => props.onChange({ tests })}
-              ariaLabel={props.use ? 'Tests after the set' : 'Tests'}
+              ariaLabel={props.use ? 'Tests after the reusable requests' : 'Tests'}
               placeholder={
                 props.use
                   ? 'No tests of this step’s own — for example:\n  gta.expectResponseStatusCodeToBe(201)'

@@ -105,11 +105,11 @@ const flow = () => YAML.parse(fs.readFileSync(path.join(shop, 'collections', 'fl
 const stepRow = (name: string) => page.locator('.step-list > li', { hasText: name })
 const children = (name: string) => page.getByRole('list', { name: `Requests of ${name}` })
 
-test('a use step shows its set’s requests, and the project lists its request sets', async () => {
+test('a use step shows its reusable requests, and the project lists them', async () => {
   await expect(stepRow('Login').locator('.step-open .method')).toHaveText('USE')
   await expect(children('login').locator('.use-child-name')).toHaveText(['log in'])
   await expect(
-    page.getByRole('group', { name: 'Request sets of shop' }).locator('.set-row')
+    page.getByRole('group', { name: 'Reusable requests of shop' }).locator('.set-row')
   ).toHaveText(['login', 'orders'])
 })
 
@@ -126,7 +126,7 @@ test('Run all runs the set’s requests with the values given, sharing variables
 
 test('selecting a use step shows its set and the values it passes', async () => {
   await stepRow('Login').locator('.step-open').click()
-  await expect(page.getByLabel('Request set', { exact: true })).toHaveValue('login')
+  await expect(page.getByLabel('Reusable requests', { exact: true })).toHaveValue('login')
   // With results to show, the editor has stepped aside.
   await page.getByRole('button', { name: 'Show the request editor' }).click()
   await expect(page.getByLabel('Value of param username')).toHaveValue('alice')
@@ -167,15 +167,15 @@ test('a missing required value stops the step before anything is sent', async ()
 })
 
 test('a new use step runs another set; each of its requests is shown on its own', async () => {
-  await page.getByRole('button', { name: '+ Use a request set' }).click()
+  await page.getByRole('button', { name: '+ Use reusable requests' }).click()
   // It goes in after the selected step, and is selected itself.
   await expect(page.locator('.step-list > li').nth(1)).toHaveClass(/selected/)
-  await page.getByLabel('Request set', { exact: true }).selectOption('orders')
+  await page.getByLabel('Reusable requests', { exact: true }).selectOption('orders')
   // Its tests are in the scripts pane, open beside it: a use step's only script.
   await expect(page.locator('.scripts-pane .tabs button', { hasText: 'Pre-request' })).toHaveCount(
     0
   )
-  await page.getByRole('textbox', { name: 'Tests after the set' }).click()
+  await page.getByRole('textbox', { name: 'Tests after the reusable requests' }).click()
   await page.keyboard.type('checks.common.ok()')
   await expect
     // Added after the selected step.
@@ -207,10 +207,10 @@ test('a new use step runs another set; each of its requests is shown on its own'
   await expect(page.locator('.scripts-pane .cm-check-mark')).toHaveText(['✓'])
 })
 
-test('a request set is made in the app, and given params', async () => {
+test('a reusable requests file is made in the app, and given params', async () => {
   await page.getByRole('button', { name: 'Project actions for shop' }).click()
-  await page.getByRole('menuitem', { name: 'New request set' }).click()
-  await page.getByLabel('New request set id').fill('refund')
+  await page.getByRole('menuitem', { name: 'New reusable requests file' }).click()
+  await page.getByLabel('New reusable requests file id').fill('refund')
   await page.keyboard.press('Enter')
   const file = path.join(shop, 'requests', 'refund.yml')
   // Polled for its text, not only the file: it is made empty, then written, and
@@ -219,7 +219,7 @@ test('a request set is made in the app, and given params', async () => {
     .poll(() => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''))
     .toBe('id: refund\nparams: {}\nsteps: []\n')
 
-  await page.getByRole('group', { name: 'Request sets of shop' }).getByText('refund').click()
+  await page.getByRole('group', { name: 'Reusable requests of shop' }).getByText('refund').click()
   await expect(page.locator('.collection-header h1')).toHaveText('refund')
   await page.getByRole('button', { name: 'Collection settings' }).click()
   const drawer = page.getByRole('dialog', { name: 'Collection settings' })
@@ -232,13 +232,13 @@ test('a request set is made in the app, and given params', async () => {
     .toEqual({ amount: 10 })
 })
 
-test('a request set’s step is marked as the one a use step’s tests check', async () => {
+test('a reusable requests file’s step is marked as the one a use step’s tests check', async () => {
   const file = path.join(shop, 'requests', 'orders.yml')
   // The test before leaves the collection settings open.
   const settings = page.getByRole('dialog', { name: 'Collection settings' })
   if (await settings.isVisible())
     await settings.getByRole('button', { name: 'Close', exact: true }).click()
-  await page.getByRole('group', { name: 'Request sets of shop' }).getByText('orders').click()
+  await page.getByRole('group', { name: 'Reusable requests of shop' }).getByText('orders').click()
   await expect(page.locator('.collection-header h1')).toHaveText('orders')
   const marker = page.getByRole('checkbox', { name: /A use step’s tests check this response/ })
 
@@ -260,7 +260,7 @@ test('a request set’s step is marked as the one a use step’s tests check', a
     .toBeUndefined()
 })
 
-test('a project’s filter narrows its request sets too', async () => {
+test('a project’s filter narrows its reusable requests too', async () => {
   const shopProject = page.getByRole('region', { name: 'Project shop' })
   // The filter looks through request sets as well as collections, and counts them to five.
   const more = ['refunds', 'search'].map((id) => path.join(shop, 'requests', `${id}.yml`))
@@ -269,7 +269,7 @@ test('a project’s filter narrows its request sets too', async () => {
   }
   await shopProject.getByLabel('Filter shop').fill('ord')
   await expect(
-    page.getByRole('group', { name: 'Request sets of shop' }).locator('.set-row')
+    page.getByRole('group', { name: 'Reusable requests of shop' }).locator('.set-row')
   ).toHaveText(['orders'])
   await expect(shopProject.locator('.collection-row')).toHaveCount(0)
   await shopProject.getByLabel('Filter shop').fill('')

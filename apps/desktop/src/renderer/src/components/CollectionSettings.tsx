@@ -293,8 +293,8 @@ export default function CollectionSettings(props: Props) {
           {tab === 'params' && (
             <section aria-label="Params">
               <p className="hint">
-                This collection is a request set: a step elsewhere runs it with <code>use:</code>,
-                passing these as <code>with:</code>. Its requests read them as{' '}
+                This collection is a reusable requests file: a step elsewhere runs it with{' '}
+                <code>use:</code>, passing these as <code>with:</code>. Its requests read them as{' '}
                 <code>{'{{params.name}}'}</code>, its code as <code>params.name</code>. Run on its
                 own, it takes the defaults.
               </p>

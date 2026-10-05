@@ -73,7 +73,7 @@ describe('gta lint', () => {
     expect(out).toContain('Rules from:   ../shared/rules.yml, rules.yml')
     expect(out).toContain('In effect:    3 rules (gta rules lists them)')
     expect(out).toContain(
-      'Checked:      1 collection, 0 request sets, 0 base collections, 0 endpoints files'
+      'Checked:      1 collection, 0 reusable requests files, 0 base collections, 0 endpoints files'
     )
     expect(out).toContain('No findings: every file follows the rules.')
   })

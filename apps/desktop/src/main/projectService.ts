@@ -784,7 +784,7 @@ export class ProjectService {
         problem:
           set.problem ??
           (set.doc && !set.doc.params
-            ? 'no params: key, so it is not a request set (add params: {} for none)'
+            ? 'no params: key, so it is not a reusable requests file (add params: {} for none)'
             : undefined)
       })),
       checks: checks.map((check) => check.name),

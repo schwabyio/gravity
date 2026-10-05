@@ -39,7 +39,7 @@ export function UseBar(props: BarProps) {
       <span className="method m-use">USE</span>
       <select
         className="use-set"
-        aria-label="Request set"
+        aria-label="Reusable requests"
         value={set ? referenceFor(props.sets, set) : reference}
         onChange={(e) => props.onChange({ use: e.target.value })}
       >
@@ -52,7 +52,7 @@ export function UseBar(props: BarProps) {
         ))}
       </select>
       {set && (
-        <Tooltip text="Open the request set to edit its requests and params">
+        <Tooltip text="Open the reusable requests file to edit its requests and params">
           <button type="button" onClick={() => props.onOpenSet(set)}>
             Open
           </button>
@@ -111,7 +111,7 @@ export function UseStepEditor(props: EditorProps) {
         <div className="use-with">
           {!set ? (
             <p className="setting-error" role="alert">
-              There is no request set called {props.request.use}.
+              There are no reusable requests called {props.request.use}.
             </p>
           ) : (
             <>
@@ -124,10 +124,10 @@ export function UseStepEditor(props: EditorProps) {
                 The values this run of <strong>{set.title}</strong> gets, as{' '}
                 <code>{'{{params.name}}'}</code> in its requests and <code>params.name</code> in its
                 code. Empty takes the default. A value can use <code>{'{{variables}}'}</code>,
-                resolved as the set’s first request starts, after the collection’s{' '}
+                resolved as the first request starts, after the collection’s{' '}
                 <code>before.script</code>.
               </p>
-              {params.length === 0 && <p className="hint">This set takes no params.</p>}
+              {params.length === 0 && <p className="hint">These requests take no params.</p>}
               {params.map(([key, spec]) => (
                 <ParamField
                   key={key}
@@ -141,7 +141,7 @@ export function UseStepEditor(props: EditorProps) {
               ))}
               {unknown.map((key) => (
                 <p key={key} className="setting-error use-unknown" role="alert">
-                  <code>{key}</code> is not a param of this set, so a run stops here.
+                  <code>{key}</code> is not a param of these requests, so a run stops here.
                   <button type="button" onClick={() => give(key, undefined)}>
                     Remove it
                   </button>
@@ -181,7 +181,7 @@ function ParamField(props: {
       <label className="param-name">
         {name}
         {spec.required && (
-          <span className="param-required" title="The set needs a value for this">
+          <span className="param-required" title="These requests need a value for this">
             *
           </span>
         )}

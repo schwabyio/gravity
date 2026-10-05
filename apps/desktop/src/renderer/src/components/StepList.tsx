@@ -176,7 +176,7 @@ export default function StepList(props: Props) {
           const use = isUseStep(step) ? step : null
           const set = use ? resolveSet(props.sets, use.use) : null
           const { method, url } = use
-            ? { method: 'USE', url: set ? set.path : `no request set called ${use.use}` }
+            ? { method: 'USE', url: set ? set.path : `no reusable requests called ${use.use}` }
             : isReadStep(step)
               ? { method: 'READ', url: `connection ${step.connection}` }
               : readRequestLine(step)
@@ -387,7 +387,7 @@ export default function StepList(props: Props) {
                 <ol className="use-children" aria-label={`Requests of ${stepLabel(step)}`}>
                   {!set && (
                     <li className="use-missing" role="alert">
-                      No request set called {use.use}
+                      No reusable requests called {use.use}
                     </li>
                   )}
                   {set?.steps.map((child, number) => {

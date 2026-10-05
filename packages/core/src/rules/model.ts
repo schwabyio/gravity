@@ -99,7 +99,7 @@ const idRule = (home: string, what: string): RuleInfo => ({
 export const RULES = {
   ids: {
     collections: idRule('collections', 'a collection'),
-    requests: idRule('requests', 'a request set'),
+    requests: idRule('requests', 'a reusable requests file'),
     bases: idRule('bases', 'a base collection'),
     endpoints: idRule('endpoints', 'an endpoints file')
   },
@@ -122,7 +122,7 @@ export const RULES = {
   steps: {
     names: {
       schema: RequirementSchema,
-      doc: 'required: every step of a collection or request set has a name of its own, no other step of its file sharing it.'
+      doc: 'required: every step of a collection or reusable requests file has a name of its own, no other step of its file sharing it.'
     },
     url: {
       schema: UrlPatternSchema,
@@ -131,10 +131,13 @@ export const RULES = {
   },
   docs: {
     collections: { schema: RequirementSchema, doc: 'required: every collection has docs.' },
-    requests: { schema: RequirementSchema, doc: 'required: every request set has docs.' },
+    requests: {
+      schema: RequirementSchema,
+      doc: 'required: every reusable requests file has docs.'
+    },
     steps: {
       schema: RequirementSchema,
-      doc: 'required: every step of a collection or request set has docs, setup and teardown included.'
+      doc: 'required: every step of a collection or reusable requests file has docs, setup and teardown included.'
     }
   },
   tags: {
@@ -160,7 +163,7 @@ export const RULES = {
     },
     everyStep: {
       schema: RequirementSchema,
-      doc: 'required: every step that sends a request or reads a connection is checked by some tests — its own, its file’s, its base collection’s or its endpoint’s. A use step’s requests are checked in their request set.'
+      doc: 'required: every step that sends a request or reads a connection is checked by some tests — its own, its file’s, its base collection’s or its endpoint’s. A use step’s requests are checked in their own file.'
     },
     statusCode: {
       schema: RequirementSchema,

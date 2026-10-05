@@ -187,8 +187,8 @@ function CollectionRow(props: {
   if (props.acting === 'set') {
     return (
       <NameForm
-        label={`New request set id, used in ${summary.name}`}
-        placeholder="Request set id, its file name"
+        label={`New reusable requests file id, used in ${summary.name}`}
+        placeholder="Reusable requests file id, its file name"
         submitLabel="Create"
         onSubmit={async (id) => {
           const refused = await actions.onNewRequestSet(summary, id)
@@ -288,7 +288,7 @@ function CollectionRow(props: {
                 props.onAct(null)
                 actions.onNewRequest(summary)
               })}
-              {item('New request set', () => props.onAct('set'))}
+              {item('New reusable requests file', () => props.onAct('set'))}
               {item('Rename', () => props.onAct('rename'))}
               {editor &&
                 item(editor.label, () => {
@@ -474,7 +474,7 @@ function TransferForm(props: {
       </div>
       <p className="hint transfer-hint">
         {props.summary.dataFile ? 'Its data file goes with it. ' : ''}Files it uploads, the base it
-        extends and request sets it uses do not: that project needs its own.
+        extends and reusable requests it uses do not: that project needs its own.
       </p>
       {problem && (
         <p className="name-form-problem" role="alert">

@@ -20,7 +20,7 @@ export function sourceTags(
       layer
         ? [layer.title, layer.name].filter(Boolean).join(' ')
         : source.script === 'set'
-          ? 'request set'
+          ? 'reusable requests'
           : source.script
     )
   }

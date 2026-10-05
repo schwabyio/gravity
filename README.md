@@ -109,17 +109,17 @@ Both run on macOS, Windows and Linux.
 
 **Reuse**
 
-- Request sets: a login or other sequence of requests, with parameters and defaults,
-  that any collection runs with `use:`. A set can save a value under a name its caller
-  picks.
+- Reusable requests: a login, or any other request or sequence of requests, with
+  parameters and defaults, that any collection runs with `use:`. They can save a value
+  under a name the caller picks.
 - Endpoint bases: headers, settings and checks for every request to a method and path,
   wherever that request is written. A step's own check replaces the base's, so a
   negative test only says what it expects.
 - Base collections: shared headers, variables and scripts, with `extends:`.
 - Global projects: one folder that every service in a monorepo shares. It holds
-  environments, request sets, endpoint bases, base collections, checks, upload files,
-  `gta` settings and rules, and each project overrides only what it needs. Its own
-  collections test what it shares, in one place.
+  environments, reusable requests, endpoint bases, base collections, checks, upload
+  files, `gta` settings and rules, and each project overrides only what it needs. Its
+  own collections test what it shares, in one place.
 
 **Running**
 
@@ -167,13 +167,13 @@ Both run on macOS, Windows and Linux.
   `GTA_*` environment variables override them, and command-line flags override those.
 - JUnit XML and JSON reports, and an HTML report that needs no network.
 - `gta get` lists what would run, where each setting came from, and anything that
-  would stop a run, such as a missing request set or upload file.
+  would stop a run, such as a missing reusable requests file or upload file.
 - Exit codes `0`, `1` and `2` for CI. Every report records the feature flag values a
   run used and where each came from.
 
 **From code**
 
-- A Playwright test can run collections and request sets, then use what they saved,
+- A Playwright test can run collections and reusable requests, then use what they saved,
   such as a token or a new user's id, in the browser. Each run and request is a step in
   Playwright's report, and a failing run fails the test.
 - Any other Node.js code can do the same with `openProject`, from the same npm package.
@@ -245,9 +245,9 @@ project share its `settings.yml` too, under their own ([SPEC.md §1.3](./SPEC.md
 
 ## From Playwright
 
-The same package lets a Playwright test run collections and request sets, then use what
-they saved. Each run and each request shows up as a step in Playwright's report, and a
-failing run fails the test.
+The same package lets a Playwright test run collections and reusable requests, then use
+what they saved. Each run and each request shows up as a step in Playwright's report,
+and a failing run fails the test.
 
 ```ts
 import { test, expect } from '@schwabyio/gta/playwright'

@@ -239,8 +239,8 @@ export default function CollectionView(props: Props) {
 
   const useSetTooltip = (where: string) =>
     props.sets.length > 0
-      ? `Run a request set here${where}, with values of your own`
-      : 'No request sets yet: make one from the project’s ⋯ menu'
+      ? `Run reusable requests here${where}, with values of your own`
+      : 'No reusable requests yet: make a file of them from the project’s ⋯ menu'
   /** Once a step opens a connection: a step reading it. */
   const readFor = (list: ListName): AddAction[] =>
     opened.length > 0
@@ -258,7 +258,7 @@ export default function CollectionView(props: Props) {
       return [
         { label: `+ Add ${list} step`, onClick: () => props.onAddStep(list) },
         {
-          label: `+ Use a request set in ${list}`,
+          label: `+ Use reusable requests in ${list}`,
           onClick: () => props.onAddUse(list),
           disabled: props.sets.length === 0,
           tooltip: useSetTooltip(` in ${list}`)
@@ -269,7 +269,7 @@ export default function CollectionView(props: Props) {
     return [
       { label: '+ Add step', onClick: () => props.onAddStep('steps') },
       {
-        label: '+ Use a request set',
+        label: '+ Use reusable requests',
         onClick: () => props.onAddUse('steps'),
         disabled: props.sets.length === 0,
         tooltip: useSetTooltip('')
