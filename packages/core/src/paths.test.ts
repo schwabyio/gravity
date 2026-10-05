@@ -1,12 +1,13 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   foldName,
   isInside,
   nameProblem,
   relativePosix,
+  renameWithRetry,
   resolveRelative,
   samePath,
   spellingOnDisk,
@@ -108,6 +109,35 @@ describe('names', () => {
     expect(nameProblem('CONIN$')).toMatch(/reserved/)
     expect(nameProblem('conout$.yml')).toMatch(/reserved/)
     expect(nameProblem('  ')).toBe('A name is needed')
+  })
+})
+
+describe('renames', () => {
+  const failing = (code: string) => Object.assign(new Error(code), { code })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('retry while Windows holds what is moved for a moment', async () => {
+    const rename = vi
+      .spyOn(fs, 'rename')
+      .mockRejectedValueOnce(failing('EPERM'))
+      .mockRejectedValueOnce(failing('EBUSY'))
+      .mockResolvedValueOnce(undefined)
+    await renameWithRetry('a', 'b')
+    expect(rename).toHaveBeenCalledTimes(3)
+  })
+
+  it('give up after the last attempt, with its error', async () => {
+    const rename = vi.spyOn(fs, 'rename').mockRejectedValue(failing('EACCES'))
+    await expect(renameWithRetry('a', 'b', 3)).rejects.toThrow('EACCES')
+    expect(rename).toHaveBeenCalledTimes(3)
+  })
+
+  it('fail at once when waiting would not help', async () => {
+    const rename = vi.spyOn(fs, 'rename').mockRejectedValue(failing('ENOENT'))
+    await expect(renameWithRetry('a', 'b')).rejects.toThrow('ENOENT')
+    expect(rename).toHaveBeenCalledTimes(1)
   })
 })
 

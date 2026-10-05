@@ -54,6 +54,7 @@ import {
   relativePosix,
   renameCollectionFile,
   renameCollectionsFolder,
+  renameWithRetry,
   resolveRelative,
   projectEnvironments,
   projectRootFor,
@@ -490,7 +491,7 @@ export class ProjectService {
       const sharing = this.registry.projects().filter(({ entry }) => samePath(entry.path, from))
       for (const { entry } of sharing) this.forget(entry.id)
       try {
-        await fs.rename(from, to)
+        await renameWithRetry(from, to)
         await this.registry.moveProjects(from, await canonical(to))
       } finally {
         await Promise.all(sharing.map(({ entry }) => this.refresh(entry.id)))

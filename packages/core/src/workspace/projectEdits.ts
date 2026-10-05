@@ -17,7 +17,14 @@ import {
   type ParsedFile
 } from '../format/index.js'
 import { ProjectDocSchema, type ProjectDoc } from '../model/documents.js'
-import { foldName, nameProblem, relativePosix, samePath, toPosix } from '../paths.js'
+import {
+  foldName,
+  nameProblem,
+  relativePosix,
+  renameWithRetry,
+  samePath,
+  toPosix
+} from '../paths.js'
 import { editSource } from './collectionEdits.js'
 import { findDataFile } from './dataFile.js'
 import { ID_PATTERN, idOfFile } from './ids.js'
@@ -153,7 +160,7 @@ export async function renameCollectionsFolder(
   )
   if (existing !== undefined) throw new Error(`There is already a folder called "${existing}"`)
   const target = path.join(root, COLLECTIONS_DIR, trimmed)
-  await fs.rename(from, target)
+  await renameWithRetry(from, target)
   return target
 }
 
@@ -253,9 +260,9 @@ export async function renameCollectionFile(
     path.basename(file)
   )
   const dataFile = await findDataFile(file)
-  await fs.rename(file, target)
+  await renameWithRetry(file, target)
   await fs.writeFile(target, source)
-  if (dataFile) await fs.rename(dataFile, dataFileBeside(dataFile, target))
+  if (dataFile) await renameWithRetry(dataFile, dataFileBeside(dataFile, target))
   return target
 }
 
@@ -322,8 +329,8 @@ export async function moveCollectionToFolder(
       throw new Error(`${COLLECTIONS_DIR}/${relativePosix(home, taken)} already exists`)
     }
   }
-  await fs.rename(file, target)
-  if (dataFile) await fs.rename(dataFile, targets[1]!)
+  await renameWithRetry(file, target)
+  if (dataFile) await renameWithRetry(dataFile, targets[1]!)
   return target
 }
 
