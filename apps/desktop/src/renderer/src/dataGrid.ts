@@ -3,6 +3,7 @@ import {
   dataTableProblems,
   parseCellValue,
   parseDataTable,
+  serializeDataCells,
   serializeDataTable,
   rowLabel,
   type DataKind,
@@ -54,22 +55,26 @@ export function tableOf(grid: DataGrid): DataTable | null {
 /**
  * The grid as the file's text, problems or not — what the raw editor starts
  * from when the grid has edits. Unedited rows keep their text from `previous`.
+ * With a column named twice, which rows by column name cannot hold, the cells
+ * are written by position instead, so neither column's values are lost.
  */
 export const textOf = (grid: DataGrid, previous: string): string =>
-  serializeDataTable(
-    {
-      kind: grid.kind,
-      columns: grid.columns,
-      rows: grid.rows.map((row) =>
-        Object.fromEntries(
-          grid.columns.flatMap((column, i) =>
-            row[i] === undefined ? [] : [[column, row[i] as VarValue]]
+  new Set(grid.columns).size < grid.columns.length
+    ? serializeDataCells(grid.kind, grid.columns, grid.rows, previous)
+    : serializeDataTable(
+        {
+          kind: grid.kind,
+          columns: grid.columns,
+          rows: grid.rows.map((row) =>
+            Object.fromEntries(
+              grid.columns.flatMap((column, i) =>
+                row[i] === undefined ? [] : [[column, row[i] as VarValue]]
+              )
+            )
           )
-        )
+        },
+        previous
       )
-    },
-    previous
-  )
 
 /** Text typed in the raw editor, read as a grid — or why it is not a table. */
 export function gridFromText(

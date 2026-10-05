@@ -242,6 +242,31 @@ test('the raw view saves the text exactly as typed, and the grid shows it', asyn
   await page.keyboard.press('Escape')
 })
 
+test('a column named twice keeps both columns’ values in the raw view, to be renamed there', async () => {
+  fs.writeFileSync(csv, ORIGINAL)
+  await openCollection('users')
+  await openData()
+  // The drawer opens in the view it was last left in.
+  await drawer().getByRole('button', { name: 'Grid', exact: true }).click()
+  // The file as written above, not as the test before left it.
+  await expect(cell('Row 2 note')).toHaveValue('plain', { timeout: 5_000 })
+  await cell('Column 2 name').fill('userId')
+  await expect(drawer().getByLabel('Data file problems')).toContainText(
+    'the column userId is named twice'
+  )
+  await drawer().getByRole('button', { name: 'Raw', exact: true }).click()
+  const raw = drawer().getByLabel('Data file text')
+  await expect(raw).toHaveValue(`${BOM}userId,userId\nann,"hello, world"\nbob,plain\n`)
+  expect(onDisk()).toBe(ORIGINAL)
+
+  const renamed = `${BOM}userId,comment\nann,"hello, world"\nbob,plain\n`
+  await raw.fill(renamed)
+  await expect.poll(onDisk, { timeout: 5_000 }).toBe(renamed)
+  await drawer().getByRole('button', { name: 'Grid', exact: true }).click()
+  await expect(cell('Row 1 comment')).toHaveValue('hello, world')
+  await page.keyboard.press('Escape')
+})
+
 test('raw text that is not a table is shown, not saved, and a broken file is fixed there', async () => {
   await openCollection('users')
   await openData()

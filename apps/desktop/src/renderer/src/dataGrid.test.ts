@@ -93,7 +93,18 @@ describe('data grid', () => {
     const text = 'id,iterationLabel\n1,Happy\n2,\n'
     const edited = setCell(csv, 1, 0, '20')
     expect(textOf(edited, text)).toBe('id,iterationLabel\n1,Happy\n20,\n')
-    // One that cannot be saved still has text for the raw editor to start from.
+    // One that cannot be saved still has text for the raw editor to start from —
+    // every value of a column named twice, as well as the other's.
+    const twice = renameColumn(csv, 1, 'id')
+    expect(textOf(twice, text)).toBe('id,id\n1,Happy\n2,\n')
+    expect(gridFromText(textOf(twice, text), 'users.csv', 'csv')).toEqual({
+      grid: null,
+      error: 'users.csv: the header names id twice'
+    })
+    const json = gridOf({ kind: 'json', columns: ['n', 'm'], rows: [{ n: 1, m: 'x' }] })
+    expect(textOf(renameColumn(json, 1, 'n'), '[]')).toBe(
+      '[\n  {\n    "n": 1,\n    "n": "x"\n  }\n]\n'
+    )
     expect(textOf(renameColumn(csv, 0, ''), text)).toBe(',iterationLabel\n1,Happy\n2,\n')
 
     const read = gridFromText('id,iterationLabel\n1,Happy\n2,\n', 'users.csv', 'csv')

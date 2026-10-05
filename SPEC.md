@@ -1030,7 +1030,8 @@ userId,expectedStatus,iterationLabel
   string**: a zip code `01234` stays `01234`. A short row leaves its last columns empty;
   a row with more values than the header is an error.
 - **JSON** is an array of objects, one per row. Values keep their type, which must be
-  string, number, boolean or null.
+  string, number, boolean or null. A row must not name a column twice: JSON readers keep
+  only the last value, so it is an error rather than a value quietly lost.
 - **`.csv` wins** when both exist. The name must match exactly, case included.
 - A data file must be at most 10 MB and have at least one row. The header must not have
   an empty or repeated column name. A data file that will not read makes the collection

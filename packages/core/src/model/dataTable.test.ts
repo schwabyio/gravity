@@ -4,6 +4,7 @@ import {
   dataTableProblems,
   parseCellValue,
   parseDataTable,
+  serializeDataCells,
   serializeDataTable,
   type DataTable
 } from './dataTable.js'
@@ -88,5 +89,41 @@ describe('data tables', () => {
       'column 3 has no name',
       'no rows — a data file runs the collection once per row'
     ])
+  })
+
+  it('refuses a JSON row that names a column twice, which JSON.parse would quietly halve', () => {
+    expect(() =>
+      parseDataTable('[{"id": 1}, {"id": 2, "note": "a", "id": 3}]', 'u.json', 'json')
+    ).toThrow('u.json: row 2 names id twice')
+    // A key and a value alike, escapes and all, are not mistaken for each other.
+    expect(
+      parseDataTable('[{"a\\"b": "c: d", "x": "{\\"a\\": 1}"}, {"a\\"b": "e"}]', 'u.json', 'json')
+        .rows
+    ).toEqual([{ 'a"b': 'c: d', x: '{"a": 1}' }, { 'a"b': 'e' }])
+  })
+
+  it('writes cells by position when a column has no name or another’s, keeping every value', () => {
+    const columns = ['id', 'id', '']
+    const rows = [
+      ['1', 'Happy', 'x'],
+      ['2', '', 'y, z']
+    ]
+    expect(serializeDataCells('csv', columns, rows, `${bom}a,b\r\n1,2\r\n`)).toBe(
+      `${bom}id,id,\n1,Happy,x\n2,,"y, z"\n`
+    )
+    // No line break at the end where the file had none; a lone empty value quoted.
+    expect(serializeDataCells('csv', ['a'], [['']], 'a\nx')).toBe('a\n""')
+    expect(() => parseDataTable('id,id,\n1,Happy,x\n', 'u.csv', 'csv')).toThrow('names id twice')
+
+    const json = serializeDataCells('json', ['n', 'n'], [[1, true], [undefined, null], []])
+    expect(json).toBe(
+      '[\n  {\n    "n": 1,\n    "n": true\n  },\n  {\n    "n": null\n  },\n  {}\n]\n'
+    )
+    expect(() => parseDataTable(json, 'u.json', 'json')).toThrow('u.json: row 1 names n twice')
+    // With nothing repeated, it writes what JSON.stringify would.
+    expect(serializeDataCells('json', ['a', 'b'], [[1, 'x']])).toBe(
+      `${JSON.stringify([{ a: 1, b: 'x' }], null, 2)}\n`
+    )
+    expect(serializeDataCells('json', ['a'], [])).toBe('[]\n')
   })
 })

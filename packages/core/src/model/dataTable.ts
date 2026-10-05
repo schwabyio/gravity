@@ -134,7 +134,82 @@ function jsonTable(text: string, name: string): DataTable {
     }
     return row as Record<string, VarValue>
   })
+  // JSON.parse keeps the last of a key written twice, and drops the rest unsaid.
+  const repeated = repeatedKey(text)
+  if (repeated) {
+    throw new DataFileError(`${name}: row ${repeated.row + 1} names ${repeated.key} twice`)
+  }
   return { kind: 'json', columns, rows }
+}
+
+/**
+ * The first key an object of a JSON text names twice, and the row — the
+ * element of the outer list — it is in. The text must be JSON that parses.
+ */
+function repeatedKey(text: string): { row: number; key: string } | null {
+  const objects: Array<Set<string>> = []
+  let depth = 0
+  let row = -1
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]
+    if (char === '"') {
+      let end = i + 1
+      while (text[end] !== '"') end += text[end] === '\\' ? 2 : 1
+      const literal = text.slice(i, end + 1)
+      i = end
+      let next = end + 1
+      while (/\s/.test(text[next] ?? '')) next++
+      // A string followed by a colon is a key of the object it is in.
+      if (text[next] !== ':') continue
+      const key = JSON.parse(literal) as string
+      const keys = objects.at(-1)!
+      if (keys.has(key)) return { row, key }
+      keys.add(key)
+    } else if (char === '{') {
+      if (depth === 1) row++
+      objects.push(new Set())
+      depth++
+    } else if (char === '[') {
+      depth++
+    } else if (char === '}' || char === ']') {
+      if (char === '}') objects.pop()
+      depth--
+    }
+  }
+  return null
+}
+
+/**
+ * Cells by position as a data file's text, whatever the columns are called:
+ * for a grid while a column has no name, or the name of another, which a table
+ * by column name cannot hold — so no value is lost on the way to the text.
+ * Written fresh, keeping only `previous`'s byte order mark and its trailing
+ * line break, with LF line endings. A JSON row names a repeated column twice,
+ * for the person to see; read back, that is a problem, not a row.
+ */
+export function serializeDataCells(
+  kind: DataKind,
+  columns: readonly string[],
+  rows: ReadonlyArray<ReadonlyArray<VarValue | undefined>>,
+  previous?: string
+): string {
+  const bom = previous?.charCodeAt(0) === 0xfeff ? previous[0] : ''
+  if (kind === 'json') {
+    // As JSON.stringify(rows, null, 2) writes an object, but able to repeat a key.
+    const objects = rows.map((row) => {
+      const entries = columns.flatMap((column, i) =>
+        row[i] === undefined ? [] : [`    ${JSON.stringify(column)}: ${JSON.stringify(row[i])}`]
+      )
+      return entries.length === 0 ? '  {}' : `  {\n${entries.join(',\n')}\n  }`
+    })
+    return `${bom}${objects.length === 0 ? '[]' : `[\n${objects.join(',\n')}\n]`}\n`
+  }
+  const ends = previous === undefined || previous === '' || /\r?\n$/.test(previous)
+  const lines = [
+    columns.map(csvField).join(','),
+    ...rows.map((row) => csvRow(columns.map((_, i) => cellText(row[i]))))
+  ]
+  return `${bom}${lines.join('\n')}${ends ? '\n' : ''}`
 }
 
 function jsonText(table: DataTable, previous: string | undefined): string {
@@ -291,11 +366,16 @@ function csvText(table: DataTable, previous: string | undefined): string {
       unused.delete(reuse)
       return
     }
-    const values = table.columns.map((column) => csvField(cellText(row[column])))
-    // One empty value alone on a line would read as a blank line: quote it.
-    lines.push(values.length === 1 && values[0] === '' ? '""' : values.join(','))
+    lines.push(csvRow(table.columns.map((column) => cellText(row[column]))))
   })
   return `${bom}${lines.join('\n')}${ends ? '\n' : ''}`
+}
+
+/** A row's values as a CSV line. */
+function csvRow(values: string[]): string {
+  const fields = values.map(csvField)
+  // One empty value alone on a line would read as a blank line: quote it.
+  return fields.length === 1 && fields[0] === '' ? '""' : fields.join(',')
 }
 
 /** A CSV field, quoted only when it has to be. */
