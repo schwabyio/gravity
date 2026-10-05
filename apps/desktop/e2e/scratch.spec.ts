@@ -69,7 +69,9 @@ async function launch() {
     ;(globalThis as { trashed?: string[] }).trashed = trashed
     shell.trashItem = async (file: string) => {
       trashed.push(file)
-      fs.rmSync(file, { recursive: true, force: true })
+      // Retried: on Windows a file the app has just read can linger a moment after
+      // it is deleted, and its folder's removal fails with ENOTEMPTY until it goes.
+      fs.rmSync(file, { recursive: true, force: true, maxRetries: 10 })
     }
   })
 }
