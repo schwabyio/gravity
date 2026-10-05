@@ -8,6 +8,8 @@ import { launchApp } from './launch'
 import { sizeWindow } from './window'
 import { addProject } from './addProject'
 
+const { version } = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'))
+
 /**
  * The console: a Console button at the left of the status bar opens a panel
  * across the bottom of the window with every request any run made, what its
@@ -94,6 +96,14 @@ test('the status bar has a Console button, and the console starts closed', async
   await expect(consoleButton()).toBeVisible()
   await expect(consoleButton()).toHaveAttribute('aria-expanded', 'false')
   await expect(panel()).toHaveCount(0)
+})
+
+test("the status bar shows the app's version at its right", async () => {
+  const label = page.locator('.status-bar .status-version')
+  await expect(label).toHaveText(`v${version}`)
+  const bar = await page.locator('.status-bar').boundingBox()
+  const box = await label.boundingBox()
+  expect(bar!.x + bar!.width - (box!.x + box!.width)).toBeLessThan(16)
 })
 
 test('what a Send did while the console was closed is there when it opens', async () => {

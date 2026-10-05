@@ -5982,6 +5982,16 @@ button.console-line:hover {
   color: var(--text-dim);
 }
 
+/* Which build is running, at the far right of the status bar. */
+.status-version {
+  margin-left: auto;
+  padding: 0 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
 /* ---------- project rules (SPEC.md §1.4) ---------- */
 
 /* Breaking a rule: amber, apart from a broken file's red, since nothing stops running. */

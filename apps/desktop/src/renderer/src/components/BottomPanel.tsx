@@ -7,6 +7,11 @@ import ConsoleIcon from './ConsoleIcon.js'
 import ConsolePanel from './ConsolePanel.js'
 import Tooltip from './Tooltip.js'
 
+declare const __GRAVITY_VERSION__: string | undefined
+
+/** Set from package.json by the build; unit tests, which have no build, see a placeholder. */
+const VERSION = typeof __GRAVITY_VERSION__ === 'string' ? __GRAVITY_VERSION__ : '0.0.0-dev'
+
 const plural = (count: number, one: string) => `${count} ${one}${count === 1 ? '' : 's'}`
 
 /** What the console leaves of the window's height, at the least: the app bar and some steps. */
@@ -14,7 +19,8 @@ const ROOM_ABOVE = 220
 
 /**
  * The status bar along the bottom of the window, and the panel its Console
- * button opens above it, across the whole window.
+ * button opens above it, across the whole window. The app's version sits at
+ * its right, so which build is running is never a question.
  *
  * The console listens from the moment the window opens, so whatever ran while
  * the panel was closed is there when it opens. Its own state, not the app's:
@@ -80,6 +86,7 @@ export default function BottomPanel(props: {
             </button>
           </span>
         )}
+        <span className="status-version">v{VERSION}</span>
       </footer>
     </>
   )

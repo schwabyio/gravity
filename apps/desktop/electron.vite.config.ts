@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
@@ -7,6 +8,9 @@ import react from '@vitejs/plugin-react'
  * the end-to-end tests reach maps back to `src/`. Every other build has none.
  */
 const sourcemap = process.env['GRAVITY_COVERAGE'] === '1'
+
+/** The app's version, shown at the right of the status bar. */
+const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8'))
 
 export default defineConfig({
   main: {
@@ -35,6 +39,7 @@ export default defineConfig({
     resolve: {
       alias: { '@shared': resolve(__dirname, 'src/shared') }
     },
+    define: { __GRAVITY_VERSION__: JSON.stringify(pkg.version) },
     build: {
       sourcemap,
       rollupOptions: {
