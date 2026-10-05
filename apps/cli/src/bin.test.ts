@@ -110,6 +110,9 @@ describe('dist/gta.js', () => {
     }
     const spec = await fs.readFile(path.join(dist, 'SPEC.md'), 'utf8')
     expect(spec).toMatch(/^# The Gravity file format/)
+    // The format's version is gta's: bumped together, as Publishing in docs/README.md says.
+    const { version } = JSON.parse(await fs.readFile(path.join(cliRoot, 'package.json'), 'utf8'))
+    expect(spec).toContain(`\nVersion ${version}, `)
     const functions = await fs.readFile(path.join(dist, 'FUNCTIONS.md'), 'utf8')
     expect(functions).toMatch(/^# The `gta` functions/)
   })

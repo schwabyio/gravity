@@ -3,6 +3,7 @@ import type { HtmlCollection, HtmlRun } from './html.js'
 import type { LoadedCollection } from '@schwabyio/gravity-core'
 import type { ListingProblem, RunTarget } from './select.js'
 import { unattempted, type StepRef } from './job.js'
+import { totalsOf } from './report.js'
 import type { Settings, SettingSources } from './settings.js'
 
 /**
@@ -31,10 +32,9 @@ export interface ReportPaths {
 }
 
 export function jsonReport(run: HtmlRun, reports: ReportPaths): object {
-  const tallies = run.collections.map((c) => c.tally)
-  const sum = (pick: (t: HtmlCollection['tally']) => number) =>
-    tallies.reduce((n, t) => n + pick(t), 0)
-  const failed = tallies.filter((t) => !t.passed).length
+  // The terminal's totals: a collection with every step skipped is skipped, not passed.
+  const totals = totalsOf(run.collections.map((c) => c.tally))
+  const failed = totals.collections.failed
   return {
     formatVersion: JSON_FORMAT_VERSION,
     tool: { name: 'gta', version: run.version },
@@ -58,21 +58,7 @@ export function jsonReport(run: HtmlRun, reports: ReportPaths): object {
         notTags: run.notTags ?? []
       }
     },
-    totals: {
-      collections: { total: tallies.length, passed: tallies.length - failed, failed },
-      steps: {
-        total: sum((t) => t.steps.total),
-        passed: sum((t) => t.steps.passed),
-        failed: sum((t) => t.steps.failed),
-        errored: sum((t) => t.steps.errored),
-        skipped: sum((t) => t.steps.skipped)
-      },
-      assertions: {
-        total: sum((t) => t.assertions.total),
-        passed: sum((t) => t.assertions.passed),
-        failed: sum((t) => t.assertions.failed)
-      }
-    },
+    totals,
     leftOut: { excluded: run.excluded, untagged: run.untagged },
     reports,
     collections: run.collections.map(collectionOf)

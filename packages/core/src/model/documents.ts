@@ -679,6 +679,3 @@ export const ProjectDocSchema = z.strictObject({
   tls: ProjectTlsSchema.optional()
 })
 export type ProjectDoc = z.infer<typeof ProjectDocSchema>
-
-/** The format version this build writes. */
-export const FORMAT_VERSION = '1.0'

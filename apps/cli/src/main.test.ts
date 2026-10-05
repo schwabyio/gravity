@@ -88,6 +88,27 @@ describe('gta', () => {
     expect(out).toContain('PASSED')
   })
 
+  it('counts a collection whose every step was skipped as skipped, not passed', async () => {
+    const root = await project({
+      'collections/a.yml': collection('a', ['/ok']),
+      'collections/gated.yml': collection('gated', ['/ok', '/ok'], 'flags: { newCheckout: true }')
+    })
+    const { code, out } = await gta(root, 'all', '--flag', 'newCheckout=false')
+    // Nothing failed: the run passes.
+    expect(code).toBe(EXIT.passed)
+    expect(out).toContain('Collections:  2 total, 1 passed, 0 failed, 1 skipped')
+    expect(out).toContain('Steps:        3 total, 1 passed, 0 failed, 0 errored, 2 skipped')
+    expect(out).toContain('PASSED')
+
+    const json = JSON.parse((await gta(root, 'all', '--flag', 'newCheckout=false', '--json')).out)
+    expect(json.run.result).toBe('passed')
+    expect(json.totals.collections).toEqual({ total: 2, passed: 1, failed: 0, skipped: 1 })
+    expect(json.collections.map((c: { id: string; status: string }) => [c.id, c.status])).toEqual([
+      ['a', 'passed'],
+      ['gated', 'skipped']
+    ])
+  })
+
   it('fails the run on a failing assertion, and says which', async () => {
     const root = await project({
       'collections/a.yml': collection('a', ['/ok', '/fail'])

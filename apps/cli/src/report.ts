@@ -205,18 +205,21 @@ export function failureDetails(tallies: readonly CollectionTally[], p: Paint): s
 }
 
 export interface RunTotals {
-  collections: { total: number; passed: number; failed: number }
+  /** A collection whose every step was skipped is counted as skipped, not passed. */
+  collections: { total: number; passed: number; failed: number; skipped: number }
   steps: CollectionTally['steps']
   assertions: CollectionTally['assertions']
 }
 
+/** A run's totals, as the terminal and the JSON report give them. */
 export function totalsOf(tallies: readonly CollectionTally[]): RunTotals {
   const sum = (pick: (t: CollectionTally) => number) => tallies.reduce((n, t) => n + pick(t), 0)
   return {
     collections: {
       total: tallies.length,
-      passed: tallies.filter((t) => t.passed).length,
-      failed: tallies.filter((t) => !t.passed).length
+      passed: tallies.filter((t) => t.passed && !t.skipped).length,
+      failed: tallies.filter((t) => !t.passed).length,
+      skipped: tallies.filter((t) => t.skipped).length
     },
     steps: {
       total: sum((t) => t.steps.total),
@@ -237,7 +240,10 @@ export function summary(totals: RunTotals, durationMs: number, p: Paint): string
   const { collections: c, steps: s, assertions: a } = totals
   const passed = c.failed === 0
   return [
-    field('Collections', `${c.total} total, ${c.passed} passed, ${c.failed} failed`),
+    field(
+      'Collections',
+      `${c.total} total, ${c.passed} passed, ${c.failed} failed, ${c.skipped} skipped`
+    ),
     field(
       'Steps',
       `${s.total} total, ${s.passed} passed, ${s.failed} failed, ${s.errored} errored, ${s.skipped} skipped`
