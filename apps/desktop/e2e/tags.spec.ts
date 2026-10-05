@@ -30,7 +30,7 @@ test.beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-tags-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-tags-')))
   const repo = path.join(tmp, 'shop-api')
   file = path.join(repo, 'collections', 'shop.yml')
   fs.mkdirSync(path.dirname(file), { recursive: true })

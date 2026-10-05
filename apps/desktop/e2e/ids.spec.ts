@@ -30,7 +30,7 @@ const write = (relative: string, text: string) => {
 }
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-ids-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-ids-')))
   repo = path.join(tmp, 'shop-api')
   fs.mkdirSync(repo, { recursive: true })
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: repo, stdio: 'pipe' })

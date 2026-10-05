@@ -20,7 +20,7 @@ let app: ElectronApplication
 let page: Page
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-methods-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-methods-')))
   file = path.join(tmp, 'orders-api', 'collections', 'orders.yml')
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, 'id: orders\nsteps:\n  - name: list\n    GET: http://127.0.0.1:9/orders\n')

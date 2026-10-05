@@ -30,7 +30,7 @@ const write = (relative: string, text: string) => {
 const lines = (...text: string[]) => `${text.join('\n')}\n`
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-rules-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-rules-')))
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: tmp, stdio: 'pipe' })
   write('shared/project.yml', 'name: shared\n')
   write(

@@ -18,7 +18,7 @@ let page: Page
 const tip = () => page.locator('.tooltip')
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'api-tip-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'api-tip-')))
   const repo = path.join(tmp, 'r')
   fs.mkdirSync(repo, { recursive: true })
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: repo, stdio: 'pipe' })

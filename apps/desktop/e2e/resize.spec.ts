@@ -45,7 +45,7 @@ async function launch() {
 }
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'api-resize-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'api-resize-')))
   userData = path.join(tmp, 'ud')
   repo = path.join(tmp, 'r')
   fs.mkdirSync(repo, { recursive: true })

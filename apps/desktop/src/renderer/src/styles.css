@@ -526,7 +526,12 @@ button:disabled {
   width: 200px;
 }
 
-/* A multipart body: name, type, value, content type; the value gets the room. */
+/* A multipart body: name, type, value, content type; the value gets the room. Never so
+   narrow that a value's file button spills over its content type: the body scrolls instead. */
+.kv.multipart {
+  min-width: 480px;
+}
+
 .kv.multipart .part-name {
   width: 24%;
 }

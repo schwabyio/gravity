@@ -49,7 +49,7 @@ async function launch() {
 }
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-save-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-save-')))
   repo = path.join(tmp, 'orders-api')
   userData = path.join(tmp, 'ud')
   file = path.join(repo, 'collections', 'orders.yml')

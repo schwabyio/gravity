@@ -19,7 +19,7 @@ let app: ElectronApplication
 let page: Page
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-window-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-window-')))
   const shop = path.join(tmp, 'shop')
   fs.mkdirSync(path.join(shop, 'collections'), { recursive: true })
   fs.writeFileSync(

@@ -27,7 +27,7 @@ const write = (file: string, body: string) => {
 const collection = (id: string) => `id: ${id}\nsteps:\n  - GET: http://127.0.0.1:9/${id}\n`
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-monorepo-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-monorepo-')))
   platform = path.join(tmp, 'platform')
   write(path.join(platform, 'services', 'auth', 'collections', 'login.yml'), collection('login'))
   write(

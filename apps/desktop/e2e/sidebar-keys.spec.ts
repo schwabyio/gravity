@@ -27,7 +27,7 @@ const collection = (dir: string, id: string) => {
 }
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-sidebar-keys-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-sidebar-keys-')))
   const shop = path.join(tmp, 'shop')
   collection(shop, 'alpha')
   collection(shop, 'beta')

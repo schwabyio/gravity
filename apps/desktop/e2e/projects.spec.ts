@@ -33,7 +33,7 @@ test.beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-projects-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-projects-')))
   const repo = path.join(tmp, 'platform')
   shop = path.join(repo, 'services', 'shop')
   shared = path.join(repo, 'shared')

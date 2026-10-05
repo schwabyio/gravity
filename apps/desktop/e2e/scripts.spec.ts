@@ -30,7 +30,7 @@ test.beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'api-scripts-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'api-scripts-')))
   const repo = path.join(tmp, 'users-api')
   fs.mkdirSync(path.join(repo, 'collections'), { recursive: true })
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: repo, stdio: 'pipe' })

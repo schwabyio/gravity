@@ -21,7 +21,7 @@ let app: ElectronApplication
 let page: Page
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-exclude-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-exclude-')))
   const repo = path.join(tmp, 'shop-api')
   file = path.join(repo, 'collections', 'legacy.yml')
   fs.mkdirSync(path.dirname(file), { recursive: true })

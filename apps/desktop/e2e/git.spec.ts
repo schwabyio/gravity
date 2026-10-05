@@ -101,7 +101,7 @@ async function closeChanges() {
 }
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'api-git-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'api-git-')))
   userData = path.join(tmp, 'userData')
   globalConfig = path.join(tmp, 'gitconfig')
   // No name or email: the app has to ask for them. No CRLF conversion either.
@@ -214,9 +214,9 @@ test('discards a change, putting the old version aside in the Trash', async () =
   await expect(status()).toHaveText('Discarded README.md.')
   expect(fs.readFileSync(path.join(work, 'README.md'), 'utf8')).toBe('# Platform\n')
   const trashed = await app.evaluate(() => (globalThis as { trashed?: string[] }).trashed)
-  // The app names a file by its real path: on Windows, `runneradmin` where
-  // os.tmpdir() gave the 8.3 name RUNNER~1.
-  expect(trashed).toEqual([path.join(fs.realpathSync.native(work), 'README.md')])
+  // The app names a file by its real path, as every spec's temp folder is: on
+  // Windows `runneradmin` where os.tmpdir() gives the 8.3 name RUNNER~1.
+  expect(trashed).toEqual([path.join(work, 'README.md')])
   await expect(include('README.md')).toHaveCount(0)
 
   // Tidy up what the rest of the tests do not need.

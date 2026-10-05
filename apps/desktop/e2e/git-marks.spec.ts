@@ -43,7 +43,7 @@ const write = (relative: string, body: string) => {
 const collection = (id: string) => `id: ${id}\nsteps: []\n`
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-git-marks-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-git-marks-')))
   globalConfig = path.join(tmp, 'gitconfig')
   fs.writeFileSync(globalConfig, '')
   repo = path.join(tmp, 'shop')

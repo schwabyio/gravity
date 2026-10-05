@@ -40,7 +40,7 @@ test.beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-console-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-console-')))
   const repo = path.join(tmp, 'shop-api')
   const write = (file: string, lines: string[]) => {
     fs.mkdirSync(path.dirname(path.join(repo, file)), { recursive: true })

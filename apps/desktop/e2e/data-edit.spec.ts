@@ -25,7 +25,7 @@ let app: ElectronApplication
 let page: Page
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-data-edit-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'gta-data-edit-')))
   userData = path.join(tmp, 'ud')
   const repo = path.join(tmp, 'users-api')
   collections = path.join(repo, 'collections')

@@ -42,6 +42,9 @@ import MethodPicker from './MethodPicker.js'
 /** The request editor's tabs: what the request is made of. Its scripts have a pane of their own. */
 type RequestTab = 'params' | 'headers' | 'body' | 'settings'
 
+/** The least an open request or response pane is given: room for its head, name and Hide. */
+const PANE_LEAST = 120
+
 interface Props {
   request: EditorState
   /** Which data file row the result shown came from — `Iteration 2 (Bob) - get user` — if one did. */
@@ -201,14 +204,13 @@ export default function RequestView(props: Props) {
 
   // Only with both open is there a split between them to drag.
   const both = editorShown && responseShown
+  // An open pane is never narrower than its head, its name and Hide; the scripts pane, at
+  // the width it was given where there is room, gives way down to its least first.
+  const open = (share: number) => `minmax(${PANE_LEAST}px, ${share}fr)`
   const columns = [
-    !editorShown ? 'var(--strip)' : both ? `minmax(0, ${requestPane.share}fr)` : 'minmax(0, 1fr)',
-    !responseShown
-      ? 'var(--strip)'
-      : both
-        ? `minmax(0, ${1 - requestPane.share}fr)`
-        : 'minmax(0, 1fr)',
-    scriptsHidden ? 'var(--strip)' : `${scriptsPane.width}px`
+    !editorShown ? 'var(--strip)' : open(both ? requestPane.share : 1),
+    !responseShown ? 'var(--strip)' : open(both ? 1 - requestPane.share : 1),
+    scriptsHidden ? 'var(--strip)' : `minmax(${scriptsPane.min}px, ${scriptsPane.width}px)`
   ].join(' ')
   const { request } = props
 

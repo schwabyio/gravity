@@ -70,7 +70,7 @@ async function pickFolder(target: string) {
 }
 
 test.beforeAll(async () => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'api-e2e-')))
+  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'api-e2e-')))
   userData = path.join(tmp, 'userData')
   // These tests are about unsaved edits and explicit saves, so auto save is off.
   write(
