@@ -8,6 +8,7 @@ import type { PaneWidth } from '../hooks/usePaneWidth.js'
 import type { InheritedLayer } from '../inheritance.js'
 import type { EditorState } from '../requestState.js'
 import { preRequestChip, testsChip, type ScriptChip } from '../scriptChips.js'
+import { testsRuleText, useTestsRule } from '../testsRule.js'
 import type { Check } from '../testLinks.js'
 import CodeEditor from './CodeEditor.js'
 import DocsEditor from './DocsEditor.js'
@@ -68,6 +69,7 @@ interface Props {
  */
 export default function ScriptsPane(props: Props) {
   const { request, result, checks, logs, scriptError } = props
+  const testsRule = useTestsRule()
   // A use step has no pre-request script.
   const tab: ScriptTab = props.tab === 'pre-request' && props.use ? 'tests' : props.tab
   const docs = request.docs.trim() ? request.docs : null
@@ -184,6 +186,12 @@ export default function ScriptsPane(props: Props) {
               <p className="hint">
                 Runs after the set&rsquo;s last request, on its response — with <code>params</code>{' '}
                 as this step passed them. Check files are there as <code>checks.&lt;file&gt;</code>.
+              </p>
+            ) : testsRule ? (
+              <p className="hint tests-rule-hint">
+                Runs after the response. This project&rsquo;s rules allow {testsRuleText(testsRule)}{' '}
+                here — type <code>gta.</code> for its functions (<code>tests.only</code> in{' '}
+                {testsRule.source}).
               </p>
             ) : (
               <p className="hint">

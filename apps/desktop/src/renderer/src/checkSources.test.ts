@@ -63,3 +63,28 @@ describe('the check files a script calls', () => {
     expect(checkFileName('../shared/checks/money.js')).toBe('checks/money.js')
   })
 })
+
+describe('sourceTags without a layer to name', () => {
+  it('names the request set, or the script, and the check file a check came from', () => {
+    expect(sourceTags({ script: 'set', line: 1 }, 'step', [])).toEqual(['request set'])
+    expect(sourceTags({ script: 'collection', line: 1 }, 'step', [])).toEqual(['collection'])
+    expect(
+      sourceTags(
+        { script: 'step', line: 1, check: { file: '../shared/checks/money.js', line: 4 } },
+        'step',
+        layers
+      )
+    ).toEqual(['checks/money.js'])
+    expect(sourceTags(undefined, 'step', layers)).toEqual([])
+    // A layer with no name of its own is named by its title alone.
+    expect(sourceTags({ script: 'collection', line: 1 }, 'use', layers)).toEqual(['collection'])
+  })
+
+  it('leaves a file outside checks/ named as it is, and lists each check file called once', () => {
+    expect(checkFileName('helpers/money.js')).toBe('helpers/money.js')
+    expect(calledChecks('checks.money.ok(); checks.$x.y(); checks.money.no()')).toEqual([
+      'money',
+      '$x'
+    ])
+  })
+})

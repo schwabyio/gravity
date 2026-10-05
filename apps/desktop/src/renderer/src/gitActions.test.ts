@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GitStatusView } from '@shared/ipc.js'
-import { pullState, pushState } from './gitActions.js'
+import { diverged, pullState, pushState, rebaseQuestion } from './gitActions.js'
 
 const git = (over: Partial<GitStatusView> = {}): GitStatusView => ({
   branch: 'main',
@@ -60,5 +60,64 @@ describe('pushState', () => {
     expect(pushState(git({ ahead: 1, behind: 1 }), false, null).tooltip).toMatch(/^Pull first/)
     expect(pushState(git(), false, null).enabled).toBe(false)
     expect(pushState(git({ remotes: [] }), false, null).tooltip).toMatch(/no remote/)
+  })
+})
+
+describe('what blocks a pull or a push, whatever the counts', () => {
+  it('says so for an operation in progress, conflicts, a detached HEAD and no commit yet', () => {
+    const cases: Array<[Partial<GitStatusView>, string]> = [
+      [{ operation: 'rebase' }, 'A rebase is in progress: finish it in your git tool first'],
+      [{ conflicted: 2 }, 'Resolve the conflicts in your git tool first'],
+      [{ detached: true }, 'HEAD is detached: create a branch first'],
+      [{ unborn: true }, 'Make a first commit first']
+    ]
+    for (const [over, why] of cases) {
+      expect(pullState(git({ ...over, behind: 1 }), false)).toEqual({
+        enabled: false,
+        tooltip: `Cannot pull. ${why}`,
+        count: 1
+      })
+      expect(pushState(git({ ...over, ahead: 2 }), false, null)).toEqual({
+        enabled: false,
+        tooltip: `Cannot push. ${why}`,
+        count: 2
+      })
+    }
+  })
+
+  it('cannot pull from an upstream gone from the remote, and pulls one commit by name', () => {
+    expect(pullState(git({ upstreamGone: true }), false).tooltip).toBe(
+      'Cannot pull: origin/main is gone from the remote'
+    )
+    expect(pullState(git({ behind: 1 }), false).tooltip).toBe(
+      'Pull 1 commit from origin/main (fast-forward)'
+    )
+    expect(pullState(git({ ahead: null, behind: null }), false)).toEqual({
+      enabled: true,
+      tooltip: 'Pull from origin/main',
+      count: 0
+    })
+  })
+
+  it('publishes a branch to the remote asked for, else origin, else the first one', () => {
+    const unpublished = { upstream: null, remotes: ['upstream', 'origin'] }
+    expect(pushState(git(unpublished), false, 'upstream').tooltip).toBe('Publish main to upstream')
+    expect(pushState(git(unpublished), false, null).tooltip).toBe('Publish main to origin')
+    expect(pushState(git({ ...unpublished, remotes: ['fork'] }), false, null).tooltip).toBe(
+      'Publish main to fork'
+    )
+    expect(pushState(git({ upstreamGone: true, branch: null }), true, null)).toEqual({
+      enabled: false,
+      tooltip: 'Publish this branch to origin',
+      count: 0
+    })
+  })
+
+  it('asks before a pull that rebases', () => {
+    expect(diverged(git({ ahead: 1, behind: 2 }))).toBe(true)
+    expect(diverged(git({ ahead: 1 }))).toBe(false)
+    expect(rebaseQuestion(git({ ahead: 1, behind: 2 }))).toBe(
+      'Your branch and origin/main have both moved on. Pull replays your 1 commit on top of their 2 commits (a rebase). If they conflict, nothing is changed.\n\nPull now?'
+    )
   })
 })

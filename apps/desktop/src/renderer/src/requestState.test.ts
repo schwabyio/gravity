@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { StepSchema, type Step } from '@schwabyio/gravity-core/model'
-import { fromStep, mergeIntoStep, newPart, partRows, toMultipart } from './requestState.js'
+import {
+  fromStep,
+  headerRows,
+  mergeIntoStep,
+  newPart,
+  newRow,
+  partRows,
+  readQueryParams,
+  toBody,
+  toHeaders,
+  toMultipart,
+  writeQueryParams,
+  type HeaderRow
+} from './requestState.js'
 
 const step = (body: unknown): Step => StepSchema.parse({ POST: 'http://x/upload', body })
 
@@ -162,5 +175,152 @@ describe('docs in the editor', () => {
     )
     const reading = StepSchema.parse({ connection: 'orders' })
     expect(mergeIntoStep(reading, { ...fromStep(reading), docs: 'Waits.' }).docs).toBe('Waits.')
+  })
+})
+
+describe('query parameters in the editor', () => {
+  it('reads the table out of the URL, which stays the source of truth', () => {
+    expect(readQueryParams('{{baseUrl}}/users')).toEqual([])
+    expect(readQueryParams('/users?page=2&q=a%20b&q=c&flag')).toEqual([
+      { name: 'page', value: '2' },
+      { name: 'q', value: 'a b' },
+      { name: 'q', value: 'c' },
+      { name: 'flag', value: '' }
+    ])
+  })
+
+  it('writes the table back as the query string, encoded, dropping blank rows', () => {
+    const params = [
+      { name: 'q', value: 'a b&c' },
+      { name: '', value: '' },
+      { name: 'page', value: '2' }
+    ]
+    expect(writeQueryParams('/users?old=1', params)).toBe('/users?q=a%20b%26c&page=2')
+    expect(writeQueryParams('/users', params)).toBe('/users?q=a%20b%26c&page=2')
+    expect(writeQueryParams('/users?old=1', [{ name: ' ', value: '' }])).toBe('/users')
+  })
+})
+
+describe('headers in the editor', () => {
+  const row = (name: string, value: string, enabled = true): HeaderRow => ({
+    ...newRow(),
+    name,
+    value,
+    enabled
+  })
+
+  it('reads a row per value, a switched-off header unticked, and a blank row to type in', () => {
+    const rows = headerRows({
+      Accept: 'application/json',
+      'X-Tag': ['a', 'b'],
+      'X-Debug': { value: '1', enabled: false, description: 'only when asked' }
+    })
+    expect(rows.map(({ name, value, enabled }) => [name, value, enabled])).toEqual([
+      ['Accept', 'application/json', true],
+      ['X-Tag', 'a', true],
+      ['X-Tag', 'b', true],
+      ['X-Debug', '1', false],
+      ['', '', true]
+    ])
+    expect(headerRows(undefined).map((r) => r.name)).toEqual([''])
+  })
+
+  it('writes rows back: a repeated name as a list, an unticked one switched off, the long form kept', () => {
+    const original = { 'X-Debug': { value: '1', enabled: false, description: 'only when asked' } }
+    expect(
+      toHeaders(
+        [
+          row('Accept', 'application/json'),
+          row('X-Tag', 'a'),
+          row('X-Tag', 'b'),
+          row('X-Off', 'x', false),
+          row('X-Debug', '2'),
+          row('', '')
+        ],
+        original
+      )
+    ).toEqual({
+      Accept: 'application/json',
+      'X-Tag': ['a', 'b'],
+      'X-Off': { value: 'x', enabled: false },
+      // Ticked again: the long form, and the enabled key it had, now on.
+      'X-Debug': { value: '2', description: 'only when asked', enabled: true }
+    })
+    expect(
+      toHeaders([row('X-Debug', '1', false)], { 'X-Debug': { value: '1', enabled: true } })
+    ).toEqual({ 'X-Debug': { value: '1', enabled: false } })
+    // A long form with no enabled key gets none while it is on.
+    expect(
+      toHeaders([row('X-Debug', '1')], { 'X-Debug': { value: '1', description: 'why' } })
+    ).toEqual({
+      'X-Debug': { value: '1', description: 'why' }
+    })
+    // Only one of a repeated name ticked: that one.
+    expect(toHeaders([row('X-Tag', 'a', false), row('X-Tag', 'b')])).toEqual({ 'X-Tag': 'b' })
+    expect(toHeaders([row('', '')])).toBeUndefined()
+  })
+})
+
+describe('bodies in the editor', () => {
+  const edited = (bodyMode: Parameters<typeof toBody>[0]['bodyMode'], bodyText = '') => ({
+    bodyMode,
+    bodyText,
+    bodyParts: [newPart()],
+    bodyFile: ''
+  })
+
+  it('writes each kind of body as its key', () => {
+    expect(toBody(edited('json', '{"a":1}'))).toEqual({ json: '{"a":1}' })
+    expect(toBody(edited('xml', '<a/>'))).toEqual({ xml: '<a/>' })
+    expect(toBody(edited('text', 'hi'))).toEqual({ text: 'hi' })
+    expect(toBody(edited('none', 'ignored'))).toBeUndefined()
+    expect(toBody(edited('form', 'a=1\n\n b = 2=3 \nflag'))).toEqual({
+      form: { a: '1', 'b ': ' 2=3', flag: '' }
+    })
+  })
+
+  it('reads each kind back, a form a line per field', () => {
+    for (const body of [{ json: '{}' }, { xml: '<a/>' }, { text: 'hi' }]) {
+      const state = fromStep(step(body))
+      expect(toBody(state)).toEqual(body)
+    }
+    const form = fromStep(step({ form: { a: '1', b: '2' } }))
+    expect([form.bodyMode, form.bodyText]).toEqual(['form', 'a=1\nb=2'])
+    expect(fromStep(StepSchema.parse({ GET: '/x' })).bodyMode).toBe('none')
+  })
+
+  it('leaves a body it has no editor for as it is, and removes one it has when emptied', () => {
+    const graphql = step({ graphql: { query: '{ me { id } }' } })
+    const state = fromStep(graphql)
+    expect(state.bodyMode).toBe('none')
+    expect(mergeIntoStep(graphql, state).body).toEqual({ graphql: { query: '{ me { id } }' } })
+
+    const json = step({ json: '{}' })
+    expect(mergeIntoStep(json, { ...fromStep(json), bodyMode: 'none' }).body).toBeUndefined()
+  })
+})
+
+describe('a step written back from the editor', () => {
+  it('moves the URL to the method chosen, and keeps what has no editor', () => {
+    const original = StepSchema.parse({
+      name: 'read',
+      GET: '/users/1',
+      before: { script: "gta.set('a', 1)" },
+      settings: { timeout: 500 }
+    })
+    const state = fromStep(original)
+    const next = mergeIntoStep(original, {
+      ...state,
+      name: '',
+      method: 'DELETE',
+      preRequest: '',
+      settings: { timeout: undefined, followRedirects: false },
+      base: false
+    })
+    expect(next).toEqual({
+      DELETE: '/users/1',
+      settings: { followRedirects: false },
+      base: false
+    })
   })
 })

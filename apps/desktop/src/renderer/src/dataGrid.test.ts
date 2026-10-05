@@ -4,6 +4,7 @@ import {
   addColumn,
   addRow,
   dataRowInput,
+  gridFromText,
   gridOf,
   gridProblems,
   iterationCounts,
@@ -14,8 +15,10 @@ import {
   removeRow,
   renameColumn,
   rowName,
+  sameGrid,
   setCell,
-  tableOf
+  tableOf,
+  textOf
 } from './dataGrid.js'
 
 const csv = gridOf({
@@ -84,5 +87,36 @@ describe('data grid', () => {
     })
     expect(iterationCounts({ a: r('skipped') }).state).toBe('skipped')
     expect(iterationCounts(undefined).state).toBeNull()
+  })
+
+  it('turns into the file’s text, problems and all, and back from text typed in', () => {
+    const text = 'id,iterationLabel\n1,Happy\n2,\n'
+    const edited = setCell(csv, 1, 0, '20')
+    expect(textOf(edited, text)).toBe('id,iterationLabel\n1,Happy\n20,\n')
+    // One that cannot be saved still has text for the raw editor to start from.
+    expect(textOf(renameColumn(csv, 0, ''), text)).toBe(',iterationLabel\n1,Happy\n2,\n')
+
+    const read = gridFromText('id,iterationLabel\n1,Happy\n2,\n', 'users.csv', 'csv')
+    expect(read.error).toBeNull()
+    expect(sameGrid(read.grid!, csv)).toBe(true)
+    expect(sameGrid(read.grid!, edited)).toBe(false)
+    expect(gridFromText('[1, 2]', 'users.json', 'json')).toEqual({
+      grid: null,
+      error: expect.stringContaining('users.json')
+    })
+  })
+
+  it('leaves a row where it is when moved past an end, and adds one at the end by default', () => {
+    expect(moveRow(csv, 0, -1)).toBe(csv)
+    expect(moveRow(csv, 1, 1)).toBe(csv)
+    expect(addRow(csv).rows.at(-1)).toEqual(['', ''])
+  })
+
+  it('names an iteration with no label by its number alone', () => {
+    expect(iterationName('get user', 0, null)).toBe('Iteration 1 - get user')
+    expect(dataRowInput(tableOf(csv)!, 5, 'users.csv')).toBeNull()
+    const r = (status: RunResult['status']) => ({ status }) as RunResult
+    expect(iterationCounts({ a: r('pass'), b: r('skipped') }).state).toBe('passed')
+    expect(iterationCounts({ a: r('error') }).state).toBe('failed')
   })
 })

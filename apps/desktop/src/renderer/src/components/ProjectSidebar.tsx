@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { CollectionSummary } from '@schwabyio/gravity-core/model'
+import type { CollectionSummary, RuleFinding } from '@schwabyio/gravity-core/model'
 import type {
   GitProgress,
   LibraryFileView,
@@ -8,6 +8,7 @@ import type {
   WorkspaceSummary
 } from '@shared/ipc.js'
 import { summaryOfFile } from '../reuse.js'
+import { findingsOf } from '../ruleFindings.js'
 import { filterCollections, filtering, keepsFile } from '../sidebarFilter.js'
 import CollapseIcon from './CollapseIcon.js'
 import GitBadge from './GitBadge.js'
@@ -16,8 +17,11 @@ import { useExternalEditor } from '../externalEditor.js'
 import CollectionList, { type CollectionActions, type FolderDrag } from './CollectionList.js'
 import NameForm from './NameForm.js'
 import ProjectHeading from './ProjectHeading.js'
+import RuleMark from './RuleMark.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
+
+const NO_FINDINGS: RuleFinding[] = []
 
 interface Props {
   /** The divider between this pane and the main one. */
@@ -61,7 +65,8 @@ interface Props {
     name: string,
     kind?: LibraryKind
   ) => Promise<string | null>
-  onProjectSettings: (projectId: string) => void
+  /** Open Project settings; at its rules, when that is what was asked for. */
+  onProjectSettings: (projectId: string, at?: 'rules') => void
   onReveal: (path: string) => void
   /** Rename, copy, move and delete a project's collections. */
   collectionActions: Omit<
@@ -420,6 +425,7 @@ export default function ProjectSidebar(props: Props) {
                   onNewEndpoints={() => setNaming({ kind: 'endpoints', projectId: project.id })}
                   onNewBase={() => setNaming({ kind: 'base', projectId: project.id })}
                   onSettings={() => props.onProjectSettings(project.id)}
+                  onRules={() => props.onProjectSettings(project.id, 'rules')}
                   onReveal={() => props.onReveal(project.path)}
                   onRename={() => setNaming({ kind: 'rename-scratch', projectId: project.id })}
                 />
@@ -534,6 +540,7 @@ export default function ProjectSidebar(props: Props) {
                     folders={project.directories}
                     drag={dragFor(project)}
                     marks={marks}
+                    findings={project.findings}
                     actions={{
                       ...props.collectionActions,
                       onRenameFolder: (folder, name) =>
@@ -567,6 +574,12 @@ export default function ProjectSidebar(props: Props) {
                             home={home}
                             // A shared one's changes are its global project's, marked there.
                             mark={file.source === 'project' ? marks.file(file.path) : null}
+                            // Rules check a project's own files; a shared one's are its global project's.
+                            findings={
+                              file.source === 'project'
+                                ? findingsOf(project.findings, `${home}/${file.name}.yml`)
+                                : NO_FINDINGS
+                            }
                             selected={file.path === props.selectedRoot}
                             onSelect={() =>
                               props.onSelectCollection(project, summaryOfFile(file, home))
@@ -593,6 +606,7 @@ function LibraryRow(props: {
   file: LibraryFileView
   home: string
   mark: GitMark | null
+  findings: RuleFinding[]
   selected: boolean
   onSelect: () => void
 }) {
@@ -623,6 +637,7 @@ function LibraryRow(props: {
         <span className="label">{file.title}</span>
         {file.source === 'global' && <span className="shared-tag">shared</span>}
         {file.problem && <span className="problem">!</span>}
+        <RuleMark findings={props.findings} />
         <GitBadge mark={mark} />
       </button>
       {editor && (

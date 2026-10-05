@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { RunResult } from '@schwabyio/gravity-core/model'
 import type { ConsoleEvent } from '@shared/ipc.js'
 import {
+  clockTime,
   consoleReducer,
   EMPTY_CONSOLE,
+  isProblem,
   MAX_RESULTS,
   MAX_ROWS,
   outcomeOf,
@@ -11,8 +13,12 @@ import {
   rawExchange,
   rawRequest,
   rawResponse,
+  rowsOf,
+  sentAt,
   shownRows,
-  type ConsoleState
+  sourceOf,
+  type ConsoleState,
+  type ResultEntry
 } from './consoleLog.js'
 
 const result = (overrides: Partial<RunResult> = {}): RunResult => ({
@@ -292,5 +298,75 @@ describe('raw text', () => {
     expect(
       outcomeOf(result({ response: null, error: { phase: 'pre-request', message: 'x' } }))
     ).toBe('not sent')
+  })
+
+  it('says a failed request with no code failed, and when each was sent', () => {
+    expect(outcomeOf(result({ response: null, error: { phase: 'http', message: 'x' } }))).toBe(
+      'failed'
+    )
+    const entry = (r: RunResult): ResultEntry => ({
+      kind: 'result',
+      key: 1,
+      at: 5_000,
+      run: null,
+      result: r
+    })
+    // Sent: when the response says. Never sent: when its step began.
+    expect(sentAt(entry(result()))).toBe(1_000)
+    expect(sentAt(entry(result({ response: null, durationMs: 40 })))).toBe(4_960)
+  })
+
+  it('tells the time of day to the millisecond', () => {
+    const at = new Date(2026, 9, 5, 9, 3, 7, 45).getTime()
+    expect(clockTime(at)).toBe('09:03:07.045')
+  })
+})
+
+describe('a result as the console names and lists it', () => {
+  const entry = (over: Partial<ResultEntry> = {}): ResultEntry => ({
+    kind: 'result',
+    key: 3,
+    at: 10,
+    run: { kind: 'all', collection: 'users', environment: null },
+    result: result(),
+    ...over
+  })
+
+  it('names its collection, step and iteration', () => {
+    expect(sourceOf(entry())).toBe('users › get user')
+    expect(sourceOf(entry({ run: null }))).toBe('get user')
+    expect(sourceOf(entry({ iteration: { index: 2, of: 3, label: 'ada' } }))).toBe(
+      'users › get user · iteration 2 (ada)'
+    )
+    expect(sourceOf(entry({ iteration: { index: 3, of: 3, label: null } }))).toBe(
+      'users › get user · iteration 3'
+    )
+  })
+
+  it('lists a skipped step by its reason, a script’s warning as a problem, and an error', () => {
+    const skipped = rowsOf(
+      entry({
+        result: result({ status: 'skipped', response: null, skipped: { reason: 'flag off' } })
+      })
+    )
+    expect(skipped[0]).toMatchObject({ kind: 'skipped', reason: 'flag off' })
+    expect(isProblem(skipped[0]!)).toBe(false)
+    const unexplained = rowsOf(entry({ result: result({ status: 'skipped', response: null }) }))
+    expect(unexplained[0]).toMatchObject({ kind: 'skipped', reason: 'not run' })
+
+    const logged = rowsOf(
+      entry({
+        result: result({
+          status: 'error',
+          logs: [
+            { phase: 'tests', level: 'warn', message: 'slow' },
+            { phase: 'tests', level: 'log', message: 'ok' }
+          ],
+          error: { phase: 'tests', message: 'boom' }
+        })
+      })
+    )
+    expect(logged.map((row) => row.kind)).toEqual(['request', 'log', 'log', 'error'])
+    expect(logged.map(isProblem)).toEqual([true, true, false, true])
   })
 })

@@ -11,6 +11,7 @@ import {
   type CollectionRunSummary,
   type Headers,
   type LoadProblem,
+  type RuleFinding,
   type RunResult,
   type Settings,
   type StepList as ListName,
@@ -34,6 +35,7 @@ import TagEditor from './TagEditor.js'
 import Tooltip from './Tooltip.js'
 import VariableInput from './VariableInput.js'
 import type { CollectionChanges } from '../stepChanges.js'
+import { fileFindings, findingText, stepFindings } from '../ruleFindings.js'
 
 interface Props {
   name: string
@@ -42,6 +44,11 @@ interface Props {
   path: string
   /** What is wrong with the file: an id that is not its name, or one another file shares. */
   problems: LoadProblem[]
+  /**
+   * Where the file breaks its project's rules (SPEC.md §1.4): the file's own
+   * findings shown above it, each step's on its row. Nothing stops it running.
+   */
+  findings: RuleFinding[]
   /** Write the id the file must have. */
   onFixId: (id: string) => void
   /** Its data file (SPEC.md §2.8): gta runs it once per row; the app runs it with row 1. */
@@ -319,6 +326,7 @@ export default function CollectionView(props: Props) {
         onDeleteMany={(indexes) => props.onDeleteSteps(list, indexes)}
         onMove={(index, to) => props.onMoveStep(list, index, to)}
         flagStates={flagStatesOf(list)}
+        findings={stepFindings(props.findings, list)}
       />
     )
   }
@@ -340,6 +348,18 @@ export default function CollectionView(props: Props) {
               Set id to {fileId}
             </button>
           )}
+        </div>
+      )}
+      {fileFindings(props.findings).length > 0 && (
+        <div className="banner rule-banner" role="note" aria-label="Rule findings">
+          <span className="rule-mark" aria-hidden="true">
+            △
+          </span>
+          <span className="rule-banner-text">
+            {fileFindings(props.findings).map((finding, index) => (
+              <span key={index}>{findingText(finding)}</span>
+            ))}
+          </span>
         </div>
       )}
       <header className="collection-header">

@@ -112,7 +112,9 @@ describe('loadSettings', () => {
     await write('limitConcurrency: [\n')
     await expect(loadSettings({ root, env: {} })).rejects.toThrow('settings.yml will not parse')
     await write('- a list\n')
-    await expect(loadSettings({ root, env: {} })).rejects.toThrow('must be a map')
+    await expect(loadSettings({ root, env: {} })).rejects.toThrow(
+      'settings.yml must be a map, such as limitConcurrency: 4'
+    )
   })
 
   describe('with a global project', () => {

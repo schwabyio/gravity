@@ -99,6 +99,18 @@ describe('a name spelled in another case than on disk', () => {
         'must be named collections: macOS and Windows read it as it is, Linux does not (SPEC.md §1.2)'
     })
   })
+
+  it('is reported for a file gta reads at the root, such as Rules.yml', async () => {
+    const project = path.join(tmp, 'services', 'ruled')
+    await write(path.join(project, 'collections', 'a.yml'), 'id: a\nsteps: []\n')
+    await write(path.join(project, 'Rules.yml'), 'ids:\n  collections: kebab-case\n')
+    const layout = await discoverProject(project)
+    expect(layout.problems).toContainEqual({
+      path: 'Rules.yml',
+      message:
+        'must be named rules.yml: macOS and Windows read it as it is, Linux does not (SPEC.md §1.2)'
+    })
+  })
 })
 
 describe('names a checkout on another platform could not hold', () => {

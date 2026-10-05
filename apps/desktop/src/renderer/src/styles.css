@@ -5976,3 +5976,175 @@ button.console-line:hover {
   background: none;
   color: var(--text-dim);
 }
+
+/* ---------- project rules (SPEC.md §1.4) ---------- */
+
+/* Breaking a rule: amber, apart from a broken file's red, since nothing stops running. */
+.rule-mark {
+  flex: none;
+  color: var(--redirect);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* Pushed to the right in a sidebar row, unless a mark before it already is. */
+.row .label + .rule-mark {
+  margin-left: auto;
+}
+
+.step-name .rule-mark {
+  margin-left: 6px;
+}
+
+.repo-head button.rule-count {
+  flex: none;
+  padding: 0 2px;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--redirect);
+  font: inherit;
+  white-space: nowrap;
+}
+
+.repo-head button.rule-count:hover {
+  text-decoration: underline;
+}
+
+.rule-banner .rule-mark {
+  font-size: 13px;
+}
+
+.rule-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rules-files {
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.rules-files li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rules-list {
+  margin: 8px 0 0;
+}
+
+.rules-list .rule {
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.rules-list dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.rules-list .rule-value {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.rules-list .rule.off .rule-value {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.rules-list .rule-source {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.rules-list dd {
+  margin: 2px 0 0;
+}
+
+.rules-findings-title {
+  margin: 14px 0 4px;
+  color: var(--redirect);
+  font-size: 12px;
+}
+
+.rule-findings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.rule-findings li {
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.rule-finding-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rule-findings .rule-finding-place {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.rule-findings .rule-finding-rule {
+  margin-left: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.rules-guide,
+.rules-agents {
+  margin-top: 14px;
+}
+
+.rules-guide h4,
+.rules-agents h4 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+
+.rules-guide .rule-source {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.rules-guide .md {
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  font-size: 12px;
+}
+
+/* A guide's headings are its own, not the drawer's section titles. */
+.drawer-body .rules-guide .md-h {
+  margin: 8px 0 4px;
+  color: var(--text);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.drawer-body .rules-guide .md-h:first-child {
+  margin-top: 0;
+}

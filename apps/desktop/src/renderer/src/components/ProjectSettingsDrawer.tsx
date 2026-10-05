@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ProjectDoc, VariablePreviews, Vars } from '@schwabyio/gravity-core/model'
+import type { ProjectDoc, RuleFinding, VariablePreviews, Vars } from '@schwabyio/gravity-core/model'
 import type { CaFileView, ProjectEdit, ProjectView } from '@shared/ipc.js'
 import LineEndingsSection from './LineEndingsSection.js'
+import RulesSection from './RulesSection.js'
 import Tooltip from './Tooltip.js'
 import VariablesEditor from './VariablesEditor.js'
 
@@ -12,6 +13,10 @@ interface Props {
   onCopyVariable: (name: string) => Promise<boolean>
   /** Open the Changes drawer for the project's repository. */
   onOpenChanges: () => void
+  /** Opened for its rules: the Rules section is scrolled into view. */
+  rulesFocus?: boolean
+  /** Open the file a rule finding is about, in the app. */
+  onOpenFinding: (finding: RuleFinding) => void
   onClose: () => void
 }
 
@@ -149,7 +154,7 @@ const SHARED_KEYS = ['vars'] as const
  * A project's `project.yml`, in a drawer: its name, the global project it
  * uses, project-wide variables and the CA certificates it trusts — and, when
  * it uses a global project, that project's shared variables, edited in place
- * for every project using it.
+ * for every project using it. Last, its rules, as `rules.yml` sets them.
  */
 export default function ProjectSettingsDrawer({
   project,
@@ -350,6 +355,12 @@ export default function ProjectSettingsDrawer({
               </div>
             </section>
           )}
+
+          <RulesSection
+            project={project}
+            focus={props.rulesFocus === true}
+            onOpenFinding={props.onOpenFinding}
+          />
         </div>
       </aside>
     </>

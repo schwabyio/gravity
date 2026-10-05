@@ -135,6 +135,7 @@ with a complete project to start from.
 | Command                                          | What it does                                    |
 | ------------------------------------------------ | ----------------------------------------------- |
 | `npm test`                                       | Unit tests                                      |
+| `npm run coverage`                               | Unit tests, and how much of the code they reach |
 | `npm run typecheck`                              | Type-check every workspace                      |
 | `npm run lint`                                   | ESLint                                          |
 | `npm run test:e2e -w @schwabyio/gravity-desktop` | Build the desktop app, then drive it end to end |

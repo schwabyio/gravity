@@ -39,6 +39,7 @@ import {
   type ScriptKind
 } from '../scriptApi.js'
 import type { CheckLine } from '../checkLines.js'
+import { useTestsRule, type TestsRule } from '../testsRule.js'
 
 interface Props {
   value: string
@@ -86,6 +87,10 @@ export default function CodeEditor({
   const completions = useRef(new Compartment())
   const checksRef = useRef(checks)
   checksRef.current = checks
+  // The project's tests.only, for a Tests script of its own: what is shown is not checked.
+  const contextRule = useTestsRule()
+  const rule = kind === 'tests' && !readOnly ? contextRule : null
+  const ruleKey = rule ? `${rule.allowed.join(',')}|${rule.source}` : ''
 
   useEffect(() => {
     const editor = new EditorView({
@@ -95,7 +100,7 @@ export default function CodeEditor({
         extensions: [
           basicSetup,
           javascript(),
-          completions.current.of([completionsFor(kind), lintFor(kind)]),
+          completions.current.of([completionsFor(kind, rule), lintFor(kind, rule)]),
           lintGutter(),
           // Mounted on the body so a diagnostic or completion is never clipped by the pane.
           tooltips({ parent: document.body }),
@@ -131,9 +136,10 @@ export default function CodeEditor({
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: completions.current.reconfigure([completionsFor(kind), lintFor(kind)])
+      effects: completions.current.reconfigure([completionsFor(kind, rule), lintFor(kind, rule)])
     })
-  }, [kind])
+    // The rule by what it says, not by which object holds it.
+  }, [kind, ruleKey])
 
   useEffect(() => {
     view.current?.dispatch({ effects: setErrorLine.of(errorLine ?? null) })
@@ -149,12 +155,15 @@ export default function CodeEditor({
 
 /* ----------------------------------------------------------- completions -- */
 
-function completionsFor(kind: ScriptKind) {
-  const available = (entries: ApiEntry[]) => entries.filter((e) => !e.only || e.only === kind)
+function completionsFor(kind: ScriptKind, rule: TestsRule | null) {
+  // Under tests.only, nothing it would flag is offered: gta.test, and assert that goes in it.
+  const customChecks = !rule || rule.allowed.includes('gta.test')
+  const available = (entries: ApiEntry[]) =>
+    entries.filter((e) => (!e.only || e.only === kind) && (customChecks || e.name !== 'test'))
   const objects: Record<string, ApiEntry[]> = {
     gta: available(GTA_API),
     req: REQ_API,
-    assert: ASSERT_API,
+    ...(customChecks ? { assert: ASSERT_API } : {}),
     ...(kind === 'tests' ? { res: RES_API } : {})
   }
 
@@ -218,9 +227,10 @@ function completionsFor(kind: ScriptKind) {
  * Syntax errors come from main, which parses with the same V8 that will run the
  * script, so the editor never reports something a run would accept or miss
  * something it would reject. A `gta` function that does not exist is a warning,
- * with the nearest real name.
+ * with the nearest real name, and so is what the project's `tests.only` rule
+ * does not allow (SPEC.md §1.4), checked by main as `gta lint` checks it.
  */
-function lintFor(kind: ScriptKind) {
+function lintFor(kind: ScriptKind, rule: TestsRule | null) {
   const everywhere = new Set(GTA_API.map((entry) => entry.name))
   const here = new Set(GTA_API.filter((e) => !e.only || e.only === kind).map((e) => e.name))
 
@@ -228,6 +238,21 @@ function lintFor(kind: ScriptKind) {
     async (view) => {
       const code = view.state.doc.toString()
       const diagnostics: Diagnostic[] = []
+
+      // What the project's tests.only does not allow, as gta lint would report it.
+      if (rule && code.trim() !== '') {
+        const length = view.state.doc.length
+        for (const finding of await window.desktop.script.rules(code, rule.allowed)) {
+          const from = Math.min(finding.from, length)
+          diagnostics.push({
+            from,
+            to: Math.max(from, Math.min(finding.to, length)),
+            severity: 'warning',
+            source: 'rule',
+            message: `${finding.message} (tests.only in ${rule.source})`
+          })
+        }
+      }
 
       const problem = code.trim() === '' ? null : await window.desktop.script.check(code)
       if (problem) {

@@ -139,6 +139,43 @@ In a monorepo, projects that share a global project (`uses:` in `project.yml`) s
 setting by setting it again in its own file. Each project still needs a `settings.yml`,
 even an empty one.
 
+## Project rules
+
+A `rules.yml` beside `project.yml` writes down how a project's files are named, laid out
+and written, so everyone working on it, people and coding agents alike, keeps it the
+same:
+
+```yaml
+# rules.yml
+ids:
+  collections: kebab-case # or a pattern, such as '{folder}-[a-z0-9-]+'
+layout:
+  folders: required # every collection in a folder of collections/
+docs:
+  collections: required
+tags:
+  allowed: [smoke, regression]
+steps:
+  names: required
+tests:
+  only: [gta] # tests call the gta.* functions, and nothing else
+  statusCode: required
+guide: |
+  Name each step for what it proves.
+```
+
+```sh
+gta rules                        # the rules in effect, where each came from, what each means, the guide
+gta lint                         # check every file against them
+gta lint --json                  # the findings as JSON, for tools and agents
+```
+
+`gta lint` prints each finding at its file and line, with the rule it breaks, and exits
+`1` when it finds one. Rules never change a run: a file that breaks one still runs. A
+global project's `rules.yml` is shared like its `settings.yml`, and a project changes or
+turns off (`null`) any rule in its own file. Every rule is in
+[SPEC.md §1.4](https://github.com/schwabyio/gravity/blob/main/SPEC.md#14-rulesyml).
+
 ## In CI
 
 ```yaml
@@ -147,6 +184,7 @@ even an empty one.
   with:
     node-version: 22
 - run: npm install -g @schwabyio/gta
+- run: gta lint
 - run: gta all --environmentType staging --generateJUnitResults
   env:
     apiKey: ${{ secrets.STAGING_API_KEY }}

@@ -77,6 +77,25 @@ describe('dist/gta.js', () => {
     expect(xml).toContain('<testsuite name="slow" tests="1" failures="0" errors="1"')
   })
 
+  // tests.only parses scripts with acorn: bundled, it must still be there to call.
+  it('lints a project against its rules', async () => {
+    await fs.writeFile(path.join(root, 'rules.yml'), 'tests:\n  only: [gta]\n')
+    await fs.writeFile(
+      path.join(root, 'collections', 'custom.yml'),
+      'id: custom\nsteps:\n  - GET: /ok\n    tests: assert.ok(true)\n'
+    )
+    try {
+      const { code, stdout } = await gta('lint')
+      expect(code).toBe(1)
+      expect(stdout).toContain(
+        'collections/custom.yml:4  step 1 (GET /ok) tests: assert.ok(true): tests here call only gta.* functions  [tests.only from rules.yml]'
+      )
+    } finally {
+      await fs.rm(path.join(root, 'rules.yml'))
+      await fs.rm(path.join(root, 'collections', 'custom.yml'))
+    }
+  })
+
   it('exits 2 when it cannot run at all', async () => {
     const { code, stderr } = await gta('all', '--limitConcurrency', 'lots')
     expect(code).toBe(2)
@@ -86,7 +105,7 @@ describe('dist/gta.js', () => {
   it('ships SPEC.md, FUNCTIONS.md and the licenses of the packages it bundles', async () => {
     const dist = path.join(cliRoot, 'dist')
     const notices = await fs.readFile(path.join(dist, 'THIRD_PARTY_NOTICES.txt'), 'utf8')
-    for (const name of ['undici', 'yaml', 'zod']) {
+    for (const name of ['acorn', 'undici', 'yaml', 'zod']) {
       expect(notices).toMatch(new RegExp(`^${name} \\d+\\.\\d+\\.\\d+ \\(`, 'm'))
     }
     const spec = await fs.readFile(path.join(dist, 'SPEC.md'), 'utf8')
@@ -348,7 +367,8 @@ describe('the library in dist/', () => {
     })
   })
 
-  it('declares its types in files that stand alone', () => {
+  // A whole program type-checked, Node's types and all: seconds, and more under coverage.
+  it('declares its types in files that stand alone', { timeout: 30_000 }, () => {
     const program = ts.createProgram([path.join(dir, 'library.ts')], {
       module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext,

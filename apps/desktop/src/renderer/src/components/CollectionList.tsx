@@ -2,12 +2,15 @@ import { useState } from 'react'
 import {
   groupByDirectory,
   type CollectionNode,
-  type CollectionSummary
+  type CollectionSummary,
+  type RuleFinding
 } from '@schwabyio/gravity-core/model'
 import type { ProjectView } from '@shared/ipc.js'
 import { MARK_WORDS, type GitMarks } from '../gitMarks.js'
+import { findingsOf } from '../ruleFindings.js'
 import GitBadge from './GitBadge.js'
 import NameForm from './NameForm.js'
+import RuleMark from './RuleMark.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 import { useExternalEditor } from '../externalEditor.js'
 
@@ -59,6 +62,8 @@ interface Props {
   folders: string[]
   /** What git says of each file and folder: changed, new or in conflict. */
   marks: GitMarks
+  /** Where the project's files and folders break its rules (SPEC.md §1.4). */
+  findings: RuleFinding[]
   drag: FolderDrag
   selectedPath: string | null
   onSelect: (collection: CollectionSummary) => void
@@ -112,6 +117,7 @@ export default function CollectionList(props: Props) {
       folders={props.folders}
       drag={props.drag}
       marks={props.marks}
+      findings={findingsOf(props.findings, `collections/${summary.relativePath}`)}
     />
   )
 
@@ -132,6 +138,7 @@ export default function CollectionList(props: Props) {
             actions={props.actions}
             drag={props.drag}
             marks={props.marks}
+            findings={findingsOf(props.findings, `collections/${node.name}/`)}
           />
         ) : (
           row(node.summary, 0)
@@ -152,6 +159,8 @@ function CollectionRow(props: {
   folders: string[]
   drag: FolderDrag
   marks: GitMarks
+  /** Its own rule findings, its steps' too. */
+  findings: RuleFinding[]
 }) {
   const { summary, actions } = props
   const mark = props.marks.collection(summary)
@@ -256,6 +265,7 @@ function CollectionRow(props: {
               !
             </span>
           )}
+          <RuleMark findings={props.findings} />
           <GitBadge mark={mark} />
         </button>
         <span className="project-menu-wrap">
@@ -484,6 +494,8 @@ function Directory(props: {
   actions: CollectionActions
   drag: FolderDrag
   marks: GitMarks
+  /** The folder's own rule findings: its name. */
+  findings: RuleFinding[]
 }) {
   const [chosen, setOpen] = useState(true)
   // A filter shows what it found, whatever was collapsed; clearing it restores the choice.
@@ -524,6 +536,7 @@ function Directory(props: {
           >
             <span className="chevron">{open ? '▾' : '▸'}</span>
             <span className="label">{node.name}</span>
+            <RuleMark findings={props.findings} />
             <GitBadge mark={folderMark} dot />
           </button>
           <span className="project-menu-wrap">

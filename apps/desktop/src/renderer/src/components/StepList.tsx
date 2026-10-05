@@ -4,6 +4,7 @@ import {
   isUseStep,
   readRequestLine,
   stepLabel,
+  type RuleFinding,
   type RunResult,
   type Step,
   type StepList as ListName
@@ -20,6 +21,7 @@ import {
   type StepHover,
   type StepOutcome
 } from '../stepOutcome.js'
+import RuleMark from './RuleMark.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 import { useExternalEditor } from '../externalEditor.js'
@@ -75,9 +77,12 @@ interface Props {
   onMove: (index: number, to: number) => void
   /** Per step: whether its feature flags skip it, or name a flag nobody declared. */
   flagStates?: Record<number, FlagState>
+  /** Per step: where it breaks the project's rules (SPEC.md §1.4). */
+  findings?: Record<number, RuleFinding[]>
 }
 
 const NONE: ReadonlySet<number> = new Set()
+const NO_FINDINGS: RuleFinding[] = []
 
 /** The key that picks one more, as the platform has it: ⌘ on a Mac, Ctrl elsewhere. */
 const picksWith = (event: React.MouseEvent | React.KeyboardEvent): boolean =>
@@ -297,6 +302,7 @@ export default function StepList(props: Props) {
                           {flagState.kind === 'skip' ? 'skipped' : 'flag?'}
                         </span>
                       )}
+                      <RuleMark findings={props.findings?.[index] ?? NO_FINDINGS} />
                       {props.draftIndexes.has(index) && (
                         <span className="step-dirty" title="Unsaved changes">
                           •

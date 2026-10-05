@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ProjectView } from '@shared/ipc.js'
 import { pullState, pushState } from '../gitActions.js'
+import { findingsLabel } from '../ruleFindings.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 import { joinPath, useExternalEditor } from '../externalEditor.js'
@@ -21,6 +22,8 @@ interface Props {
   onNewEndpoints: () => void
   onNewBase: () => void
   onSettings: () => void
+  /** Open Project settings at its rules, and where the project's files break them. */
+  onRules: () => void
   onReveal: () => void
   /** Rename a scratch pad; an ordinary project's name is its folder's, or its project.yml's. */
   onRename: () => void
@@ -103,6 +106,18 @@ export default function ProjectHeading(props: Props) {
         >
           !
         </span>
+      )}
+      {project.findings.length > 0 && (
+        <Tooltip text={`${findingsLabel(project.findings.length)}: open the project’s rules`}>
+          <button
+            type="button"
+            className="rule-count"
+            onClick={props.onRules}
+            aria-label={`${findingsLabel(project.findings.length)}: open the project’s rules`}
+          >
+            △ {project.findings.length}
+          </button>
+        </Tooltip>
       )}
 
       {git ? (

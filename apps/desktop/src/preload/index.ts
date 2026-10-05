@@ -57,6 +57,7 @@ const api: DesktopApi = {
       ipcRenderer.invoke(IpcChannel.projectSelectEnvironment, id, environment),
     createDirectory: (id: string, name: string) =>
       ipcRenderer.invoke(IpcChannel.projectCreateDirectory, id, name),
+    addAgentsSection: (id: string) => ipcRenderer.invoke(IpcChannel.projectAddAgentsSection, id),
     createCollection: (id: string, directory: string | null, name: string, kind?) =>
       ipcRenderer.invoke(IpcChannel.projectCreateCollection, id, directory, name, kind),
     applyEdits: (id: string, baseSource: string | null, edits, target) =>
@@ -175,7 +176,9 @@ const api: DesktopApi = {
   },
 
   script: {
-    check: (code: string) => ipcRenderer.invoke(IpcChannel.scriptCheck, code)
+    check: (code: string) => ipcRenderer.invoke(IpcChannel.scriptCheck, code),
+    rules: (code: string, allowed: string[]) =>
+      ipcRenderer.invoke(IpcChannel.scriptRules, code, allowed)
   }
 }
 

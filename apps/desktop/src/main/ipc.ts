@@ -63,6 +63,7 @@ import { settingsStore } from './settingsStore.js'
 import { openInEditor } from './editor.js'
 import { runSupervisor } from './runSupervisor.js'
 import { flagService } from './flagService.js'
+import { scriptRuleFindings } from './scriptRules.js'
 import type { ProjectService } from './projectService.js'
 
 const index = z.number().int().nonnegative()
@@ -576,6 +577,14 @@ export function registerIpc(projects: ProjectService): void {
   )
 
   ipcMain.handle(
+    IpcChannel.projectAddAgentsSection,
+    guard(async (_event, id: unknown) => {
+      await projects.addAgentsSection(String(id))
+      return {}
+    })
+  )
+
+  ipcMain.handle(
     IpcChannel.projectCreateCollection,
     guard(async (_event, id: unknown, directory: unknown, name: unknown, kind: unknown) => ({
       path: await projects.createCollection(
@@ -997,6 +1006,11 @@ export function registerIpc(projects: ProjectService): void {
   // Parse only, never run: compiling a script executes none of it.
   ipcMain.handle(IpcChannel.scriptCheck, (_event, code: unknown) =>
     typeof code === 'string' ? checkScriptSyntax(code) : null
+  )
+
+  // Parsed, never run: what a tests script calls, against the project's tests.only.
+  ipcMain.handle(IpcChannel.scriptRules, (_event, code: unknown, allowed: unknown) =>
+    scriptRuleFindings(code, allowed)
   )
 }
 

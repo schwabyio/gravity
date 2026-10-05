@@ -8,13 +8,17 @@ import type {
   FlagValue,
   HttpMethod,
   LayerParts,
+  LoadedRules,
   LoadProblem,
   ParamSpec,
   ProjectDoc,
+  RuleFinding,
+  RuleSetting,
   RunResult,
   Step,
   StepList,
   StreamEvent,
+  TestsAllowance,
   VariablePreviews,
   VarValue,
   Vars
@@ -49,6 +53,7 @@ export const IpcChannel = {
   projectReveal: 'projects:reveal',
   projectSelectEnvironment: 'projects:selectEnvironment',
   projectCreateDirectory: 'projects:createDirectory',
+  projectAddAgentsSection: 'projects:addAgentsSection',
   projectCreateCollection: 'projects:createCollection',
   projectCreateScratchPad: 'projects:createScratchPad',
   projectRenameScratchPad: 'projects:renameScratchPad',
@@ -107,6 +112,7 @@ export const IpcChannel = {
   variablesPreview: 'variables:preview',
   variablesCopy: 'variables:copy',
   scriptCheck: 'script:check',
+  scriptRules: 'script:rules',
 
   /** main -> renderer: one step of a collection run finished. */
   eventRunProgress: 'event:runProgress',
@@ -384,6 +390,22 @@ export interface ProjectView {
   autoFetchSeconds: number | null
   /** True while a fetch or pull is running on its repository. */
   busy: boolean
+  /** `rules.yml`, its global project's under its own (SPEC.md §1.4). */
+  rules: RulesView
+  /**
+   * Where the project's own files break those rules: marked on their rows,
+   * never stopping a Send or a run.
+   */
+  findings: RuleFinding[]
+}
+
+/** A project's rules, each with what it means; empty when there are none. */
+export interface RulesView extends LoadedRules {
+  settings: Array<RuleSetting & { doc: string }>
+  /** Why they could not be read — a `rules.yml` that will not parse, or a rule that is not one. */
+  problem: string | null
+  /** The project's `AGENTS.md`, and whether it points coding agents at the rules. */
+  agents: { exists: boolean; hasSection: boolean }
 }
 
 /** A request set, as a use step picks it and the step list shows it. */
@@ -688,6 +710,11 @@ export interface DesktopApi {
     reveal(path: string): Promise<void>
     selectEnvironment(id: string, environment: string | null): Promise<void>
     createDirectory(id: string, name: string): Promise<Result<{ path: string }>>
+    /**
+     * Add the section that points coding agents at the project's rules to its
+     * `AGENTS.md`, making the file if need be (SPEC.md §1.4).
+     */
+    addAgentsSection(id: string): Promise<Result<Record<string, never>>>
     /** Rename a folder of the project's `collections/`, with everything in it. */
     renameFolder(id: string, name: string, to: string): Promise<Result<{ path: string }>>
     /** Delete a folder of the project's `collections/` and everything in it, to the Trash. */
@@ -897,7 +924,20 @@ export interface DesktopApi {
      * V8 parser that runs it, so the editor and a run never disagree.
      */
     check(code: string): Promise<ScriptSyntaxProblem | null>
+    /**
+     * What a tests script calls that `tests.only` does not allow (SPEC.md
+     * §1.4): each with its line, where it is in the script, and why.
+     */
+    rules(code: string, allowed: TestsAllowance[]): Promise<ScriptRuleFinding[]>
   }
+}
+
+/** Mirrors core's `ScriptFinding`: a 1-based line, and offsets in the script. */
+export interface ScriptRuleFinding {
+  line: number
+  from: number
+  to: number
+  message: string
 }
 
 /** Mirrors core's `SyntaxProblem`: 1-based line and column. */

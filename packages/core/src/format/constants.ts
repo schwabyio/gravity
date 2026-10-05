@@ -27,6 +27,9 @@ export const PROJECT_FILE = 'project.yml'
 /** How the `gta` CLI runs a project, beside `project.yml` (SPEC.md §1.3). */
 export const SETTINGS_FILE = 'settings.yml'
 
+/** A project's rules: how its files are laid out and written (SPEC.md §1.4). */
+export const RULES_FILE = 'rules.yml'
+
 /** File extension for every document in the format. */
 export const DOC_EXTENSION = '.yml'
 

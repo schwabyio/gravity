@@ -140,4 +140,44 @@ describe('stepOutcome', () => {
       hover: null
     })
   })
+
+  it('shows the time alone where nothing was answered, and one check passed by itself', () => {
+    expect(one(result({ response: null, assertions: [] }))).toMatchObject({
+      mark: null,
+      summary: '84 ms'
+    })
+    expect(one(result({ response: null, assertions: [check('ok', 'pass')] }))).toMatchObject({
+      mark: 'pass',
+      summary: '84 ms',
+      hover: { title: '1 check passed' }
+    })
+    expect(
+      one(result({ status: 'fail', response: null, assertions: [check('a', 'fail')] }))
+    ).toMatchObject({ summary: '84 ms', hover: { title: '1 of 1 check failed' } })
+    expect(one(result({ status: 'skipped', response: null }))).toMatchObject({
+      detail: 'skipped',
+      hover: { lines: [] }
+    })
+    expect(one(result({ status: 'error', response: null, error: null }))).toMatchObject({
+      mark: 'error',
+      detail: 'error',
+      hover: { title: 'No response', lines: [] }
+    })
+  })
+
+  it('counts skipped parts, all skipped as skipped, and requests by default', () => {
+    const skipped = result({ status: 'skipped', response: null })
+    expect(stepOutcome({ running: false, parts: [skipped, skipped], expected: 2 })).toEqual({
+      mark: 'skipped',
+      summary: '0 of 2 passed',
+      detail: null,
+      hover: { title: '0 of 2 requests passed', lines: ['2 skipped'] }
+    })
+    expect(stepOutcome({ running: false, parts: [result(), result()], expected: 2 }).hover).toEqual(
+      {
+        title: '2 of 2 requests passed',
+        lines: ['No checks: none of them has tests.']
+      }
+    )
+  })
 })

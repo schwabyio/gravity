@@ -6,6 +6,7 @@ import {
   isInside,
   samePath,
   referenceProblems,
+  RulesError,
   type FlagResolution
 } from '@schwabyio/gravity-core'
 import { parseArgs, UsageError } from './args.js'
@@ -27,6 +28,7 @@ import {
   type CollectionTally,
   type Paint
 } from './report.js'
+import { lintCommand, rulesCommand } from './rules.js'
 import { flagList, htmlReport, SUMMARY_PAGE, type HtmlCollection, type HtmlRun } from './html.js'
 import { junitReport } from './junit.js'
 import { jsonError, jsonListing, jsonReport, type ReportPaths } from './json.js'
@@ -98,10 +100,28 @@ export async function main(argv: readonly string[], cli: CliContext): Promise<nu
       return EXIT.passed
     }
 
+    const command = args.command
+    if (command === 'lint' || command === 'rules') {
+      // They read rules, not settings: a setting given here would be ignored without a word.
+      const given = [
+        ...Object.keys(args.overrides).map((key) => `--${key}`),
+        ...args.flags.map(() => '--flag')
+      ]
+      if (given.length > 0) {
+        throw new UsageError(`gta ${command} takes no settings or flags: ${given.join(', ')}`)
+      }
+      const root = await canonical(ctx.cwd)
+      const output = { out: ctx.out, emit, p }
+      if (command === 'rules') {
+        await rulesCommand(root, output)
+        return EXIT.passed
+      }
+      return (await lintCommand(root, output)) ? EXIT.failed : EXIT.passed
+    }
+
     const project = await openProject(ctx, args.overrides, args.flags)
     for (const warning of project.warnings) ctx.err(p.yellow(`warning: ${warning}`))
 
-    const command = args.command
     if (command === 'g' || command === 'get') {
       const selection = selectFor(project, { kind: 'all' })
       const problems = await listingProblems(project, selection)
@@ -140,7 +160,8 @@ export async function main(argv: readonly string[], cli: CliContext): Promise<nu
     if (
       cause instanceof UsageError ||
       cause instanceof SettingsError ||
-      cause instanceof ProjectError
+      cause instanceof ProjectError ||
+      cause instanceof RulesError
     ) {
       ctx.err(p.red(cause.message))
       // Asked for JSON but the words would not parse: still JSON, so a tool reading it copes.
@@ -527,11 +548,16 @@ export function usage(p: Paint): string {
     '                    in that order: smoke,checkout/sessions,payments',
     '                    A folder leaves out its excluded collections;',
     '                    one named on its own runs.',
-    '                    A collection called all or get: give it as all.yml.',
+    '                    A collection called all, get, lint or rules: give it as all.yml.',
+    '    lint            Check the project’s files against its rules: its rules.yml,',
+    '                    over its global project’s. Exits 1 on a finding.',
+    '    rules           List the rules in effect, the file each came from, what each',
+    '                    means, and the project’s guide. Neither needs settings.yml.',
     '',
     `  ${p.bold('Options:')}`,
     '    --json          Print the results as JSON on stdout instead of the table; with',
-    '                    get, the collections it would run. Errors are JSON too.',
+    '                    get, the collections it would run; with lint and rules, the',
+    '                    findings and the rules. Errors are JSON too.',
     '    --flag name=value',
     '                    Override a feature flag for this run; any number of them.',
     '                    GTA_FLAG_<name>=value does the same from the environment.',

@@ -1,7 +1,5 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
-import { SETTINGS_FILE, TagSchema } from '@schwabyio/gravity-core'
-import { parse } from 'yaml'
+import { readYamlMap, SETTINGS_FILE, TagSchema, YamlMapError } from '@schwabyio/gravity-core'
 import { z } from 'zod'
 
 /**
@@ -204,24 +202,12 @@ async function readSettingsFile(
   file: string,
   label: string
 ): Promise<Record<string, unknown> | null> {
-  let source: string
   try {
-    source = await fs.readFile(file, 'utf8')
+    return await readYamlMap(file, label, 'limitConcurrency: 4')
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return null
-    throw new SettingsError(`${label} cannot be read: ${(cause as Error).message}`)
+    if (cause instanceof YamlMapError) throw new SettingsError(cause.message)
+    throw cause
   }
-
-  let fromFile: unknown
-  try {
-    fromFile = parse(source) ?? {}
-  } catch (cause) {
-    throw new SettingsError(`${label} will not parse: ${(cause as Error).message}`)
-  }
-  if (typeof fromFile !== 'object' || fromFile === null || Array.isArray(fromFile)) {
-    throw new SettingsError(`${label} must be a map of settings, such as limitConcurrency: 4`)
-  }
-  return fromFile as Record<string, unknown>
 }
 
 function checkKey(key: string, where: string): asserts key is SettingKey {

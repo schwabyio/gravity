@@ -191,11 +191,15 @@ describe('gta', () => {
   it('runs a collection named like a command when given with .yml', async () => {
     const root = await project({
       'collections/all.yml': collection('all', ['/ok']),
+      'collections/lint.yml': collection('lint', ['/ok']),
+      'collections/rules.yml': collection('rules', ['/ok']),
       'collections/other.yml': collection('other', ['/fail'])
     })
-    const { code, out } = await gta(root, 'all.yml')
-    expect(code).toBe(EXIT.passed)
-    expect(out).toContain('Collections:  1 total, 1 passed')
+    for (const name of ['all', 'lint', 'rules']) {
+      const { code, out } = await gta(root, `${name}.yml`)
+      expect(code).toBe(EXIT.passed)
+      expect(out).toContain('Collections:  1 total, 1 passed')
+    }
   })
 
   it('leaves an excluded collection out of all, and runs it when named', async () => {

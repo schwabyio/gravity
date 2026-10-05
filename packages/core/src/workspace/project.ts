@@ -10,6 +10,7 @@ import {
   IGNORED_DIRECTORIES,
   PROJECT_FILE,
   REQUESTS_DIR,
+  RULES_FILE,
   SETTINGS_FILE
 } from '../format/constants.js'
 import { parseEnvironment, parseProject } from '../format/index.js'
@@ -142,7 +143,8 @@ const PROJECT_NAMES = [
   BASES_DIR,
   CHECKS_DIR,
   PROJECT_FILE,
-  SETTINGS_FILE
+  SETTINGS_FILE,
+  RULES_FILE
 ]
 
 /**

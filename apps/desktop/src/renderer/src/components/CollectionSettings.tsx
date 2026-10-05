@@ -10,6 +10,7 @@ import type {
   Vars
 } from '@schwabyio/gravity-core/model'
 import { headerRows, toHeaders, type HeaderRow } from '../requestState.js'
+import { testsRuleText, useTestsRule } from '../testsRule.js'
 import CodeEditor from './CodeEditor.js'
 import FlagConditionsEditor from './FlagConditionsEditor.js'
 import KeyValueEditor from './KeyValueEditor.js'
@@ -72,6 +73,7 @@ interface Props {
  * or × closes it; edits save like any other.
  */
 export default function CollectionSettings(props: Props) {
+  const testsRule = useTestsRule()
   const { collection, onStepTags, onSettings, onClose, section } = props
   const panel = useRef<HTMLElement>(null)
   const headersSection = useRef<HTMLElement>(null)
@@ -341,6 +343,13 @@ export default function CollectionSettings(props: Props) {
               <p className="hint">
                 Runs after every step&rsquo;s response, ahead of the step&rsquo;s own tests. xtest
                 is built in as <code>gta</code>.
+                {testsRule && (
+                  <>
+                    {' '}
+                    This project&rsquo;s rules allow {testsRuleText(testsRule)} here (
+                    <code>tests.only</code> in {testsRule.source}).
+                  </>
+                )}
               </p>
               <CodeEditor
                 kind="tests"

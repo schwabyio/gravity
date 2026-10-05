@@ -56,12 +56,11 @@ export async function listRequestSets(
 const setsIn = (root: string, source: RequestSetRef['source']) =>
   filesIn(root, REQUESTS_DIR, source)
 
-/** The collection files in one of a project's library directories, one level deep. */
-async function filesIn(
-  root: string,
-  home: string,
-  source: RequestSetRef['source']
-): Promise<RequestSetRef[]> {
+/**
+ * The files in one of a project's library directories — `requests/`,
+ * `endpoints/` or `bases/` — one level deep, absolute.
+ */
+export async function libraryFiles(root: string, home: string): Promise<string[]> {
   const directory = path.join(root, home)
   const files: string[] = []
   for (const entry of await readDir(directory)) {
@@ -75,6 +74,17 @@ async function filesIn(
       }
     }
   }
+  return files
+}
+
+/** The collection files in one of a project's library directories, one level deep. */
+async function filesIn(
+  root: string,
+  home: string,
+  source: RequestSetRef['source']
+): Promise<RequestSetRef[]> {
+  const directory = path.join(root, home)
+  const files = await libraryFiles(root, home)
   const sets = await Promise.all(files.map((file) => readSet(file, directory, source)))
   const duplicates = duplicateIds(files, directory)
   return sets

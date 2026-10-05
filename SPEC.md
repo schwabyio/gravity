@@ -33,6 +33,7 @@ is a complete, valid project to start from.
 | `environments/<name>.yml`     | `environments/`                         | Variables, secrets and flags for one target | §6   |
 | `project.yml`                 | The project folder                      | Name, global project, variables, trust      | §1.1 |
 | `settings.yml`                | The project folder                      | How `gta` runs the project                  | §1.3 |
+| `rules.yml`                   | The project folder                      | How the project's files are written         | §1.4 |
 | `requests/<id>.yml`           | `requests/`, or one folder inside it    | A request set, run by `use:`                | §2.5 |
 | `endpoints/<id>.yml`          | `endpoints/`, or one folder inside it   | Defaults and checks per method and path     | §2.6 |
 | `bases/<id>.yml`              | `bases/`, or one folder inside it       | A base collection, for `extends:`           | §2.7 |
@@ -89,6 +90,7 @@ A **project** is a folder holding `collections/` and, usually, `environments/`:
 payments/                     a project
 ├── project.yml               optional (§1.1)
 ├── settings.yml              how gta runs it (§1.3)
+├── rules.yml                 how its files are written (§1.4)
 ├── collections/
 │   ├── smoke.yml             a collection
 │   └── checkout/             a folder grouping collections: one level only
@@ -160,8 +162,8 @@ The file is optional, and so is every key in it. Any other key is an error.
 | `tls.ca` | list of relative paths | none        | Certificate files that requests trust (below).        |
 
 **`uses`** names a **global project**: an ordinary project whose `project.yml`
-variables, `environments/`, `requests/`, `endpoints/`, `bases/`, `checks/` and
-`settings.yml` every project using it shares.
+variables, `environments/`, `requests/`, `endpoints/`, `bases/`, `checks/`,
+`settings.yml` and `rules.yml` every project using it shares.
 
 - It must be a relative path. An absolute path is refused, since it would only work on
   one machine. Write it with `/`; `\` reads the same.
@@ -170,7 +172,8 @@ variables, `environments/`, `requests/`, `endpoints/`, `bases/`, `checks/` and
 - An environment in the global project merges under the project's environment of the
   same name, key by key, and the project's values win. An environment only the global
   project has is available too.
-- The global project's `settings.yml` lies under the project's the same way (§1.3).
+- The global project's `settings.yml` lies under the project's the same way (§1.3), and
+  so does its `rules.yml` (§1.4).
 - A global project's own `collections/` is **not** shared: a project using it never
   sees or runs those collections. A global project needs none. It may have one for a
   single purpose: **testing what it shares**. A collection there can `use:` its request
@@ -301,6 +304,154 @@ A collection is named by its `id`, or by its place (`checkout/sessions`). A fold
 named by its name, and `checkout/` names only the folder. `--flag name=value` sets a
 feature flag (§2.9), and `--json` prints the results as JSON. The exit code is `0` when
 everything passed, `1` when something failed, and `2` when `gta` could not run.
+
+### 1.4 `rules.yml`
+
+How a project's files are named, laid out and written, so that everyone working on it,
+people and coding agents alike, keeps it consistent. It sits beside `project.yml`, is
+committed, and is optional. `gta lint` checks the project against it. Gravity, the
+desktop app, marks each file, folder and step that breaks a rule, and will not create or
+rename a file or folder that would.
+
+```yaml
+ids:
+  collections: kebab-case # or a pattern, such as '{folder}-[a-z0-9-]+'
+  requests: camelCase
+layout:
+  folders: required # every collection in a folder of collections/
+  folderNames: [accounts, payments, smoke]
+  maxSteps: 30
+steps:
+  names: required
+  url: ^\{\{baseUrl\}\} # no host written out
+docs:
+  collections: required
+tags:
+  allowed: [smoke, regression, slow]
+tests:
+  only: [gta] # tests call the gta.* functions, and nothing else
+  statusCode: required
+guide: |
+  Name each step for what it proves. Logins go through `requests/login`.
+```
+
+**Rules never change a run.** A file that breaks one opens, sends and runs as before.
+`gta lint` reports it, and a CI job running `gta lint` fails on it. Gravity marks it, and
+flags what `tests.only` does not allow as a script is typed.
+
+| Rule                 | Value                  | What it checks                                                            |
+| -------------------- | ---------------------- | ------------------------------------------------------------------------- |
+| `ids.collections`    | style or pattern       | Each collection's id, its file name (§2).                                 |
+| `ids.requests`       | style or pattern       | Each request set's id (§2.5).                                             |
+| `ids.bases`          | style or pattern       | Each base collection's id (§2.7).                                         |
+| `ids.endpoints`      | style or pattern       | Each endpoints file's id (§2.6).                                          |
+| `layout.folders`     | `required`             | Every collection sits in a folder of `collections/`, none at its top.     |
+| `layout.folderNames` | list, style or pattern | Each folder of `collections/`: one of the list, or following the format.  |
+| `layout.maxSteps`    | integer ≥ 1            | The most steps a collection has in `steps`; `setup` and `teardown` aside. |
+| `steps.names`        | `required`             | Every step has a `name`, and no other step of its file has the same one.  |
+| `steps.url`          | pattern                | Every request step's URL, as written, matches it (below).                 |
+| `docs.collections`   | `required`             | Every collection has `docs`.                                              |
+| `docs.requests`      | `required`             | Every request set has `docs`.                                             |
+| `docs.steps`         | `required`             | Every step of a collection or request set has `docs`, in every list.      |
+| `tags.allowed`       | list of tags           | Every tag on a collection or a step is one of these.                      |
+| `tags.collections`   | `required`             | Every collection has `tags` of its own.                                   |
+| `tests.only`         | list (below)           | What a `tests` script may call.                                           |
+| `tests.everyStep`    | `required`             | Every step that sends a request or reads a connection is checked (below). |
+| `tests.statusCode`   | `required`             | Every request step's checks include its status code (below).              |
+
+- Any other group or rule is an error, as is a value of the wrong type.
+- A rule that takes `required` also takes `optional`, which turns it off.
+- A **style** is one of `kebab-case` (`create-user`), `snake_case` (`create_user`),
+  `camelCase` (`createUser`) and `PascalCase` (`CreateUser`). Lower case, in the first two,
+  includes digits: `404-handling` is kebab-case.
+- A **pattern** is a JavaScript regular expression that the whole name must match, as if
+  it began with `^` and ended with `$`. `{folder}` in it stands for the folder the file is
+  in, so `{folder}-[a-z0-9-]+` asks for `collections/payments/payments-refunds.yml`. A
+  value that is not a style and has none of a pattern's characters (`^`, `$`, `.`, `*`,
+  `+`, `?`, `(`, `)`, `[`, `]`, `{`, `}`, `|` or a backslash) is an error, so a
+  misspelled style is not taken for a pattern.
+- Rules check the project's own files, in `collections/`, `requests/`, `bases/` and
+  `endpoints/`. A global project's files follow the global project's `rules.yml`, checked
+  when `gta lint` runs in its folder.
+- `steps.*`, `docs.steps`, `tests.everyStep` and `tests.statusCode` are about the steps of
+  collections and request sets. An endpoint is a method and a path pattern, not a step
+  that runs, so they leave endpoints files alone.
+
+**`steps.url`** is a JavaScript regular expression that each request step's URL, as
+written with its `{{variables}}`, must match. Unlike an id pattern it is not anchored:
+`^\{\{baseUrl\}\}` asks that every URL start with `{{baseUrl}}`, so no host is written
+out in a step. A use step and a step reading a connection have no URL of their own.
+
+**`tests.everyStep` and `tests.statusCode`** count every script that runs after a step's
+response, wherever it is written: the step's own `tests`, its file's, its base
+collection's (§2.7) and its endpoint's (§2.6), unless the step has `base: false`. With
+`tests.statusCode`, one of them calls `gta.expectResponseStatusCodeToBe`, in any branch,
+or calls a check function (§5) whose own code does. A use step is left to its request
+set, whose steps are checked there. A step reading a connection needs tests under
+`tests.everyStep`, but has no status code of its own to check.
+
+**`tests.only`** lists what a `tests` script may call. It must list `gta`:
+
+| Entry      | Allows                                                    |
+| ---------- | --------------------------------------------------------- |
+| `gta`      | The `gta.*` functions (§5), except `gta.test`.            |
+| `gta.test` | Named checks of your own, with any code inside them (§5). |
+| `checks`   | The project's check files, `checks.<file>.<function>()`.  |
+| `console`  | `console.log()` and the rest.                             |
+
+With `only: [gta]`, a `tests` script holds calls to `gta.*` functions and nothing else:
+
+- **Every argument is a value**: a string, number, `true`, `false`, `null` or regular
+  expression, a template string, a list or object of values, or `new RegExp(…)` of
+  values. It may read `res`, `req`, `params`, `endpoint` and `item` (§5), call another
+  `gta.*` function such as `gta.get('id')`, or `JSON.parse` a value, since `gta.set` keeps
+  a list or object as JSON text.
+- **An `if` may choose by feature flag** (§2.9): its condition is `gta.flag()` calls
+  compared with values, joined by `!`, `&&` and `||`, and what it holds follows the same
+  rules.
+- **Nothing else**: no variables, loops, functions of your own, `assert`, `checks.*` or
+  `gta.test`. This is checked on the script's syntax, so a call cannot be hidden by
+  renaming it (`const c = checks`).
+
+```yaml
+tests: |
+  gta.expectResponseStatusCodeToBe(200)
+  gta.expectResponseBodyToHaveProperty('owner', gta.get('userId'))
+  gta.set('nextPage', res.body.links.next)
+  if (gta.flag('newCheckout') === true) {
+    gta.expectResponseBodyToHaveProperty('version', 2)
+  }
+```
+
+`tests.only` checks every `tests` script: a collection's own and each of its steps', and
+those of request sets, base collections and endpoints files. `before.script` is not
+checked.
+
+**`guide`** is Markdown, for what no rule can check: how steps are named, which request
+set a login goes through, what a collection is for. `gta rules` prints it after the
+rules, and Gravity shows it in Project settings. Each file's guide is read, the global
+project's first, so a project adds to a shared guide rather than replacing it.
+
+**From the global project.** A global project (§1.1) can have a `rules.yml` too, and it
+lies under the project's, rule by rule. There is no switch to turn this off: a project
+changes a shared rule by setting it in its own file, and turns it off with `null`, or
+`optional` for a `required` rule. A group set to `null`, such as `tags: null`, turns off
+every rule in it. Neither file is required.
+
+**Checking.** From a project folder, or a global project's:
+
+| Command     | Does                                                                                                                                                      |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gta lint`  | Checks every file against the rules, and prints each finding at its file and line, with its rule and the file the rule came from. Exits `1` on a finding. |
+| `gta rules` | Lists each rule set, its value, the file it came from and what it means, rules turned off included, then the guide.                                       |
+
+- Neither needs `settings.yml` or runs anything, and both take `--json`.
+- A file that will not parse is a finding, since no rule could be checked in it.
+- Both exit `2` when a rule is not valid, or `project.yml` names a global project that
+  cannot be used: its rules would quietly go unchecked.
+- A coding agent can run `gta rules` to learn a project's conventions before writing, and
+  `gta lint --json` after, to fix what it finds. Gravity offers to add a section saying so
+  to the project's `AGENTS.md`, which coding agents read; nothing is written until asked.
 
 ---
 
@@ -1525,7 +1676,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - It must be YAML that parses, holding a mapping, in a file ending in `.yml`.
 - Unknown keys are errors in: a collection's top level, a step, `settings`, `before`,
   `body`, `project.yml`, `tls`, an environment file, an environment's `flags`, a param
-  spec and `settings.yml`.
+  spec, `settings.yml` and `rules.yml`.
 
 **Collections**
 
@@ -1602,6 +1753,9 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - Each `tls.ca` file exists and holds a PEM or DER certificate.
 - `settings.yml` exists for `gta`; a global project's is optional. The `environmentType`
   a run ends up with, if any, names an environment that exists.
+- In `rules.yml`, each rule has a value of the type §1.4 gives it, a pattern compiles,
+  `tests.only` lists `gta`, and `guide` is a string. What breaks a rule is a finding of `gta lint`, never an
+  error: it stops nothing (§1.4).
 
 **At run time**
 

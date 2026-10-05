@@ -60,11 +60,23 @@ import {
   readProject,
   samePath,
   summarize,
+  addAgentsSection,
+  agentsState,
+  lintProject,
+  loadRules,
+  newFolderProblem,
+  noRules,
+  placeProblem,
+  ruleDoc,
+  RULES_FILE,
+  RulesError,
   type BranchInfo,
   type CommitInfo,
   type EditOutcome,
   type FileDiff,
   type GitStatus,
+  type LintHome,
+  type RuleFinding,
   type ProjectEdit,
   type PullOutcome
 } from '@schwabyio/gravity-core'
@@ -78,6 +90,7 @@ import type {
   LineEndingsView,
   ProjectView,
   RepoChangesView,
+  RulesView,
   WorkspacesState
 } from '../shared/ipc.js'
 import type { GitSetup } from './bundledGit.js'
@@ -511,6 +524,7 @@ export class ProjectService {
   /** Give a collection a new id: its file and its data file renamed, and its `id:` rewritten. */
   async renameCollection(file: string, id: string): Promise<string> {
     const owner = this.ownerOf(file)
+    obey(placeProblem(owner.rules, COLLECTIONS_DIR, id.trim(), folderOf(owner.path, file)))
     const renamed = await renameCollectionFile(owner.path, file, id)
     await this.refreshAt(owner.path)
     return renamed
@@ -519,6 +533,7 @@ export class ProjectService {
   /** Move a collection, with its data file, to another folder of its project — or its root. */
   async moveToFolder(file: string, folder: string | null): Promise<string> {
     const owner = this.ownerOf(file)
+    obey(placeProblem(owner.rules, COLLECTIONS_DIR, path.basename(file, DOC_EXTENSION), folder))
     const moved = await moveCollectionToFolder(owner.path, file, folder)
     await this.refreshAt(owner.path)
     return moved
@@ -536,6 +551,8 @@ export class ProjectService {
     if (samePath(owner.path, target.path)) {
       throw new Error(`${path.basename(file)} is in ${target.name} already`)
     }
+    // The rules of the project it goes to.
+    obey(placeProblem(target.rules, COLLECTIONS_DIR, path.basename(file, DOC_EXTENSION), directory))
     const copied = await copyCollectionFile(file, target.path, directory, { move })
     await Promise.all([this.refreshAt(owner.path), this.refreshAt(target.path)])
     return copied
@@ -566,6 +583,7 @@ export class ProjectService {
   /** Rename a folder of a project's `collections/`, with everything in it. */
   async renameFolder(projectId: string, name: string, to: string): Promise<string> {
     const view = this.required(projectId)
+    if (to.trim() !== name) obey(newFolderProblem(view.rules, to.trim()))
     const renamed = await renameCollectionsFolder(view.path, name, to)
     await this.refreshAt(view.path)
     return renamed
@@ -600,9 +618,17 @@ export class ProjectService {
 
   async createDirectory(id: string, name: string): Promise<string> {
     const view = this.required(id)
+    obey(newFolderProblem(view.rules, name.trim()))
     const directory = await createDirectory(view.path, name)
     await this.refresh(id)
     return directory
+  }
+
+  /** Point coding agents at the project's rules from its `AGENTS.md` (SPEC.md §1.4). */
+  async addAgentsSection(id: string): Promise<void> {
+    const view = this.required(id)
+    await addAgentsSection(view.path)
+    await this.refresh(id)
   }
 
   async createCollection(
@@ -612,6 +638,8 @@ export class ProjectService {
     kind: LibraryKind = 'collection'
   ): Promise<string> {
     const view = this.required(id)
+    const home = LIBRARY_HOMES[kind]
+    obey(placeProblem(view.rules, home, name.trim(), home === COLLECTIONS_DIR ? directory : null))
     const created = await createCollectionFile(view.path, directory, name, kind)
     await this.refresh(id)
     return created.path
@@ -700,6 +728,7 @@ export class ProjectService {
     const endpoints = await loadEndpoints(entry.path, info.global)
     const bases = await listBases(entry.path, info.global)
     const tls = await loadProjectTls(entry.path, info)
+    const rules = await readRules(entry.path, info.global)
     const libraryFile = (
       file: (typeof bases)[number],
       problemOf: (doc: Collection) => string | undefined
@@ -723,7 +752,12 @@ export class ProjectService {
       collections,
       directories: layout.directories,
       // A tls.ca file that cannot be used, reported against its own path.
-      problems: [...info.problems, ...layout.problems, ...tls.problems],
+      problems: [
+        ...info.problems,
+        ...layout.problems,
+        ...tls.problems,
+        ...(rules.view.problem ? [{ path: RULES_FILE, message: rules.view.problem }] : [])
+      ],
       project: info.doc,
       projectSource: info.source,
       global: info.global
@@ -786,7 +820,9 @@ export class ProjectService {
       // Kept even when no environment has that name any more: the renderer
       // follows a renamed file to its new name, and shows a lost one as unset.
       selectedEnvironment: entry.selectedEnvironment,
-      autoFetchSeconds: entry.autoFetchSeconds
+      autoFetchSeconds: entry.autoFetchSeconds,
+      rules: rules.view,
+      findings: rules.findings
     }
 
     const answered = await within(reading, GIT_PATIENCE)
@@ -1320,5 +1356,62 @@ const placeholder = (entry: ProjectEntry, workspaceId: string): ProjectView => (
   caFiles: [],
   selectedEnvironment: entry.selectedEnvironment,
   autoFetchSeconds: entry.autoFetchSeconds,
-  busy: false
+  busy: false,
+  rules: NO_RULES,
+  findings: []
 })
+
+/** Where each kind of new file goes. */
+const LIBRARY_HOMES: Record<LibraryKind, LintHome> = {
+  collection: COLLECTIONS_DIR,
+  set: REQUESTS_DIR,
+  endpoints: ENDPOINTS_DIR,
+  base: BASES_DIR
+}
+
+/** The folder of `collections/` a collection file is in, or null at its top. */
+function folderOf(root: string, file: string): string | null {
+  const parts = relativePosix(path.join(root, COLLECTIONS_DIR), file).split('/')
+  return parts.length > 1 ? parts[0]! : null
+}
+
+const NO_RULES: RulesView = {
+  rules: noRules(),
+  settings: [],
+  files: [],
+  guides: [],
+  problem: null,
+  agents: { exists: false, hasSection: false }
+}
+
+/**
+ * A project's rules, and where its own files break them (SPEC.md §1.4). Rules
+ * that cannot be read are a problem of the project's, and none apply.
+ */
+async function readRules(
+  root: string,
+  global: { root: string; uses: string } | null
+): Promise<{ view: RulesView; findings: RuleFinding[] }> {
+  const agents = await agentsState(root).catch(() => NO_RULES.agents)
+  try {
+    const loaded = await loadRules(root, global)
+    const view: RulesView = {
+      ...loaded,
+      settings: loaded.settings.map((setting) => ({ ...setting, doc: ruleDoc(setting.rule) })),
+      problem: null,
+      agents
+    }
+    const findings = loaded.settings.some((setting) => setting.on)
+      ? (await lintProject(root, loaded, global)).findings
+      : []
+    return { view, findings }
+  } catch (cause) {
+    if (!(cause instanceof RulesError)) throw cause
+    return { view: { ...NO_RULES, problem: cause.message, agents }, findings: [] }
+  }
+}
+
+/** Refuse what would break a rule, saying which: the rules apply to the app as to anyone. */
+function obey(problem: string | null): void {
+  if (problem) throw new Error(problem)
+}
