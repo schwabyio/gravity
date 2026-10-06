@@ -17,8 +17,8 @@ jobs:
     steps:
       # .gitattributes keeps every file LF on checkout, so round-trip tests mean
       # the same thing on every platform.
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -26,7 +26,7 @@ jobs:
       - id: dugite
         shell: bash
         run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/dugite'].version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/dugite
           key: dugite-${{ runner.os }}-${{ runner.arch }}-${{ steps.dugite.outputs.version }}
@@ -45,15 +45,15 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
       - id: dugite
         shell: bash
         run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/dugite'].version")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/dugite
           key: dugite-${{ runner.os }}-${{ runner.arch }}-${{ steps.dugite.outputs.version }}
@@ -72,7 +72,7 @@ jobs:
       # The annotations say what a failed test expected; its trace (kept on failure by
       # playwright.config.ts) shows what the app showed instead, step by step.
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-traces-${{ matrix.os }}
           path: apps/desktop/test-results/
