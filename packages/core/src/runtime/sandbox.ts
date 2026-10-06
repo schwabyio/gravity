@@ -254,8 +254,15 @@ export interface SyntaxProblem {
  * Compiled as a plain function body first, because that reports positions in
  * the author's own lines. A body using top-level `await` is not valid there, so
  * that one case is re-checked inside the same async wrapper `runScript` uses.
+ *
+ * A check file (`checkFile`) is parsed as a run loads one instead: its exports
+ * rewritten by `exportsOf`, in the same wrapper (see `checkFileSyntax`).
  */
-export function checkScriptSyntax(code: string): SyntaxProblem | null {
+export function checkScriptSyntax(
+  code: string,
+  options: { checkFile?: boolean } = {}
+): SyntaxProblem | null {
+  if (options.checkFile) return checkFileSyntax(code)
   try {
     vm.compileFunction(code, [], { filename: 'script' })
     return null
@@ -268,6 +275,33 @@ export function checkScriptSyntax(code: string): SyntaxProblem | null {
     return null
   } catch (cause) {
     return syntaxProblem(cause, code)
+  }
+}
+
+/**
+ * A check file, parsed as `runScript` loads one: `export` rewritten by
+ * `exportsOf`, as the body of a plain function — `runScript`'s wrapper is not
+ * async, so a top-level `await` is an error here as it is in a run. Compiled
+ * on its own rather than in that wrapper, so an error is told in the author's
+ * terms, not the wrapper's. `exportsOf` keeps every line where it was; on a
+ * line it rewrote, the column is put back where it is in the author's line.
+ */
+function checkFileSyntax(code: string): SyntaxProblem | null {
+  const rewritten = exportsOf(code)
+  try {
+    vm.compileFunction(rewritten, [], { filename: 'script' })
+    return null
+  } catch (cause) {
+    const problem = syntaxProblem(cause, rewritten)
+    if (!problem) return null
+    const authors = code.split('\n')[problem.line - 1] ?? ''
+    const ran = rewritten.split('\n')[problem.line - 1] ?? ''
+    if (authors === ran) return problem
+    // exportsOf changes only a line's start, up to a function's name or a const's
+    // `=`, so what follows has moved by the difference in length.
+    const indent = /^[ \t]*/.exec(authors)?.[0].length ?? 0
+    const column = problem.column - (ran.length - authors.length)
+    return { ...problem, column: Math.min(Math.max(column, indent + 1), authors.length + 1) }
   }
 }
 

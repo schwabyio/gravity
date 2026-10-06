@@ -934,9 +934,10 @@ export interface DesktopApi {
   script: {
     /**
      * Where a script stops parsing, or null when it parses. Checked by the same
-     * V8 parser that runs it, so the editor and a run never disagree.
+     * V8 parser that runs it, so the editor and a run never disagree. A check
+     * file (`checkFile`) is parsed as a run loads one: its `export`s allowed.
      */
-    check(code: string): Promise<ScriptSyntaxProblem | null>
+    check(code: string, options?: { checkFile?: boolean }): Promise<ScriptSyntaxProblem | null>
     /**
      * What a tests script calls that `tests.only` does not allow (SPEC.md
      * §1.4): each with its line, where it is in the script, and why.

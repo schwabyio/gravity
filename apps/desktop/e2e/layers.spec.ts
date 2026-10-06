@@ -70,6 +70,12 @@ test.beforeAll(async () => {
   write('checks/ids.js', [
     'export function same(id) {',
     "  gta.expectResponseBodyToHaveProperty('id', id)",
+    '}',
+    'export async function later() {}',
+    'export const LIMIT = 10',
+    // Never called: only for the editor, which checks gta's names in it.
+    'export function unused() {',
+    "  gta.expectResponseBodyToHaveProprety('id', 1)",
     '}'
   ])
   write('collections/users.yml', [
@@ -250,6 +256,11 @@ test('the shared scripts show their code, marked by a send, and the results say 
   await expect(ids.locator('.script-chip')).toHaveText('✓ 1')
   await ids.locator('.shared-script-toggle').click()
   await expect(ids.locator('.cm-check-mark')).toHaveText(['✓'])
+  // Checked as a run loads it: each way of exporting is fine, and the linter
+  // has run (it flags the misspelt gta name) without marking any as an error.
+  await expect(ids.locator('.cm-lintRange-warning')).toHaveText('expectResponseBodyToHaveProprety')
+  await expect(ids.locator('.cm-lintRange-error')).toHaveCount(0)
+  await expect(ids.locator('.cm-lint-marker-error')).toHaveCount(0)
   await expect(ids.locator('.cm-check-gutter .cm-gutterElement').nth(2)).toHaveText('✓')
   await expect(
     page.locator('.scripts-pane .code-editor:not(.read-only) .cm-check-mark')

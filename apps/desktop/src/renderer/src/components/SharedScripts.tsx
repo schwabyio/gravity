@@ -124,6 +124,7 @@ export default function SharedScripts(props: Props) {
           <CodeEditor
             readOnly
             kind={kind}
+            checkFile={typeof of === 'object'}
             value={code}
             onChange={NOTHING}
             ariaLabel={`${key}, read only`}

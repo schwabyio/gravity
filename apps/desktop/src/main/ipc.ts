@@ -1010,8 +1010,12 @@ export function registerIpc(projects: ProjectService): void {
   })
 
   // Parse only, never run: compiling a script executes none of it.
-  ipcMain.handle(IpcChannel.scriptCheck, (_event, code: unknown) =>
-    typeof code === 'string' ? checkScriptSyntax(code) : null
+  ipcMain.handle(IpcChannel.scriptCheck, (_event, code: unknown, options: unknown) =>
+    typeof code === 'string'
+      ? checkScriptSyntax(code, {
+          checkFile: (options as { checkFile?: unknown } | undefined)?.checkFile === true
+        })
+      : null
   )
 
   // Parsed, never run: what a tests script calls, against the project's tests.only.

@@ -1322,6 +1322,53 @@ describe('checkScriptSyntax', () => {
   })
 })
 
+describe('checkScriptSyntax for a check file', () => {
+  const asCheckFile = (code: string) => checkScriptSyntax(code, { checkFile: true })
+
+  it('accepts each of the three ways a check file exports, as a run does', () => {
+    const code = [
+      'export function same(id) {',
+      "  gta.expectResponseBodyToHaveProperty('id', id)",
+      '}',
+      '  export async function later() {}',
+      'export const LIMIT = 10'
+    ].join('\n')
+    expect(asCheckFile(code)).toBeNull()
+    // As a script it would not parse: export is for check files.
+    expect(checkScriptSyntax(code)?.message).toBe("SyntaxError: Unexpected token 'export'")
+  })
+
+  it('still reports a real error, on its line', () => {
+    expect(asCheckFile('export function a() {}\nconst = 1')).toMatchObject({
+      line: 2,
+      column: 7,
+      message: "SyntaxError: Unexpected token '='"
+    })
+    expect(asCheckFile('export function a() {\n  b(')).toMatchObject({
+      line: 2,
+      message: 'SyntaxError: Unexpected end of input'
+    })
+  })
+
+  it('puts an error on an exporting line at its column in the author’s line', () => {
+    // `)` is the line's 18th character as written, whatever export became for the run.
+    expect(asCheckFile('export function a(x, ) {}\nexport const b = )')).toMatchObject({
+      line: 2,
+      column: 18,
+      length: 1,
+      message: "SyntaxError: Unexpected token ')'"
+    })
+    expect(asCheckFile('  export async function a() { const = 1 }')).toMatchObject({
+      line: 1,
+      column: 37
+    })
+  })
+
+  it('rejects a top-level await, which a run of a check file rejects too', () => {
+    expect(asCheckFile('await setup()\nexport const ready = true')).toMatchObject({ line: 1 })
+  })
+})
+
 describe('generated values', () => {
   afterEach(() => {
     vi.restoreAllMocks()

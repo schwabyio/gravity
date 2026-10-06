@@ -60,6 +60,8 @@ interface Props {
    * file's — sized to its lines rather than to the pane.
    */
   readOnly?: boolean
+  /** A check file (SPEC.md §5): its syntax is checked as a run loads one, `export` and all. */
+  checkFile?: boolean
 }
 
 /**
@@ -78,7 +80,8 @@ export default function CodeEditor({
   placeholder,
   errorLine,
   checks,
-  readOnly = false
+  readOnly = false,
+  checkFile = false
 }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -100,7 +103,7 @@ export default function CodeEditor({
         extensions: [
           basicSetup,
           javascript(),
-          completions.current.of([completionsFor(kind, rule), lintFor(kind, rule)]),
+          completions.current.of([completionsFor(kind, rule), lintFor(kind, rule, checkFile)]),
           lintGutter(),
           // Mounted on the body so a diagnostic or completion is never clipped by the pane.
           tooltips({ parent: document.body }),
@@ -136,10 +139,13 @@ export default function CodeEditor({
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: completions.current.reconfigure([completionsFor(kind, rule), lintFor(kind, rule)])
+      effects: completions.current.reconfigure([
+        completionsFor(kind, rule),
+        lintFor(kind, rule, checkFile)
+      ])
     })
     // The rule by what it says, not by which object holds it.
-  }, [kind, ruleKey])
+  }, [kind, ruleKey, checkFile])
 
   useEffect(() => {
     view.current?.dispatch({ effects: setErrorLine.of(errorLine ?? null) })
@@ -226,11 +232,12 @@ function completionsFor(kind: ScriptKind, rule: TestsRule | null) {
  *
  * Syntax errors come from main, which parses with the same V8 that will run the
  * script, so the editor never reports something a run would accept or miss
- * something it would reject. A `gta` function that does not exist is a warning,
+ * something it would reject — a check file parsed as a run loads one, its
+ * `export`s rewritten first. A `gta` function that does not exist is a warning,
  * with the nearest real name, and so is what the project's `tests.only` rule
  * does not allow (SPEC.md §1.4), checked by main as `gta lint` checks it.
  */
-function lintFor(kind: ScriptKind, rule: TestsRule | null) {
+function lintFor(kind: ScriptKind, rule: TestsRule | null, checkFile: boolean) {
   const everywhere = new Set(GTA_API.map((entry) => entry.name))
   const here = new Set(GTA_API.filter((e) => !e.only || e.only === kind).map((e) => e.name))
 
@@ -254,7 +261,8 @@ function lintFor(kind: ScriptKind, rule: TestsRule | null) {
         }
       }
 
-      const problem = code.trim() === '' ? null : await window.desktop.script.check(code)
+      const problem =
+        code.trim() === '' ? null : await window.desktop.script.check(code, { checkFile })
       if (problem) {
         const line = view.state.doc.line(Math.min(problem.line, view.state.doc.lines))
         const from = Math.min(line.from + problem.column - 1, line.to)

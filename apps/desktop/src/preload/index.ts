@@ -177,7 +177,8 @@ const api: DesktopApi = {
   },
 
   script: {
-    check: (code: string) => ipcRenderer.invoke(IpcChannel.scriptCheck, code),
+    check: (code: string, options?: { checkFile?: boolean }) =>
+      ipcRenderer.invoke(IpcChannel.scriptCheck, code, options),
     rules: (code: string, allowed: string[]) =>
       ipcRenderer.invoke(IpcChannel.scriptRules, code, allowed)
   }
