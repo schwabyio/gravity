@@ -104,6 +104,8 @@ type StateListener = (state: WorkspacesState) => void
 type ProgressListener = (progress: GitProgress) => void
 
 export interface ProjectServiceOptions {
+  /** Where the workspace registry is kept: the app's data folder unless given, as tests give it. */
+  registryFile?: string
   /**
    * Where a discarded file goes: the Trash, so a discard can be undone. It
    * rejects when it cannot, and then nothing is discarded.
@@ -131,7 +133,7 @@ const layerOf = (doc: LayerParts): LayerParts => ({
 })
 
 export class ProjectService {
-  private readonly registry = new WorkspaceRegistry()
+  private readonly registry: WorkspaceRegistry
   private readonly views = new Map<string, ProjectView>()
   /** Repository roots with a git operation running. */
   private readonly busyRepos = new Set<string>()
@@ -148,13 +150,19 @@ export class ProjectService {
   private readonly watcher = new DirectoryWatcher((id) => void this.refresh(id))
   /** How often each project has been forgotten: a refresh begun before the last time is stale. */
   private readonly generations = new Map<string, number>()
+  /** How many refreshes of each project have begun: each is numbered by its place. */
+  private readonly refreshesBegun = new Map<string, number>()
+  /** The number of the refresh whose view each project shows (see `refresh`). */
+  private readonly refreshShown = new Map<string, number>()
   private readonly projectListeners = new Set<ProjectListener>()
   private readonly stateListeners = new Set<StateListener>()
   private readonly progressListeners = new Set<ProgressListener>()
   private gitAvailable: boolean | null = null
   private git: GitSetup | null = null
 
-  constructor(private readonly options: ProjectServiceOptions) {}
+  constructor(private readonly options: ProjectServiceOptions) {
+    this.registry = new WorkspaceRegistry(options.registryFile)
+  }
 
   /** The git in use, from `setupGit` at startup. */
   setGit(setup: GitSetup): void {
@@ -700,6 +708,12 @@ export class ProjectService {
    * One begun before the project was forgotten lists and watches nothing when
    * it ends: a watch on the old folder would hold it on Windows, and the
    * rename or delete that forgot the project would fail.
+   *
+   * Nor does one begun before another that has already shown its view: begun
+   * later, that one read what it read later, while git can keep the earlier
+   * one waiting for seconds on Windows. Shown after it, the older view would
+   * undo what it showed — a collection just made, the environment just chosen.
+   * Such a refresh resolves to the view shown instead of its own.
    */
   async refresh(
     id: string,
@@ -708,6 +722,14 @@ export class ProjectService {
   ): Promise<ProjectView | null> {
     const generation = this.generations.get(id) ?? 0
     const stale = () => (this.generations.get(id) ?? 0) !== generation
+    const begun = (this.refreshesBegun.get(id) ?? 0) + 1
+    this.refreshesBegun.set(id, begun)
+    /** Whether this refresh may show its view: none begun after it has shown one. */
+    const mayShow = (): boolean => {
+      if ((this.refreshShown.get(id) ?? 0) > begun) return false
+      this.refreshShown.set(id, begun)
+      return true
+    }
     const found = this.registry.project(id)
     if (!found) return null
     const { workspaceId, entry } = found
@@ -715,6 +737,7 @@ export class ProjectService {
     if (!(await isDirectory(entry.path))) {
       if (stale()) return null
       const view = { ...placeholder(entry, workspaceId), available: false }
+      if (!mayShow()) return this.views.get(id) ?? view
       this.views.set(id, view)
       this.emitProject(view)
       return view
@@ -849,10 +872,12 @@ export class ProjectService {
         gitNote: before?.gitNote ?? null,
         busy: before?.busy ?? false
       }
-      this.views.set(id, shown)
-      this.watcher.watch(id, this.watchTargets(shown, null))
-      this.emitProject(shown)
-      listed?.(shown)
+      if (mayShow()) {
+        this.views.set(id, shown)
+        this.watcher.watch(id, this.watchTargets(shown, null))
+        this.emitProject(shown)
+      }
+      listed?.(this.views.get(id) ?? shown)
     }
     const { repo, git, gitNote } = answered ?? (await reading)
     if (stale()) return null
@@ -865,6 +890,7 @@ export class ProjectService {
       busy: repo !== null && this.isBusy(repo.root)
     }
 
+    if (!mayShow()) return this.views.get(id) ?? view
     this.views.set(id, view)
     this.watcher.watch(id, this.watchTargets(view, repo))
     this.scheduleAutoFetch(entry)
