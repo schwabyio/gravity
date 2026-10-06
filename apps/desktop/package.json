@@ -1,7 +1,7 @@
 {
   "name": "@schwabyio/gravity-desktop",
   "productName": "Gravity",
-  "version": "0.14.1",
+  "version": "0.14.2",
   "private": true,
   "description": "Gravity test automation, the desktop app.",
   "license": "MIT",
