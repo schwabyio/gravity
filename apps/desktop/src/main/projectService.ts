@@ -146,6 +146,8 @@ export class ProjectService {
   private readonly lastFetched = new Map<string, number>()
   private readonly autoFetchTimers = new Map<string, NodeJS.Timeout>()
   private readonly watcher = new DirectoryWatcher((id) => void this.refresh(id))
+  /** How often each project has been forgotten: a refresh begun before the last time is stale. */
+  private readonly generations = new Map<string, number>()
   private readonly projectListeners = new Set<ProjectListener>()
   private readonly stateListeners = new Set<StateListener>()
   private readonly progressListeners = new Set<ProgressListener>()
@@ -607,6 +609,7 @@ export class ProjectService {
   }
 
   private forget(id: string): void {
+    this.generations.set(id, (this.generations.get(id) ?? 0) + 1)
     this.watcher.unwatch(id)
     this.stopAutoFetch(id)
     this.views.delete(id)
@@ -693,17 +696,24 @@ export class ProjectService {
    *
    * This is what a watcher event, an explicit refresh and a completed pull all
    * funnel into, so there is exactly one path that produces a project view.
+   *
+   * One begun before the project was forgotten lists and watches nothing when
+   * it ends: a watch on the old folder would hold it on Windows, and the
+   * rename or delete that forgot the project would fail.
    */
   async refresh(
     id: string,
     /** Called with the project's first view: from its files, if git is slow to answer. */
     listed?: (view: ProjectView) => void
   ): Promise<ProjectView | null> {
+    const generation = this.generations.get(id) ?? 0
+    const stale = () => (this.generations.get(id) ?? 0) !== generation
     const found = this.registry.project(id)
     if (!found) return null
     const { workspaceId, entry } = found
 
     if (!(await isDirectory(entry.path))) {
+      if (stale()) return null
       const view = { ...placeholder(entry, workspaceId), available: false }
       this.views.set(id, view)
       this.emitProject(view)
@@ -827,6 +837,7 @@ export class ProjectService {
     }
 
     const answered = await within(reading, GIT_PATIENCE)
+    if (stale()) return null
     if (!answered) {
       // Listed from its files, with what git said last, until it answers.
       const before = this.views.get(id)
@@ -844,6 +855,7 @@ export class ProjectService {
       listed?.(shown)
     }
     const { repo, git, gitNote } = answered ?? (await reading)
+    if (stale()) return null
     const view: ProjectView = {
       ...files,
       isRepo: repo !== null,
