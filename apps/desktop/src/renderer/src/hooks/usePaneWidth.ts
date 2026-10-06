@@ -2,6 +2,11 @@ import { useCallback, useState } from 'react'
 
 export interface PaneWidth {
   width: number
+  /**
+   * The width as laid out now, where `width` can lag a change of layout by a
+   * frame: what a drag or an arrow key starts from.
+   */
+  measure?: () => number
   setWidth: (width: number) => void
   reset: () => void
   min: number
@@ -40,28 +45,39 @@ export function usePaneWidth(key: string, initial: number, min: number, max: num
  *
  * `room` is the two panes' width together, as measured. The divider works in
  * pixels, so the share is given to it, and taken from it, as a width.
+ * `measureRoom` reads that width from the layout as it is now: `room` is set
+ * once a resize is observed, a frame or so after it, and a drag that starts
+ * straight after the panes change size would otherwise start from the old one.
  */
 export function usePaneShare(
   key: string,
   initial: number,
   room: number,
-  min: number
+  min: number,
+  measureRoom?: () => number
 ): PaneWidth & { share: number } {
   const [stored, setStored] = useState(() => {
     const share = read(key) ?? initial
     return share < 1 ? share : initial
   })
   const share = fitShare(stored, room, min)
+  const roomNow = useCallback(() => measureRoom?.() || room, [measureRoom, room])
 
   const setWidth = useCallback(
     (next: number) => {
-      if (room <= 0) return
-      const share = fitShare(next / room, room, min)
+      const now = roomNow()
+      if (now <= 0) return
+      const share = fitShare(next / now, now, min)
       setStored(share)
       write(key, Number(share.toFixed(4)))
     },
-    [key, room, min]
+    [key, roomNow, min]
   )
+
+  const measure = useCallback(() => {
+    const now = roomNow()
+    return Math.round(fitShare(stored, now, min) * now)
+  }, [roomNow, stored, min])
 
   const reset = useCallback(() => {
     setStored(initial)
@@ -71,6 +87,7 @@ export function usePaneShare(
   return {
     share,
     width: Math.round(share * room),
+    measure,
     setWidth,
     reset,
     min,

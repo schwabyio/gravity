@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CheckFileView, EndpointView, LibraryFileView, RequestSetView } from '@shared/ipc.js'
 import {
   findEndpoint,
@@ -128,7 +128,11 @@ export default function RequestView(props: Props) {
   const requestEl = useRef<HTMLElement>(null)
   const responseEl = useRef<HTMLElement>(null)
   const [room, setRoom] = useState(0)
-  const requestPane = usePaneShare('pane.request', 0.5, room, 180)
+  const measureRoom = useCallback(
+    () => (requestEl.current?.offsetWidth ?? 0) + (responseEl.current?.offsetWidth ?? 0),
+    []
+  )
+  const requestPane = usePaneShare('pane.request', 0.5, room, 180, measureRoom)
 
   const result = props.result
   // A step reading a connection sends nothing: it has no params, headers or body.
@@ -192,15 +196,14 @@ export default function RequestView(props: Props) {
   }
 
   useEffect(() => {
-    const measure = () =>
-      setRoom((requestEl.current?.offsetWidth ?? 0) + (responseEl.current?.offsetWidth ?? 0))
+    const measure = () => setRoom(measureRoom())
     const observer = new ResizeObserver(measure)
     for (const element of [requestEl.current, responseEl.current]) {
       if (element) observer.observe(element)
     }
     measure()
     return () => observer.disconnect()
-  }, [editorShown, responseShown, props.request.use])
+  }, [editorShown, responseShown, props.request.use, measureRoom])
 
   // Only with both open is there a split between them to drag.
   const both = editorShown && responseShown

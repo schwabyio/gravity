@@ -50,7 +50,7 @@ export default function Resizer({ pane, label, offset, edge = 'right' }: Props) 
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
-    origin.current = { at: at(event), width: pane.width }
+    origin.current = { at: at(event), width: pane.measure?.() ?? pane.width }
     event.currentTarget.setPointerCapture(event.pointerId)
     document.body.classList.add('resizing')
     if (rows) document.body.classList.add('resizing-rows')
@@ -72,7 +72,7 @@ export default function Resizer({ pane, label, offset, edge = 'right' }: Props) 
     const move = ARROWS[rows ? 'rows' : 'columns'][event.key]
     if (move !== undefined) {
       event.preventDefault()
-      pane.setWidth(pane.width + sign * move)
+      pane.setWidth((pane.measure?.() ?? pane.width) + sign * move)
     } else if (event.key === 'Home') {
       event.preventDefault()
       pane.setWidth(pane.min)
