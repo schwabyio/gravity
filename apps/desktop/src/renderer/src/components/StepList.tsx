@@ -351,6 +351,12 @@ export default function StepList(props: Props) {
                           }
                         />
                       )}
+                      {editor && set && (
+                        <MenuItem
+                          label={`${editor.label}: ${set.path.split(/[\\/]/).pop()}`}
+                          onClick={() => editor.open({ path: set.path })}
+                        />
+                      )}
                       <MenuItem
                         label="Move up"
                         disabled={index === 0}

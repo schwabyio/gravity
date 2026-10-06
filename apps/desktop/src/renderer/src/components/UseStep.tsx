@@ -2,6 +2,7 @@ import { readParam, type VarValue, type VariablePreviews } from '@schwabyio/grav
 import type { RequestSetView } from '@shared/ipc.js'
 import type { EditorState } from '../requestState.js'
 import { referenceFor, resolveSet } from '../reuse.js'
+import OpenInEditor from './OpenInEditor.js'
 import Tooltip from './Tooltip.js'
 import VariableInput from './VariableInput.js'
 
@@ -58,6 +59,18 @@ export function UseBar(props: BarProps) {
           </button>
         </Tooltip>
       )}
+      {/* The file itself, shared or not: at the request shown, the one to change. */}
+      {set && (
+        <OpenInEditor
+          className="collection-open-button"
+          size={15}
+          what={shown ? `${fileName(set)}, at ${shown.label}` : fileName(set)}
+          target={{
+            path: set.path,
+            ...(shown ? { step: { list: 'steps', index: props.shownChild } } : {})
+          }}
+        />
+      )}
       {shown && set && set.steps.length > 1 && (
         <span className="use-shown" title="Pick another in the step list">
           Showing {props.shownChild + 1} of {set.steps.length} · {shown.label}
@@ -74,6 +87,8 @@ export function UseBar(props: BarProps) {
     </form>
   )
 }
+
+const fileName = (set: RequestSetView): string => set.path.split(/[\\/]/).pop() ?? set.path
 
 interface EditorProps {
   request: EditorState

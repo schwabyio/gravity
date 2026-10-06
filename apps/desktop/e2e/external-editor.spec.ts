@@ -47,7 +47,7 @@ test.beforeAll(async () => {
     fs.mkdirSync(path.dirname(path.join(shop, file)), { recursive: true })
     fs.writeFileSync(path.join(shop, file), `${lines.join('\n')}\n`)
   }
-  write('project.yml', ['name: shop'])
+  write('project.yml', ['name: shop', 'uses: ../shared'])
   write('checks/ids.js', ['export function ok() {', '  gta.expectResponseStatusCodeToBe(200)', '}'])
   write('requests/login.yml', [
     'id: login',
@@ -57,6 +57,18 @@ test.beforeAll(async () => {
     `  - GET: "${origin}/login"`
   ])
   write('environments/local.yml', ['vars:', '  a: 1'])
+  write('collections/checkout.yml', ['id: checkout', 'steps:', '  - use: token'])
+  // Reusable requests from the global project, where a use step's requests are changed.
+  write('../shared/project.yml', ['name: Shared'])
+  write('../shared/requests/token.yml', [
+    'id: token', // 1
+    'params: {}', // 2
+    'steps:', // 3
+    '  - name: fetch', // 4
+    `    GET: "${origin}/token"`, // 5
+    '  - name: refresh', // 6
+    `    POST: "${origin}/token"` // 7
+  ])
   write('collections/orders.csv', ['id', '1', '2'])
   write('collections/orders.yml', [
     'id: orders', // 1
@@ -198,6 +210,24 @@ test('the data and environment drawers open the file they show', async () => {
     .click()
   await expect.poll(lastOpened).toEqual(opened('environments/local.yml', 1))
   await environments.getByRole('button', { name: 'Close', exact: true }).click()
+})
+
+test('a use step opens the reusable requests file it runs, at the request shown, and from its menu', async () => {
+  const token = (line: number) => [path.join(tmp, 'shared', 'requests', 'token.yml'), String(line)]
+  await page.locator('.collection-row', { hasText: 'checkout' }).click()
+  await page.locator('.step-open', { hasText: 'token' }).click()
+
+  const bar = page.locator('.use-bar')
+  await bar.getByRole('button', { name: `${label}: token.yml, at fetch` }).click()
+  await expect.poll(lastOpened).toEqual(token(4))
+  await page.locator('.use-child', { hasText: 'refresh' }).click()
+  await bar.getByRole('button', { name: `${label}: token.yml, at refresh` }).click()
+  await expect.poll(lastOpened).toEqual(token(6))
+
+  // Its menu opens either: the collection at the use step, or the file it runs.
+  await page.getByRole('button', { name: 'More actions for token' }).click()
+  await page.getByRole('menuitem', { name: `${label}: token.yml` }).click()
+  await expect.poll(lastOpened).toEqual(token(1))
 })
 
 test('an editor that will not start says why, in the status bar, until dismissed', async () => {
