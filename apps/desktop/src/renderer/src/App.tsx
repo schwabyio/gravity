@@ -187,6 +187,7 @@ export default function App() {
   const open = editor.session
   const doc = editor.displayDoc
 
+  /** The environment chosen in this session, per project: it wins over what main last said. */
   const [envOverride, setEnvOverride] = useState<Record<string, string | null>>({})
   const [previews, setPreviews] = useState<VariablePreviews>({})
 
@@ -372,7 +373,11 @@ export default function App() {
   /**
    * The chosen environment belongs to the project: every collection in it
    * shares one answer to "which host am I pointing at", so opening a sibling
-   * collection keeps the choice. Shown at once, before main has saved it.
+   * collection keeps the choice. A choice made here stands from then on, shown
+   * at once: main saves it, but its project views can arrive out of order — a
+   * refresh begun before the choice can land after it — so the one it sends
+   * only says what was chosen in an earlier session. (Taking main's back once
+   * it matched let a late view flip local → other → local back to other.)
    */
   const projectId = activeProject?.id ?? null
   const persistedEnvironment = activeProject?.selectedEnvironment ?? null
@@ -381,14 +386,6 @@ export default function App() {
       ? (envOverride[projectId] ?? null)
       : persistedEnvironment
     : null
-
-  useEffect(() => {
-    if (!projectId) return
-    const pending = envOverride[projectId]
-    if (pending !== undefined && pending === persistedEnvironment) {
-      setEnvOverride(({ [projectId]: _dropped, ...rest }) => rest)
-    }
-  }, [projectId, envOverride, persistedEnvironment])
 
   // The chosen environment's files — the project's and its global project's —
   // and their unsaved edits, for a run to use.
