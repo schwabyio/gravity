@@ -104,6 +104,8 @@ test("the status bar shows the app's version at its right", async () => {
   const bar = await page.locator('.status-bar').boundingBox()
   const box = await label.boundingBox()
   expect(bar!.x + bar!.width - (box!.x + box!.width)).toBeLessThan(16)
+  // Running its own git, the app says nothing about git there.
+  await expect(page.locator('.status-bar .status-git')).toHaveCount(0)
 })
 
 test('what a Send did while the console was closed is there when it opens', async () => {

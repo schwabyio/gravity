@@ -184,6 +184,12 @@ export class ProjectService {
     )
   }
 
+  /** The git in use, once it is set up; null when none was given, as in tests. */
+  async gitSetup(): Promise<GitSetup | null> {
+    await this.gitSettled()
+    return this.git
+  }
+
   /** Wait for git to be set up — or, with none given as in tests, for the git on PATH to answer. */
   private gitSettled(): Promise<void> {
     return (this.gitReady ??= gitVersion().then((version) => {

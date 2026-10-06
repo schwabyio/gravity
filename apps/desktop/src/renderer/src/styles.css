@@ -2292,6 +2292,8 @@ body.resizing.resizing-rows * {
   transform: translateX(-50%);
   pointer-events: none;
   white-space: normal;
+  /* A path is one long word: broken where it would run out of the box. */
+  overflow-wrap: break-word;
 }
 
 .tooltip.above {
@@ -6001,9 +6003,28 @@ button.console-line:hover {
   color: var(--text-dim);
 }
 
-/* Which build is running, at the far right of the status bar. */
-.status-version {
+/* The far right of the status bar: which git runs, when not the app's own, and which build. */
+.status-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
+}
+
+/* Amber for the system git, red with no git at all. */
+.status-git {
+  padding: 0 4px;
+  color: var(--redirect);
+  font-size: 11px;
+  cursor: default;
+}
+
+.status-git.none {
+  color: var(--client);
+}
+
+/* Which build is running. */
+.status-version {
   padding: 0 4px;
   color: var(--text-dim);
   font-size: 11px;

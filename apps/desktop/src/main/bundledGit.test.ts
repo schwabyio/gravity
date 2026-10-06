@@ -5,6 +5,7 @@ import { gitRuntime, resetGitRuntime, runGit } from '@schwabyio/gravity-core'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   credentialConfig,
+  fallbackNote,
   loginShellPath,
   mergePaths,
   networkEnvFor,
@@ -149,5 +150,79 @@ describe('setupGit', () => {
     // added there; elsewhere it comes from us.
     const scope = process.platform === 'win32' ? 'system' : 'command'
     expect(await helpers({ interactive: true })).toMatch(new RegExp(`^${scope}\tmanager$`, 'm'))
+  })
+})
+
+describe('when the bundled git is not the one running', () => {
+  afterAll(() => resetGitRuntime())
+
+  /** Where dugite looks for git in `folder`, on this platform. */
+  const gitIn = (folder: string) =>
+    process.platform === 'win32'
+      ? path.join(folder, 'cmd', 'git.exe')
+      : path.join(folder, 'bin', 'git')
+
+  it('says where it looked when the bundled git is not there, and which git runs instead', async () => {
+    const empty = await fs.mkdtemp(path.join(os.tmpdir(), 'gta-no-git-'))
+    try {
+      const setup = await setupGit({ ...process.env, LOCAL_GIT_DIRECTORY: empty })
+      expect(setup.bundled).toBe(false)
+      expect(setup.binary).toBe('git')
+      // CI and every developer machine have a git on PATH.
+      expect(setup.version).toMatch(/^\d+\.\d+/)
+      expect(setup.note).toBe(
+        `The bundled git is not at ${gitIn(empty)}, so the system git, ${setup.version}, is used.`
+      )
+    } finally {
+      await fs.rm(empty, { recursive: true, force: true })
+    }
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'says what git said when the bundled git is there but fails',
+    async () => {
+      const broken = await fs.mkdtemp(path.join(os.tmpdir(), 'gta-broken-git-'))
+      try {
+        await fs.mkdir(path.join(broken, 'bin'))
+        await fs.writeFile(gitIn(broken), '#!/bin/sh\necho "cannot load libcurl" >&2\nexit 3\n')
+        await fs.chmod(gitIn(broken), 0o755)
+        const setup = await setupGit({ ...process.env, LOCAL_GIT_DIRECTORY: broken })
+        expect(setup.bundled).toBe(false)
+        expect(setup.note).toBe(
+          `The bundled git at ${gitIn(broken)} failed git --version: cannot load libcurl, so the system git, ${setup.version}, is used.`
+        )
+      } finally {
+        await fs.rm(broken, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it('names each of the three causes, and what is left', () => {
+    const at = '/app/node_modules/dugite/git/bin/git'
+    const download = '/app/node_modules/dugite/script/download-git.js'
+    expect(fallbackNote({ kind: 'missing', path: at, download }, '2.45.1')).toBe(
+      `The bundled git is not at ${at}, so the system git, 2.45.1, is used. To download the bundled git, run: node "${download}"`
+    )
+    expect(
+      fallbackNote(
+        { kind: 'failed', path: at, said: 'did not answer git --version within 30 s' },
+        '2.45.1.windows.1'
+      )
+    ).toBe(
+      `The bundled git at ${at} did not answer git --version within 30 s, so the system git, 2.45.1.windows.1, is used.`
+    )
+    expect(fallbackNote({ kind: 'unsupported' }, '2.45.1', 'freebsd-x64')).toBe(
+      'There is no bundled git for freebsd-x64, so the system git, 2.45.1, is used.'
+    )
+  })
+
+  it('says when the system git is too old to change the repository, or missing', () => {
+    const missing = { kind: 'missing', path: '/x/bin/git', download: null } as const
+    expect(fallbackNote(missing, '2.30.2')).toBe(
+      'The bundled git is not at /x/bin/git, so the system git, 2.30.2, is used: too old to commit, pull, push or switch branches from the app, which needs 2.31 or later.'
+    )
+    expect(fallbackNote(missing, null)).toBe(
+      'The bundled git is not at /x/bin/git, and there is no git on PATH either, so git features are off.'
+    )
   })
 })

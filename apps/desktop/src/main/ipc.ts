@@ -47,6 +47,7 @@ import {
   type AddProjectsOutcome,
   type ConsoleEvent,
   type ConsoleRunKind,
+  type GitSetupView,
   type PreviewRequest,
   type Result,
   type RunCollectionRequest,
@@ -807,6 +808,11 @@ export function registerIpc(projects: ProjectService): void {
     IpcChannel.gitConvertToLf,
     guard(async (_event, id: unknown) => ({ files: await projects.convertToLf(String(id)) }))
   )
+
+  ipcMain.handle(IpcChannel.gitSetup, async (): Promise<GitSetupView | null> => {
+    const setup = await projects.gitSetup()
+    return setup && { bundled: setup.bundled, version: setup.version, note: setup.note }
+  })
 
   ipcMain.handle(IpcChannel.gitDismissLineEndings, async (_event, id: unknown) => {
     if (typeof id === 'string') await projects.dismissLineEndingsNotice(id)

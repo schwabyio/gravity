@@ -97,6 +97,7 @@ const api: DesktopApi = {
     addAttributes: (id: string) => ipcRenderer.invoke(IpcChannel.gitAddAttributes, id),
     convertToLf: (id: string) => ipcRenderer.invoke(IpcChannel.gitConvertToLf, id),
     dismissLineEndings: (id: string) => ipcRenderer.invoke(IpcChannel.gitDismissLineEndings, id),
+    setup: () => ipcRenderer.invoke(IpcChannel.gitSetup),
     onProgress: (callback) => subscribe(IpcChannel.eventGitProgress, callback)
   },
 

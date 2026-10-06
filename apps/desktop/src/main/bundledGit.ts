@@ -3,8 +3,8 @@ import { constants, existsSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { configureGit, gitVersion, runGit } from '@schwabyio/gravity-core'
-import { setupEnvironment } from 'dugite'
+import { configureGit, gitAtLeast, runGit } from '@schwabyio/gravity-core'
+import { resolveEmbeddedGitDir, setupEnvironment } from 'dugite'
 
 /**
  * The git the app runs: the one bundled with it (dugite), so it works on a
@@ -27,45 +27,104 @@ export interface GitSetup {
   note: string | null
 }
 
-export async function setupGit(): Promise<GitSetup> {
-  const setup = await configure(process.env)
+/** How long `git --version` may take: antivirus can hold a newly unpacked git for seconds. */
+const FIRST_ANSWER_MS = 30_000
+
+export async function setupGit(env: NodeJS.ProcessEnv = process.env): Promise<GitSetup> {
+  const setup = await configure(env)
   // A terminal's PATH, for hooks and commit signing. The login shell can take a
   // while to start, so git runs with the app's own PATH until it answers.
   void terminalPath().then((PATH) => {
-    if (PATH === process.env['PATH']) return
-    const env = { ...process.env, PATH }
-    configureGit({ env: setup.bundled ? (bundledGit(env)?.env ?? env) : env })
+    if (PATH === env['PATH']) return
+    const withPath = { ...env, PATH }
+    configureGit({ env: setup.bundled ? (bundledGit(withPath)?.env ?? withPath) : withPath })
   })
   return setup
 }
 
 async function configure(base: NodeJS.ProcessEnv): Promise<GitSetup> {
   const embedded = bundledGit(base)
-  if (embedded && (await isExecutable(embedded.gitLocation))) {
+  let problem: BundledProblem
+  if (!embedded) {
+    problem = { kind: 'unsupported' }
+  } else if (!(await isExecutable(embedded.gitLocation))) {
+    // Downloading again only helps the git dugite would have downloaded.
+    const download = base['LOCAL_GIT_DIRECTORY']
+      ? null
+      : path.join(resolveEmbeddedGitDir(), '..', 'script', 'download-git.js')
+    problem = { kind: 'missing', path: embedded.gitLocation, download }
+  } else {
     configureGit({
       binary: embedded.gitLocation,
       env: embedded.env,
       bundled: true,
       networkEnv: undefined
     })
-    const version = await gitVersion(os.homedir())
-    if (version) {
+    const answer = await askVersion()
+    if ('version' in answer) {
       const inputs = await credentialInputs(embedded.env)
       configureGit({ networkEnv: networkEnvFor(credentialConfig(inputs)) })
-      return { binary: embedded.gitLocation, version, bundled: true, note: null }
+      return { binary: embedded.gitLocation, version: answer.version, bundled: true, note: null }
     }
+    problem = { kind: 'failed', path: embedded.gitLocation, said: answer.problem }
   }
 
-  // The bundled git is missing (an install with --ignore-scripts, say): the
-  // system git is better than none.
+  // The system git is better than none.
   configureGit({ binary: 'git', env: base, bundled: false, networkEnv: undefined })
-  const version = await gitVersion(os.homedir())
-  return {
-    binary: 'git',
-    version,
-    bundled: false,
-    note: 'The bundled git is missing, so the system git is used.'
+  const system = await askVersion()
+  const version = 'version' in system ? system.version : null
+  return { binary: 'git', version, bundled: false, note: fallbackNote(problem, version) }
+}
+
+/** The configured git's version, or what went wrong asking for it. */
+async function askVersion(): Promise<{ version: string } | { problem: string }> {
+  const started = Date.now()
+  const result = await runGit(['--version'], { cwd: os.homedir(), timeout: FIRST_ANSWER_MS }).catch(
+    (cause: Error) => ({ code: 1, stdout: '', stderr: cause.message })
+  )
+  if (result.code === 0) return { version: result.stdout.trim().replace(/^git version /, '') }
+  if (Date.now() - started >= FIRST_ANSWER_MS) {
+    return { problem: `did not answer git --version within ${FIRST_ANSWER_MS / 1000} s` }
   }
+  const said = result.stderr.trim().split(/\r?\n/).pop()
+  return { problem: `failed git --version: ${said || `exit code ${result.code}`}` }
+}
+
+/** Why the bundled git is not the one running. */
+export type BundledProblem =
+  | { kind: 'unsupported' }
+  /** `download` is dugite's download script, or null when it would not help. */
+  | { kind: 'missing'; path: string; download: string | null }
+  | { kind: 'failed'; path: string; said: string }
+
+/**
+ * What the app says when the bundled git is not the one running: which of
+ * three things went wrong, where it looked, how to fix it when one command
+ * does — and what that leaves, since a system git older than 2.31 cannot
+ * change the repository from the app, and with none git is off altogether.
+ */
+export function fallbackNote(
+  problem: BundledProblem,
+  systemVersion: string | null,
+  platform = `${process.platform}-${process.arch}`
+): string {
+  const why =
+    problem.kind === 'unsupported'
+      ? `There is no bundled git for ${platform}`
+      : problem.kind === 'missing'
+        ? `The bundled git is not at ${problem.path}`
+        : `The bundled git at ${problem.path} ${problem.said}`
+  const instead =
+    systemVersion === null
+      ? 'and there is no git on PATH either, so git features are off'
+      : gitAtLeast(systemVersion, 2, 31)
+        ? `so the system git, ${systemVersion}, is used`
+        : `so the system git, ${systemVersion}, is used: too old to commit, pull, push or switch branches from the app, which needs 2.31 or later`
+  const fix =
+    problem.kind === 'missing' && problem.download
+      ? ` To download the bundled git, run: node "${problem.download}"`
+      : ''
+  return `${why}, ${instead}.${fix}`
 }
 
 function bundledGit(

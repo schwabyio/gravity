@@ -78,6 +78,7 @@ export const IpcChannel = {
   gitAddAttributes: 'git:addAttributes',
   gitConvertToLf: 'git:convertToLf',
   gitDismissLineEndings: 'git:dismissLineEndings',
+  gitSetup: 'git:setup',
 
   collectionRead: 'collection:read',
   collectionApplyEdits: 'collection:applyEdits',
@@ -253,6 +254,16 @@ export interface LineEndingsView {
   crlfFiles: string[]
   /** The block the app adds to `.gitattributes`. */
   block: string
+}
+
+/** The git the app runs: its own, or the system's when its own is missing or will not run. */
+export interface GitSetupView {
+  /** True when the bundled git is in use. */
+  bundled: boolean
+  /** The version of the git in use; null when there is none. */
+  version: string | null
+  /** Why the bundled git is not in use, where the app looked, and what to do; null when it is. */
+  note: string | null
 }
 
 /** A clone's progress, from git's own output. */
@@ -796,6 +807,8 @@ export interface DesktopApi {
     convertToLf(projectId: string): Promise<Result<{ files: string[] }>>
     /** "Not now" on the Changes drawer's line-endings notice. */
     dismissLineEndings(projectId: string): Promise<void>
+    /** The git the app runs, once it is set up. */
+    setup(): Promise<GitSetupView | null>
     onProgress(callback: (progress: GitProgress) => void): Unsubscribe
   }
 

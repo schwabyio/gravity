@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { GitSetupView } from '@shared/ipc.js'
 import { problemCounts } from '../consoleLog.js'
 import { useConsoleLog } from '../hooks/useConsoleLog.js'
 import { usePaneWidth } from '../hooks/usePaneWidth.js'
@@ -20,7 +21,8 @@ const ROOM_ABOVE = 220
 /**
  * The status bar along the bottom of the window, and the panel its Console
  * button opens above it, across the whole window. The app's version sits at
- * its right, so which build is running is never a question.
+ * its right, so which build is running is never a question — and beside it,
+ * when the app is not running its own git, which git it runs instead and why.
  *
  * The console listens from the moment the window opens, so whatever ran while
  * the panel was closed is there when it opens. Its own state, not the app's:
@@ -42,6 +44,16 @@ export default function BottomPanel(props: {
   }, [])
   const pane = usePaneWidth('pane.console', 260, 120, Math.max(160, windowHeight - ROOM_ABOVE))
   const { errors, warnings } = useMemo(() => problemCounts(log.entries), [log.entries])
+  const [git, setGit] = useState<GitSetupView | null>(null)
+  useEffect(() => {
+    let live = true
+    void window.desktop.git.setup().then((setup) => {
+      if (live) setGit(setup)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
 
   // Cmd/Ctrl+J opens and closes it.
   useEffect(() => {
@@ -86,7 +98,16 @@ export default function BottomPanel(props: {
             </button>
           </span>
         )}
-        <span className="status-version">v{VERSION}</span>
+        <span className="status-end">
+          {git?.note && (
+            <Tooltip wide text={git.note}>
+              <span className={`status-git${git.version ? '' : ' none'}`} tabIndex={0}>
+                {git.version ? `system git ${git.version}` : 'no git'}
+              </span>
+            </Tooltip>
+          )}
+          <span className="status-version">v{VERSION}</span>
+        </span>
       </footer>
     </>
   )
