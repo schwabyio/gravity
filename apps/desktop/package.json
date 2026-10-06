@@ -7,10 +7,10 @@
   "license": "MIT",
   "main": "./out/main/index.js",
   "scripts": {
-    "predev": "node scripts/check-bundled-git.mjs",
+    "predev": "node scripts/check-bundled-git.mjs && node scripts/install-electron.mjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "prestart": "node scripts/check-bundled-git.mjs",
+    "prestart": "node scripts/check-bundled-git.mjs && node scripts/install-electron.mjs",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test:e2e": "playwright test",

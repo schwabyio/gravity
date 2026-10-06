@@ -60,6 +60,10 @@ jobs:
       - run: npm ci
         env:
           DUGITE_CACHE_DIR: ${{ runner.temp }}/dugite
+      # What npm run dev does first: check the bundled git, then download Electron.
+      # Playwright would download Electron itself, hiding a fresh clone that
+      # cannot start the app, so this runs before it.
+      - run: npm run predev --workspace @schwabyio/gravity-desktop
       # Ubuntu 24.04 stops unprivileged user namespaces, which Electron's sandbox
       # needs; without them it aborts at launch. Allowed here, the sandbox stays on.
       - if: runner.os == 'Linux'

@@ -275,7 +275,8 @@ npm run dev        # start the desktop app
 
 `npm install` also downloads the copy of git that the desktop app bundles, about 60 MB,
 from GitHub's releases. If that download fails, `npm run dev` stops and prints the command
-that downloads it again.
+that downloads it again. The first `npm run dev` also downloads Electron, 120 to 150 MB, from
+GitHub's releases. Behind a proxy, set `HTTPS_PROXY`, or point `ELECTRON_MIRROR` at a mirror.
 
 To put the `gta` built from this repository on your `PATH`, in place of the published
 one:
