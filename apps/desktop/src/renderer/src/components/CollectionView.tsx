@@ -38,6 +38,8 @@ import type { CollectionChanges } from '../stepChanges.js'
 import { fileFindings, findingText, stepFindings } from '../ruleFindings.js'
 
 interface Props {
+  /** Back to the step this file was opened from — a use step's Open — while there is one. */
+  back: { label: string; onBack: () => void } | null
   name: string
   relativePath: string
   /** The collection's file, for "Open in …". */
@@ -364,6 +366,16 @@ export default function CollectionView(props: Props) {
       )}
       <header className="collection-header">
         <div className="collection-title">
+          {props.back && (
+            <button
+              type="button"
+              className="came-from"
+              onClick={props.back.onBack}
+              aria-label={`Back to ${props.back.label}`}
+            >
+              ← {props.back.label}
+            </button>
+          )}
           <div className="collection-name-row">
             <h1 title={props.relativePath}>{props.name}</h1>
             <TagEditor

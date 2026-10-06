@@ -207,6 +207,32 @@ test('a new use step runs another set; each of its requests is shown on its own'
   await expect(page.locator('.scripts-pane .cm-check-mark')).toHaveText(['✓'])
 })
 
+test('Open shows the reusable requests, and the way back finds the step as it was left', async () => {
+  // As the test before leaves it: the orders step selected, its second request shown, run.
+  await page.locator('.use-bar').getByRole('button', { name: 'Open', exact: true }).click()
+  await expect(page.locator('.collection-header h1')).toHaveText('orders')
+  const back = page.getByRole('button', { name: 'Back to flow · step 2 (orders)' })
+  await expect(back).toHaveText('← flow · step 2 (orders)')
+  await stepRow('add to cart').locator('.step-open').click()
+
+  await back.click()
+  await expect(page.locator('.collection-header h1')).toHaveText('flow')
+  await expect(stepRow('Orders')).toHaveClass(/selected/)
+  await expect(page.locator('.use-shown')).toHaveText('Showing 2 of 2 · check out')
+  await expect(stepRow('Orders').locator('.step-head .step-summary')).toHaveText('2 of 2 passed')
+  await expect(page.locator('.test-results')).toContainText('Status is 200')
+  await expect(page.locator('.came-from')).toHaveCount(0)
+
+  // From the sidebar there is no way back to offer, but each file is still as it was left.
+  await page.getByRole('group', { name: 'Reusable requests of shop' }).getByText('orders').click()
+  await expect(page.locator('.collection-header h1')).toHaveText('orders')
+  await expect(page.locator('.came-from')).toHaveCount(0)
+  await expect(stepRow('add to cart')).toHaveClass(/selected/)
+  await page.locator('.collection-row', { hasText: 'Flow' }).click()
+  await expect(stepRow('Orders')).toHaveClass(/selected/)
+  await expect(stepRow('Orders').locator('.step-head .step-summary')).toHaveText('2 of 2 passed')
+})
+
 test('a reusable requests file is made in the app, and given params', async () => {
   await page.getByRole('button', { name: 'Project actions for shop' }).click()
   await page.getByRole('menuitem', { name: 'New reusable requests file' }).click()

@@ -215,10 +215,16 @@ export function useCollectionEditor({
 
   const session = openPath ? (sessions[openPath] ?? null) : null
 
+  /** The step last selected in each file, so coming back to one finds it as it was left. */
+  const selections = useRef<Record<string, string>>({})
+
   // Select the first step once a session is on screen with nothing selected.
   useEffect(() => {
     if (!session) return
-    if (selectedId && locate(session, selectedId)) return
+    if (selectedId && locate(session, selectedId)) {
+      selections.current[session.summary.path] = selectedId
+      return
+    }
     setSelectedId(
       session.ids[0] ?? session.stageIds.setup[0] ?? session.stageIds.teardown[0] ?? null
     )
@@ -473,8 +479,13 @@ export function useCollectionEditor({
     [pendingCount]
   )
 
+  /**
+   * Show a file, at the step last selected in it. Says whether its steps kept
+   * their ids — anything kept by id for it, its results, still belongs — or
+   * were read afresh.
+   */
   const openCollection = useCallback(
-    async (project: ProjectView, summary: CollectionSummary) => {
+    async (project: ProjectView, summary: CollectionSummary): Promise<'kept' | 'fresh'> => {
       // Leaving a collection is a natural moment to save it.
       if (openPath && openPath !== summary.path && autoSave.enabled) void flush(openPath)
 
@@ -496,8 +507,10 @@ export function useCollectionEditor({
         save: { state: 'idle' }
       })
 
+      let ids: 'kept' | 'fresh' = 'kept'
       if (!existing) {
         commit({ ...latest.current, [path]: fresh() })
+        ids = 'fresh'
       } else if (read.source === existing.source) {
         // Coming back to a collection: keep its edits and its ids.
         update(path, (s) => ({
@@ -511,8 +524,12 @@ export function useCollectionEditor({
         update(path, (s) => ({ ...s, summary, conflict: { doc: read.doc, source: read.source } }))
       } else {
         commit({ ...latest.current, [path]: fresh() })
+        ids = 'fresh'
       }
       setOpenPath(path)
+      // A step that is gone gives way to the first, as on a first opening.
+      setSelectedId(selections.current[path] ?? null)
+      return ids
     },
     [openPath, autoSave.enabled, flush, load, update, pendingCount, commit]
   )

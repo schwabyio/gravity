@@ -91,6 +91,32 @@ const nextRunId = (): string => `run-${Date.now()}-${++runCounter}`
 
 const NO_RESULTS: Record<string, RunResult> = {}
 
+/** A file's last results, kept per file: leaving it and coming back finds them. */
+interface FileResults {
+  /**
+   * Last result per step id, so results follow a step when steps move — one
+   * set per data file row (SPEC.md §2.8); a collection without one uses row 0.
+   */
+  rows: Record<number, Record<string, RunResult>>
+  /** Setup and teardown steps' results: they run once, not per row (SPEC.md §2.10). */
+  stages: Record<string, RunResult>
+  summary: CollectionRunSummary | null
+}
+const NO_FILE_RESULTS: FileResults = { rows: {}, stages: {}, summary: null }
+
+/** Where a file opened from a step came from: the way back, while that file is shown. */
+interface CameFrom {
+  /** The file opened. */
+  to: string
+  /** The file it was opened from, and the project it was open in. */
+  from: CollectionSummary
+  projectId: string
+  /** The step selected there: `step 3 (token)`. */
+  step: string
+  /** The request of a use step shown there. */
+  child: number
+}
+
 /** The step ids a run covers, per list, and the list a result with no `stage` is from. */
 interface RunPlan {
   ids: Record<StepList, string[]>
@@ -165,19 +191,23 @@ export default function App() {
   const [previews, setPreviews] = useState<VariablePreviews>({})
 
   const [error, setError] = useState<string | null>(null)
-  /**
-   * Last result per step id, so results follow a step when steps move — one
-   * set per data file row (SPEC.md §2.8); a collection without one uses row 0.
-   */
-  const [rowResults, setRowResults] = useState<Record<number, Record<string, RunResult>>>({})
-  /** Setup and teardown steps' results: they run once, not per row (SPEC.md §2.10). */
-  const [stageResults, setStageResults] = useState<Record<string, RunResult>>({})
+  /** Each file's last results, by its path. */
+  const [resultsByFile, setResultsByFile] = useState<Record<string, FileResults>>({})
+  /** Change one file's results. */
+  const changeFile = useCallback(
+    (path: string | null, change: (current: FileResults) => FileResults) => {
+      if (!path) return
+      setResultsByFile((all) => ({ ...all, [path]: change(all[path] ?? NO_FILE_RESULTS) }))
+    },
+    []
+  )
+  /** The file the run in flight is of: its results go there, whichever file is shown. */
+  const runPath = useRef<string | null>(null)
   /** The row the run in flight started with, for the results it brings back. */
   const runRow = useRef(0)
   /** The step running now; '' while a run is in flight with no step to mark; null when idle. */
   const [runningId, setRunningId] = useState<string | null>(null)
   const [runningAll, setRunningAll] = useState(false)
-  const [summary, setSummary] = useState<CollectionRunSummary | null>(null)
   const activeRunId = useRef<string | null>(null)
   /**
    * The run results belong to: the one in flight, or the last one to finish,
@@ -214,6 +244,13 @@ export default function App() {
 
   const collectionPath = open?.summary.path ?? null
   const activeProject = ws.project(open?.projectId)
+  const {
+    rows: rowResults,
+    stages: stageResults,
+    summary
+  } = (collectionPath && resultsByFile[collectionPath]) || NO_FILE_RESULTS
+  /** Where the open file was opened from, while it is the one shown. */
+  const [cameFrom, setCameFrom] = useState<CameFrom | null>(null)
 
   /* ------------------------------------------------------------- data file */
 
@@ -231,20 +268,21 @@ export default function App() {
   /** The row a single step runs with, and variables preview against. */
   const dataRow =
     collectionPath && rowCount > 0 ? Math.min(rowChoice[collectionPath] ?? 0, rowCount - 1) : 0
+  const chooseRowOf = useCallback((path: string | null, row: number) => {
+    if (!path) return
+    setRowChoice((current) => {
+      const next = { ...current, [path]: row }
+      try {
+        window.localStorage.setItem('data.rows', JSON.stringify(next))
+      } catch {
+        // Only a convenience: without storage, the choice lasts the session.
+      }
+      return next
+    })
+  }, [])
   const chooseRow = useCallback(
-    (row: number) => {
-      if (!collectionPath) return
-      setRowChoice((current) => {
-        const next = { ...current, [collectionPath]: row }
-        try {
-          window.localStorage.setItem('data.rows', JSON.stringify(next))
-        } catch {
-          // Only a convenience: without storage, the choice lasts the session.
-        }
-        return next
-      })
-    },
-    [collectionPath]
+    (row: number) => chooseRowOf(collectionPath, row),
+    [chooseRowOf, collectionPath]
   )
   /** The chosen row as a run takes it; null without a data file (or one that will not read). */
   const dataRowToRun = useMemo(
@@ -263,13 +301,15 @@ export default function App() {
   /** Change one list's results: the run's row for steps, the one set for setup and teardown. */
   const changeResults = useCallback(
     (list: StepList, change: (current: Record<string, RunResult>) => Record<string, RunResult>) =>
-      list === 'steps'
-        ? setRowResults((all) => ({
-            ...all,
-            [runRow.current]: change(all[runRow.current] ?? {})
-          }))
-        : setStageResults(change),
-    []
+      changeFile(runPath.current, (file) =>
+        list === 'steps'
+          ? {
+              ...file,
+              rows: { ...file.rows, [runRow.current]: change(file.rows[runRow.current] ?? {}) }
+            }
+          : { ...file, stages: change(file.stages) }
+      ),
+    [changeFile]
   )
   const rowNames = useMemo(
     () => data.table?.rows.map((values, row) => rowName(row, rowLabel(values))) ?? null,
@@ -403,18 +443,35 @@ export default function App() {
     }
   }, [openWhenListed, ws.state.projects])
 
+  /**
+   * Show a file, as it was left: at its step, with its results. Opened from a
+   * step of the file shown — a use step's Open — it keeps the way back there.
+   */
   const openCollection = useCallback(
-    async (project: ProjectView, collectionSummary: CollectionSummary) => {
+    async (
+      project: ProjectView,
+      collectionSummary: CollectionSummary,
+      from?: CameFrom
+    ): Promise<boolean> => {
+      let ids: 'kept' | 'fresh'
       try {
-        await editor.openCollection(project, collectionSummary)
+        ids = await editor.openCollection(project, collectionSummary)
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
-        return
+        return false
       }
-      setRowResults({})
-      setStageResults({})
-      setSummary(null)
+      // Read afresh, its steps have new ids: results kept by the old ones go.
+      if (ids === 'fresh') {
+        const path = collectionSummary.path
+        setResultsByFile((all) => {
+          if (!(path in all)) return all
+          const { [path]: _gone, ...rest } = all
+          return rest
+        })
+      }
+      setCameFrom(from ?? null)
       setError(null)
+      return true
     },
     [editor]
   )
@@ -770,7 +827,6 @@ export default function App() {
     editor.close()
     setCollectionSettingsOpen(null)
     setDataOpen(false)
-    setSummary(null)
     setError(null)
   }
 
@@ -803,8 +859,6 @@ export default function App() {
 
   /** The row a data run's progress last showed, and a way to show another from the listener. */
   const followedRow = useRef<number | null>(null)
-  const chooseRowRef = useRef(chooseRow)
-  chooseRowRef.current = chooseRow
 
   // Per-step results stream in during a collection run rather than arriving all
   // at once at the end, so the list fills in as it goes.
@@ -828,14 +882,17 @@ export default function App() {
         const row = iteration ? iteration.index - 1 : runRow.current
         if (iteration && row !== followedRow.current) {
           followedRow.current = row
-          chooseRowRef.current(row)
+          chooseRowOf(runPath.current, row)
         }
         if (key) {
-          if (result.stage || plan.list !== 'steps') {
-            setStageResults((all) => ({ ...all, [key]: result }))
-          } else {
-            setRowResults((all) => ({ ...all, [row]: { ...(all[row] ?? {}), [key]: result } }))
-          }
+          changeFile(runPath.current, (file) =>
+            result.stage || plan.list !== 'steps'
+              ? { ...file, stages: { ...file.stages, [key]: result } }
+              : {
+                  ...file,
+                  rows: { ...file.rows, [row]: { ...(file.rows[row] ?? {}), [key]: result } }
+                }
+          )
         }
         const more =
           (result.use && result.use.child < result.use.of - 1) ||
@@ -911,6 +968,7 @@ export default function App() {
     setError(null)
 
     if (!pendingStep || !doc) return
+    runPath.current = collectionPath
     runRow.current = dataRow
     const response = await window.desktop.runStart({
       runId,
@@ -959,6 +1017,8 @@ export default function App() {
           list: 'steps'
         }
       : { ids: { setup: [], steps: chosen, teardown: [] }, list }
+    const path = collectionPath
+    runPath.current = path
     runRow.current = dataRow
     followedRow.current = null
     // Run all with a data file runs every row, as gta does (SPEC.md §2.8).
@@ -972,16 +1032,15 @@ export default function App() {
       return
     }
     if (all) {
-      setRowResults({})
-      setStageResults({})
+      changeFile(path, () => NO_FILE_RESULTS)
     } else {
       // Only these steps' old results go: the rest of the list keeps its own.
       const ids = new Set(chosen)
       changeResults(list, (current) =>
         Object.fromEntries(Object.entries(current).filter(([key]) => !ids.has(stepOfKey(key))))
       )
+      changeFile(path, (file) => ({ ...file, summary: null }))
     }
-    setSummary(null)
     setError(null)
     if (all) setRunningAll(true)
     const plan = runPlan.current.ids
@@ -1007,7 +1066,7 @@ export default function App() {
     setRunningAll(false)
     setRunningId(null)
     if (response.ok) {
-      if (all) setSummary(response.summary)
+      if (all) changeFile(path, (file) => ({ ...file, summary: response.summary }))
     } else setError(response.message)
   }
 
@@ -1144,15 +1203,52 @@ export default function App() {
     if (!project) return
     const endpoints = project.endpointFiles.find((file) => file.path === path)
     const base = project.bases.find((file) => file.path === path)
-    if (endpoints) void openCollection(project, summaryOfFile(endpoints, 'endpoints'))
-    else if (base) void openCollection(project, summaryOfFile(base, 'bases'))
+    if (endpoints) void openCollection(project, summaryOfFile(endpoints, 'endpoints'), here(path))
+    else if (base) void openCollection(project, summaryOfFile(base, 'bases'), here(path))
   }
 
   const openSet = (set: RequestSetView) => {
     const project = activeProject
     if (!project) return
-    void openCollection(project, summaryOfSet(set))
+    void openCollection(project, summaryOfSet(set), here(set.path))
   }
+
+  /** The open file at its selected step: where a file opened from that step comes back to. */
+  const here = (to: string): CameFrom | undefined => {
+    const step = open && doc ? stepsOf(doc, stepList)[stepIndex] : undefined
+    if (!open || !step) return undefined
+    const where = stepList === 'steps' ? 'step' : `${stepList} step`
+    return {
+      to,
+      from: open.summary,
+      projectId: open.projectId,
+      step: `${where} ${stepIndex + 1} (${stepLabel(step)})`,
+      child: shownChild
+    }
+  }
+
+  /** The way back, while the file opened is shown and the one it came from is still there. */
+  const backProject = cameFrom ? ws.project(cameFrom.projectId) : undefined
+  const back =
+    cameFrom &&
+    backProject &&
+    collectionPath === cameFrom.to &&
+    [
+      backProject.collections,
+      backProject.requestSets,
+      backProject.endpointFiles,
+      backProject.bases
+    ].some((files) => files.some((file) => file.path === cameFrom.from.path))
+      ? {
+          label: `${cameFrom.from.name} · ${cameFrom.step}`,
+          onBack: async () => {
+            // The request the use step showed, once its step is selected again.
+            askedChild.current = cameFrom.child
+            if (!(await openCollection(backProject, cameFrom.from))) askedChild.current = null
+          }
+        }
+      : null
+
   // Where the selected step's last run stopped in one of the collection's scripts.
   const failed = selectedResult?.error?.script === 'collection' ? selectedResult.error : null
   const collectionErrorLines = {
@@ -1359,6 +1455,7 @@ export default function App() {
             <main className="workbench">
               {open && doc ? (
                 <CollectionView
+                  back={back}
                   name={open.summary.name}
                   relativePath={open.summary.relativePath}
                   path={open.summary.path}

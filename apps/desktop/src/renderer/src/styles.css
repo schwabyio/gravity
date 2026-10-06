@@ -1602,6 +1602,25 @@ button:disabled {
   min-width: 0;
 }
 
+/* Back to the step a file was opened from, above the name of the file it opened. */
+.came-from {
+  display: block;
+  max-width: 100%;
+  margin: 0 0 4px;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.came-from:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
 .collection-title h1 {
   margin: 0;
   font-size: 16px;
