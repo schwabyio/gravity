@@ -227,7 +227,7 @@ export function registerIpc(projects: ProjectService): void {
           isInside(project.path, target) ||
           (project.global !== null && isInside(project.global.path, target))
       )
-    await Promise.all(owners.map((project) => projects.refresh(project.id)))
+    await Promise.all(owners.map((project) => projects.listed(project.id)))
   }
 
   /**

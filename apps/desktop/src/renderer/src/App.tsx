@@ -408,20 +408,25 @@ export default function App() {
   )
   const flagValues = flags.view?.values ?? null
 
-  // A renamed environment stays chosen: follow its file to its new name.
-  const chosenFile = useRef<string | null>(null)
+  // A renamed environment stays chosen: follow its file to its new name. Only
+  // the file of this project's choice, and only once it has been listed: a
+  // choice not listed yet (one just made) is not a rename of the one before.
+  const chosenFile = useRef<{ projectId: string; path: string } | null>(null)
   useEffect(() => {
+    if (!projectId) return
     if (selectedEnvironmentPath) {
-      chosenFile.current = selectedEnvironmentPath
+      chosenFile.current = { projectId, path: selectedEnvironmentPath }
       return
     }
-    const renamed = environments.find((env) => env.path === chosenFile.current)
+    const chosen = chosenFile.current?.projectId === projectId ? chosenFile.current.path : null
+    const renamed = environments.find((env) => env.path === chosen)
     if (selectedEnvironment && renamed) chooseEnvironment(renamed.name)
     // Only when the list or the choice moves.
   }, [environments, selectedEnvironment, selectedEnvironmentPath])
 
   const chooseEnvironment = (environment: string | null) => {
     if (!projectId) return
+    chosenFile.current = null
     setEnvOverride((current) => ({ ...current, [projectId]: environment }))
     void window.desktop.projects.selectEnvironment(projectId, environment)
   }

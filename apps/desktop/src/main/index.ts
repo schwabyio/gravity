@@ -80,9 +80,16 @@ app.whenReady().then(async () => {
   createWindow()
 
   // Reading projects touches the filesystem and git, so it happens after the
-  // window is up rather than delaying first paint.
-  const git = await setupGit()
-  if (git.note) console.warn(git.note)
+  // window is up rather than delaying first paint. git is set up alongside,
+  // not first: on Windows that can take seconds, and listing each project
+  // from its files need not wait for it.
+  const git = setupGit()
+  void git.then(
+    (setup) => {
+      if (setup.note) console.warn(setup.note)
+    },
+    (cause) => console.warn('git could not be set up:', cause)
+  )
   projects.setGit(git)
   await projects.init()
 

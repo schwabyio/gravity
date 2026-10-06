@@ -157,16 +157,38 @@ export class ProjectService {
   private readonly projectListeners = new Set<ProjectListener>()
   private readonly stateListeners = new Set<StateListener>()
   private readonly progressListeners = new Set<ProgressListener>()
+  /** Whether git can be run: null until it is set up. */
   private gitAvailable: boolean | null = null
   private git: GitSetup | null = null
+  /** Settled once git is set up (see `gitSettled`). */
+  private gitReady: Promise<void> | null = null
 
   constructor(private readonly options: ProjectServiceOptions) {
     this.registry = new WorkspaceRegistry(options.registryFile)
   }
 
-  /** The git in use, from `setupGit` at startup. */
-  setGit(setup: GitSetup): void {
-    this.git = setup
+  /**
+   * The git in use, from `setupGit` at startup, while it is still being set
+   * up: on Windows that can take seconds, and projects are listed from their
+   * files meanwhile. Only git waits for it.
+   */
+  setGit(setup: Promise<GitSetup>): void {
+    this.gitReady = setup.then(
+      (git) => {
+        this.git = git
+        this.gitAvailable = git.version !== null
+      },
+      () => {
+        this.gitAvailable = false
+      }
+    )
+  }
+
+  /** Wait for git to be set up — or, with none given as in tests, for the git on PATH to answer. */
+  private gitSettled(): Promise<void> {
+    return (this.gitReady ??= gitVersion().then((version) => {
+      this.gitAvailable = version !== null
+    }))
   }
 
   onProgress(listener: ProgressListener): () => void {
@@ -194,17 +216,16 @@ export class ProjectService {
   }
 
   async init(): Promise<WorkspacesState> {
-    this.gitAvailable = (await gitVersion()) !== null
     await this.registry.load()
     await Promise.all(this.registry.projects().map(({ entry }) => this.refresh(entry.id)))
     return this.state()
   }
 
   /**
-   * The state once the registry is read, for a window asking as it opens. That
-   * is before `init`, which waits on git first — slow to start on Windows —
-   * and asked earlier, the answer would be a placeholder workspace that the
-   * file replaces, so + Project would fail with "Unknown workspace".
+   * The state once the registry is read, for a window asking as it opens,
+   * perhaps before `init` has read it. Asked earlier, the answer would be a
+   * placeholder workspace that the file replaces, so + Project would fail
+   * with "Unknown workspace".
    */
   async loadedState(): Promise<WorkspacesState> {
     await this.registry.load()
@@ -331,9 +352,11 @@ export class ProjectService {
   /**
    * Refresh a project, and resolve as soon as it can be listed: its files read,
    * whether or not git has answered yet. git, slow to start on Windows, fills
-   * in what it says when it does.
+   * in what it says when it does. What changes a project's files waits for
+   * this, never for git: on Windows that would hold up each action for
+   * seconds.
    */
-  private listed(id: string): Promise<ProjectView | null> {
+  listed(id: string): Promise<ProjectView | null> {
     return new Promise((resolve, reject) => {
       this.refresh(id, resolve).then(resolve, reject)
     })
@@ -378,6 +401,7 @@ export class ProjectService {
     url: string,
     parentDir: string
   ): Promise<{ folder: string; added: string[] }> {
+    await this.gitSettled()
     if (this.gitAvailable === false) throw new Error('git is not available, so cloning is not')
     const parent = path.resolve(parentDir)
     const target = path.join(parent, defaultCloneName(url))
@@ -529,7 +553,7 @@ export class ProjectService {
   /** Re-read every project in a folder: a folder can be a project in more than one workspace. */
   private async refreshAt(root: string): Promise<void> {
     const views = [...this.views.values()].filter((view) => samePath(view.path, root))
-    await Promise.all(views.map((view) => this.refresh(view.id)))
+    await Promise.all(views.map((view) => this.listed(view.id)))
   }
 
   /** Give a collection a new id: its file and its data file renamed, and its `id:` rewritten. */
@@ -623,16 +647,26 @@ export class ProjectService {
     this.views.delete(id)
   }
 
+  /**
+   * Choose the environment for a project's runs. Only the choice changes, so
+   * the project is not read again — nor git asked, slow on Windows — and its
+   * view goes out as it is, with the choice. A refresh shows the choice as it
+   * is when it shows its view, so one begun before cannot undo it.
+   */
   async selectEnvironment(id: string, environment: string | null): Promise<void> {
     await this.registry.selectEnvironment(id, environment)
-    await this.refresh(id)
+    const view = this.views.get(id)
+    if (!view) return
+    const chosen = { ...view, selectedEnvironment: environment }
+    this.views.set(id, chosen)
+    this.emitProject(chosen)
   }
 
   async createDirectory(id: string, name: string): Promise<string> {
     const view = this.required(id)
     obey(newFolderProblem(view.rules, name.trim()))
     const directory = await createDirectory(view.path, name)
-    await this.refresh(id)
+    await this.listed(id)
     return directory
   }
 
@@ -640,7 +674,7 @@ export class ProjectService {
   async addAgentsSection(id: string): Promise<void> {
     const view = this.required(id)
     await addAgentsSection(view.path)
-    await this.refresh(id)
+    await this.listed(id)
   }
 
   async createCollection(
@@ -653,7 +687,7 @@ export class ProjectService {
     const home = LIBRARY_HOMES[kind]
     obey(placeProblem(view.rules, home, name.trim(), home === COLLECTIONS_DIR ? directory : null))
     const created = await createCollectionFile(view.path, directory, name, kind)
-    await this.refresh(id)
+    await this.listed(id)
     return created.path
   }
 
@@ -672,7 +706,7 @@ export class ProjectService {
     const view = this.required(id)
     if (target === 'project') {
       const outcome = await applyProjectEdits(view.path, baseSource, edits)
-      if (outcome.ok && outcome.wrote) await this.refresh(id)
+      if (outcome.ok && outcome.wrote) await this.listed(id)
       return outcome
     }
 
@@ -687,7 +721,7 @@ export class ProjectService {
       const sharing = [...this.views.values()].filter(
         (other) => other.global !== null && samePath(other.global.path, root)
       )
-      await Promise.all(sharing.map((other) => this.refresh(other.id)))
+      await Promise.all(sharing.map((other) => this.listed(other.id)))
     }
     return outcome
   }
@@ -712,7 +746,7 @@ export class ProjectService {
    * Nor does one begun before another that has already shown its view: begun
    * later, that one read what it read later, while git can keep the earlier
    * one waiting for seconds on Windows. Shown after it, the older view would
-   * undo what it showed — a collection just made, the environment just chosen.
+   * undo what it showed — a collection or an environment just made, say.
    * Such a refresh resolves to the view shown instead of its own.
    */
   async refresh(
@@ -853,19 +887,25 @@ export class ProjectService {
       })),
       // Kept even when no environment has that name any more: the renderer
       // follows a renamed file to its new name, and shows a lost one as unset.
+      // Taken again as each view is shown (`chosen`), so a choice made since
+      // the files were read is in it.
       selectedEnvironment: entry.selectedEnvironment,
       autoFetchSeconds: entry.autoFetchSeconds,
       rules: rules.view,
       findings: rules.findings
     }
+    const chosen = () => ({ selectedEnvironment: entry.selectedEnvironment })
 
-    const answered = await within(reading, GIT_PATIENCE)
+    // While git is still being set up, at startup, the files do not wait for it at all.
+    const answered =
+      this.gitAvailable === null && !entry.scratch ? null : await within(reading, GIT_PATIENCE)
     if (stale()) return null
     if (!answered) {
       // Listed from its files, with what git said last, until it answers.
       const before = this.views.get(id)
       const shown: ProjectView = {
         ...files,
+        ...chosen(),
         isRepo: before?.isRepo ?? false,
         repoRoot: before?.repoRoot ?? null,
         git: before?.git ?? null,
@@ -883,6 +923,7 @@ export class ProjectService {
     if (stale()) return null
     const view: ProjectView = {
       ...files,
+      ...chosen(),
       isRepo: repo !== null,
       repoRoot: repo?.root ?? null,
       git,
@@ -902,6 +943,7 @@ export class ProjectService {
   private async readRepo(
     projectPath: string
   ): Promise<{ repo: GitRepo | null; git: GitStatusView | null; gitNote: string | null }> {
+    await this.gitSettled()
     const repo = this.gitAvailable === false ? null : await GitRepo.open(projectPath)
     return { repo, ...(await this.readGit(repo, projectPath)) }
   }
@@ -1036,12 +1078,12 @@ export class ProjectService {
   }
 
   async pull(projectId: string): Promise<{ outcome: PullOutcome; message: string }> {
-    this.assertWritable()
+    await this.assertWritable()
     return this.withRepo(projectId, (repo) => repo.pull())
   }
 
   async push(projectId: string, remote: string | null): Promise<{ message: string }> {
-    this.assertWritable()
+    await this.assertWritable()
     return this.withRepo(projectId, (repo) => repo.push({ remote }))
   }
 
@@ -1106,7 +1148,7 @@ export class ProjectService {
     paths: string[],
     message: string
   ): Promise<{ oid: string; shortOid: string }> {
-    this.assertWritable()
+    await this.assertWritable()
     return this.withRepo(projectId, async (repo) => {
       const changed = new Map((await repo.status()).files.map((file) => [file.path, file]))
       const selected = new Set<string>()
@@ -1125,7 +1167,7 @@ export class ProjectService {
 
   /** Put one file back as the last commit has it; the version on disk goes to the Trash. */
   async discard(projectId: string, repoPath: string): Promise<void> {
-    this.assertWritable()
+    await this.assertWritable()
     await this.withRepo(projectId, async (repo) => {
       const file = await changedFile(repo, repoPath)
       await repo.discard(file, async (absolute) => {
@@ -1150,12 +1192,12 @@ export class ProjectService {
   }
 
   async createBranch(projectId: string, name: string): Promise<void> {
-    this.assertWritable()
+    await this.assertWritable()
     await this.withRepo(projectId, (repo) => repo.createBranch(name))
   }
 
   async switchBranch(projectId: string, name: string, remote: string | null): Promise<void> {
-    this.assertWritable()
+    await this.assertWritable()
     await this.withRepo(projectId, (repo) => repo.switchBranch(name, remote))
   }
 
@@ -1166,6 +1208,7 @@ export class ProjectService {
   /** Whether git keeps this project's files LF, and which it stores CRLF. */
   async lineEndings(projectId: string): Promise<LineEndingsView> {
     const view = this.required(projectId)
+    await this.gitSettled()
     const repo = await GitRepo.open(view.path)
     if (!repo) {
       return { isRepo: false, covered: false, hasBlock: false, crlfFiles: [], block: LF_BLOCK }
@@ -1199,7 +1242,8 @@ export class ProjectService {
   }
 
   /** Writes need a git that reads paths from a file and config from the environment. */
-  private assertWritable(): void {
+  private async assertWritable(): Promise<void> {
+    await this.gitSettled()
     if (this.git && !this.git.bundled && !gitAtLeast(this.git.version, 2, 31)) {
       throw new Error(
         `git ${this.git.version ?? '(unknown)'} is too old to commit from the app: 2.31 or later is needed.`
@@ -1210,6 +1254,7 @@ export class ProjectService {
   private async repoFor(projectId: string): Promise<GitRepo> {
     const found = this.registry.project(projectId)
     if (!found) throw new Error('Unknown project')
+    await this.gitSettled()
     const repo = await GitRepo.open(found.entry.path)
     if (!repo) throw new Error('Not a git repository')
     return repo

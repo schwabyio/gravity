@@ -38,9 +38,11 @@ export class DirectoryWatcher {
   /**
    * Watch a set of directories under one key. Re-calling with the same key
    * replaces what is watched, which is how a rescan picks up new collections.
+   * A rescan already due still happens: the change behind it may have come
+   * after the rescan now replacing the watch read the files.
    */
   watch(key: string, targets: Array<string | WatchTarget>): void {
-    this.unwatch(key)
+    this.close(key)
 
     const created: FSWatcher[] = []
     for (const target of targets) {
@@ -69,11 +71,16 @@ export class DirectoryWatcher {
     )
   }
 
+  /** Stop watching under a key, and drop any rescan due for it. */
   unwatch(key: string): void {
-    for (const watcher of this.watchers.get(key) ?? []) watcher.close()
-    this.watchers.delete(key)
+    this.close(key)
     clearTimeout(this.timers.get(key))
     this.timers.delete(key)
+  }
+
+  private close(key: string): void {
+    for (const watcher of this.watchers.get(key) ?? []) watcher.close()
+    this.watchers.delete(key)
   }
 
   dispose(): void {
