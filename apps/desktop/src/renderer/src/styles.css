@@ -24,6 +24,11 @@
   --m-options: #3f5f80;
   --m-use: #b0287a;
   --m-read: #8a5a2b;
+  /* Find in the response body: every match, and the current one stronger. */
+  --find-hit: #fbe38e;
+  --find-hit-text: #16181d;
+  --find-current: #f5a623;
+  --find-current-text: #16181d;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -50,6 +55,10 @@
     --m-options: #8fb4dc;
     --m-use: #ff7ac0;
     --m-read: #d9a066;
+    --find-hit: #6b5310;
+    --find-hit-text: #e6e8ee;
+    --find-current: #f2b84b;
+    --find-current-text: #11131a;
   }
 }
 
@@ -2794,7 +2803,24 @@ button.status-pill.focused {
 }
 
 .tab-body.body-tab {
+  display: flex;
+  flex-direction: column;
   padding: 0;
+}
+
+/* The body scrolls under its bars, either way — a long line scrolls it sideways — and the
+   bars stay put. */
+.body-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.body-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .body-view .code {
@@ -2827,10 +2853,13 @@ button.status-pill.focused {
   background-size: 16px 16px;
 }
 
+/* The As checked / Raw switch and the find bar. */
+.body-bars {
+  flex: none;
+  background: var(--surface);
+}
+
 .body-mode {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -2857,6 +2886,76 @@ button.status-pill.focused {
   margin-left: 6px;
   color: var(--text-dim);
   font-size: 11px;
+}
+
+/* Find in the response body (⌘F). */
+.find-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px 5px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.find-bar input {
+  flex: 1;
+  min-width: 80px;
+  max-width: 280px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.find-bar button {
+  flex: none;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 5px;
+  border-color: transparent;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.find-bar button:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--surface-alt);
+  color: var(--text);
+}
+
+.find-bar .find-case[aria-pressed='true'],
+.find-bar .find-case[aria-pressed='true']:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+}
+
+.find-bar .find-close {
+  font-size: 16px;
+}
+
+.find-count {
+  margin: 0 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.find-count.none {
+  color: var(--client);
+}
+
+mark.find-hit {
+  border-radius: 2px;
+  background: var(--find-hit);
+  color: var(--find-hit-text);
+}
+
+mark.find-hit.current {
+  background: var(--find-current);
+  color: var(--find-current-text);
+  box-shadow: 0 0 0 1px var(--find-current);
 }
 
 .response-headers tr.linked {

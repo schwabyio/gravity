@@ -19,6 +19,7 @@ import { usePaneShare, usePaneWidth } from '../hooks/usePaneWidth.js'
 import Resizer from './Resizer.js'
 import { useStoredFlag } from '../hooks/useStoredFlag.js'
 import { buildChecks, tabFor } from '../testLinks.js'
+import { NO_FIND, findKey, searchable, type FindState } from '../bodyFind.js'
 import SettingsTab from './SettingsTab.js'
 import InheritedHeaders from './InheritedHeaders.js'
 import KeyValueEditor from './KeyValueEditor.js'
@@ -194,6 +195,35 @@ export default function RequestView(props: Props) {
     setJumpedPath(path)
     setResponseTab('body')
   }
+
+  // ⌘F (Ctrl+F off a Mac) finds in the response body, showing the response at its Body tab
+  // if need be. What was looked for is kept from one response, and one step, to the next.
+  const [find, setFind] = useState<FindState>(NO_FIND)
+  const [findAsked, setFindAsked] = useState(0)
+  const findInput = useRef<HTMLInputElement>(null)
+  const findable = result?.response ? searchable(result.response) : false
+  useEffect(() => {
+    if (!findable) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      // CodeMirror finds in its own editor, and a drawer or App settings open over the
+      // response is left alone.
+      if (event.defaultPrevented || findKey(event) !== 'open') return
+      if (document.querySelector('[role="dialog"]')) return
+      event.preventDefault()
+      setResponseHidden(false)
+      setResponseTab('body')
+      setFind((find) => ({ ...find, open: true }))
+      setFindAsked((asked) => asked + 1)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [findable])
+  // Once the bar is there: ⌘F again selects what it holds, to type over.
+  useEffect(() => {
+    if (findAsked === 0) return
+    findInput.current?.focus()
+    findInput.current?.select()
+  }, [findAsked])
 
   useEffect(() => {
     const measure = () => setRoom(measureRoom())
@@ -504,6 +534,9 @@ export default function RequestView(props: Props) {
               onPick={pick}
               live={props.live ?? null}
               {...(props.onStop ? { onStop: props.onStop } : {})}
+              find={find}
+              onFind={(changes) => setFind((find) => ({ ...find, ...changes }))}
+              findInput={findInput}
             />
           </section>
         ) : hasResponse ? (
