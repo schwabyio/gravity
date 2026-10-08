@@ -2550,10 +2550,6 @@ body.resizing.resizing-rows * {
 
 /* ---------- panes beside the response: strips, tests ---------- */
 
-.panes {
-  --strip: 28px;
-}
-
 /* A collapsed pane: a slim bar you click to bring it back. */
 .pane-strip {
   display: flex;

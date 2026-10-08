@@ -20,9 +20,14 @@ export interface PaneWidth {
  * per-viewer convenience, not state anything else reads, and it must not be
  * something a missing file or a failed write can break. Every access is guarded,
  * because storage can be unavailable and the pane still has to render.
+ *
+ * `max` can follow the room there is. The width asked for is kept as asked:
+ * less room narrows the pane for as long as it lasts, and it is back at that
+ * width once there is room again.
  */
 export function usePaneWidth(key: string, initial: number, min: number, max: number): PaneWidth {
-  const [width, setStored] = useState(() => clamp(read(key) ?? initial, min, max))
+  const [stored, setStored] = useState(() => read(key) ?? initial)
+  const width = clamp(stored, min, max)
 
   const setWidth = useCallback(
     (next: number) => {

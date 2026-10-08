@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { LogEntry, RunError, RunResult } from '@schwabyio/gravity-core/model'
 import type { StepList } from '@schwabyio/gravity-core/model'
 import type { CheckFileView, EditorTarget } from '@shared/ipc.js'
@@ -109,10 +109,14 @@ export default function ScriptsPane(props: Props) {
     () => checkLines(result?.assertions ?? [], props.use ? 'use' : 'step', result?.ignored),
     [result, props.use]
   )
+  // A drag starts from the width laid out: the room beside the pane is measured a frame
+  // after it changes, and the width it was given can lag it until then.
+  const section = useRef<HTMLElement>(null)
+  const pane = { ...props.pane, measure: () => section.current?.offsetWidth ?? props.pane.width }
 
   return (
-    <section className="scripts-pane" aria-label="Scripts">
-      <Resizer pane={props.pane} label="Resize the scripts pane" edge="left" />
+    <section className="scripts-pane" aria-label="Scripts" ref={section}>
+      <Resizer pane={pane} label="Resize the scripts pane" edge="left" />
       <PaneHead
         title="Scripts"
         hide={{

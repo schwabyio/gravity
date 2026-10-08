@@ -24,6 +24,8 @@ const stepsHandle = () => page.getByRole('separator', { name: 'Resize the steps 
 const requestPane = () => page.locator('.request-pane')
 const responsePane = () => page.locator('.panes > section.pane:not(.request-pane)')
 const requestHandle = () => page.getByRole('separator', { name: 'Resize the request pane' })
+const scriptsPane = () => page.locator('.scripts-pane')
+const scriptsHandle = () => page.getByRole('separator', { name: 'Resize the scripts pane' })
 
 const widthOf = async (locator: ReturnType<typeof sidebar>) => (await locator.boundingBox())!.width
 
@@ -188,4 +190,41 @@ test('every width survives a restart', async () => {
   await expect(page.getByRole('button', { name: 'Show the scripts' })).toBeVisible()
   await sendUnanswered()
   expect(await widthOf(requestPane())).toBeCloseTo(requestWidth, -1)
+})
+
+test('the scripts pane drags as far left as the request and response leave room for', async () => {
+  // Both the request editor and the response open, beside the most room the window has.
+  await page.getByRole('button', { name: 'Show the scripts' }).click()
+  await sidebarHandle().focus()
+  await page.keyboard.press('Home')
+  await stepsHandle().focus()
+  await page.keyboard.press('Home')
+
+  // Each keeps its least, room for its name and Hide; the scripts pane takes the rest.
+  await drag(scriptsHandle(), -3000)
+  expect(await widthOf(requestPane())).toBeCloseTo(120, -1)
+  expect(await widthOf(responsePane())).toBeCloseTo(120, -1)
+  const widest = await widthOf(scriptsPane())
+  expect(widest).toBeCloseTo((await widthOf(page.locator('.panes'))) - 240, -1)
+  expect(Number(await scriptsHandle().getAttribute('aria-valuemax'))).toBeCloseTo(widest, -1)
+
+  // Less room narrows it, and it is back at its width when the room is: a frame after
+  // the room changes, once it is measured.
+  const scriptsWidth = () => widthOf(scriptsPane())
+  await drag(stepsHandle(), 100)
+  await expect.poll(scriptsWidth).toBeCloseTo(widest - 100, -1)
+  expect(await widthOf(requestPane())).toBeCloseTo(120, -1)
+  await drag(stepsHandle(), -100)
+  await expect.poll(scriptsWidth).toBeCloseTo(widest, -1)
+
+  // A drag moves it from where it is, not from the width it was given.
+  await drag(stepsHandle(), 100)
+  await expect.poll(scriptsWidth).toBeCloseTo(widest - 100, -1)
+  await drag(scriptsHandle(), 40)
+  await expect.poll(scriptsWidth).toBeCloseTo(widest - 140, -1)
+
+  await scriptsHandle().dblclick()
+  expect(await widthOf(scriptsPane())).toBe(380)
+  await stepsHandle().dblclick()
+  await sidebarHandle().dblclick()
 })

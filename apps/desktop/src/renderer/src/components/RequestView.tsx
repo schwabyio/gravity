@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CheckFileView, EndpointView, LibraryFileView, RequestSetView } from '@shared/ipc.js'
 import {
   findEndpoint,
@@ -45,6 +45,12 @@ type RequestTab = 'params' | 'headers' | 'body' | 'settings'
 
 /** The least an open request or response pane is given: room for its head, name and Hide. */
 const PANE_LEAST = 120
+
+/** A hidden pane, a slim bar its name runs down. */
+const STRIP = 28
+
+/** The least the scripts pane is given, however wide it was dragged. */
+const SCRIPTS_LEAST = 260
 
 interface Props {
   request: EditorState
@@ -122,7 +128,9 @@ export default function RequestView(props: Props) {
   // Hidden by hand until shown again by hand, whatever comes back meanwhile.
   const [responseHidden, setResponseHidden] = useState(false)
   const [scriptsHidden, setScriptsHidden] = useStoredFlag('pane.scripts.hidden')
-  const scriptsPane = usePaneWidth('pane.scripts', 380, 260, 720)
+  // The room all three share, for how far left the scripts pane can be dragged.
+  const panesEl = useRef<HTMLDivElement>(null)
+  const [panesRoom, setPanesRoom] = useState(0)
 
   // The request editor and the response split their room by a share the divider between
   // them sets: measured, since the steps pane and the test results pane take theirs first.
@@ -152,6 +160,18 @@ export default function RequestView(props: Props) {
     result !== null || props.running || props.error !== null || (props.live ?? null) !== null
   const responseShown = hasResponse && !responseHidden
   const editorShown = requestOpen || !responseShown
+  // As wide as the window lets it be: all the room but what the request editor and the
+  // response need beside it, each its least, or its strip.
+  const beside = [editorShown, responseShown].reduce(
+    (room, shown) => room + (shown ? PANE_LEAST : STRIP),
+    0
+  )
+  const scriptsPane = usePaneWidth(
+    'pane.scripts',
+    380,
+    SCRIPTS_LEAST,
+    Math.max(SCRIPTS_LEAST, panesRoom - beside)
+  )
   const collapseEditor = () => {
     setRequestOpen(false)
     setPinnedOpen(false)
@@ -225,6 +245,17 @@ export default function RequestView(props: Props) {
     findInput.current?.select()
   }, [findAsked])
 
+  // Measured before the first paint, or the scripts pane would show at its least until it was.
+  useLayoutEffect(() => {
+    const element = panesEl.current
+    if (!element) return
+    const measure = () => setPanesRoom(element.clientWidth)
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    measure()
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(() => {
     const measure = () => setRoom(measureRoom())
     const observer = new ResizeObserver(measure)
@@ -241,9 +272,9 @@ export default function RequestView(props: Props) {
   // the width it was given where there is room, gives way down to its least first.
   const open = (share: number) => `minmax(${PANE_LEAST}px, ${share}fr)`
   const columns = [
-    !editorShown ? 'var(--strip)' : open(both ? requestPane.share : 1),
-    !responseShown ? 'var(--strip)' : open(both ? 1 - requestPane.share : 1),
-    scriptsHidden ? 'var(--strip)' : `minmax(${scriptsPane.min}px, ${scriptsPane.width}px)`
+    !editorShown ? `${STRIP}px` : open(both ? requestPane.share : 1),
+    !responseShown ? `${STRIP}px` : open(both ? 1 - requestPane.share : 1),
+    scriptsHidden ? `${STRIP}px` : `minmax(${scriptsPane.min}px, ${scriptsPane.width}px)`
   ].join(' ')
   const { request } = props
 
@@ -356,7 +387,7 @@ export default function RequestView(props: Props) {
         />
       )}
 
-      <div className="panes" style={{ gridTemplateColumns: columns }}>
+      <div className="panes" ref={panesEl} style={{ gridTemplateColumns: columns }}>
         {!editorShown ? (
           <button
             type="button"

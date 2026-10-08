@@ -82,8 +82,8 @@ export default function ConsolePanel({ log, pane, onClose }: Props) {
     <section
       className="console-panel"
       aria-label="Console"
-      // A height chosen in a taller window, kept, but not past what this one allows.
-      style={{ height: Math.min(pane.width, pane.max) }}
+      // A height chosen in a taller window is kept, but not past what this one allows.
+      style={{ height: pane.width }}
     >
       <Resizer pane={pane} label="Resize the console" edge="top" />
       <div className="console-head">
