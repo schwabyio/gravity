@@ -550,6 +550,46 @@ const theme = EditorView.theme({
   '.cm-completionDetail': { color: 'var(--text-dim)', fontStyle: 'normal', marginLeft: '6px' },
   '.cm-completionInfo': { maxWidth: '320px', padding: '6px 8px', fontSize: '12px' },
   '.cm-panels': { backgroundColor: 'var(--surface-alt)', color: 'var(--text)' },
+  '.cm-panels-top': { borderBottom: '1px solid var(--border)' },
+  '.cm-panels-bottom': { borderTop: '1px solid var(--border)' },
+  // ⌘F's search panel. CodeMirror's own fields and buttons are for a light page: white,
+  // and light grey, under the dark mode's light text.
+  '.cm-textfield': {
+    padding: '3px 8px',
+    border: '1px solid var(--border)',
+    borderRadius: '4px',
+    backgroundColor: 'var(--surface)',
+    color: 'var(--text)',
+    fontSize: '12px'
+  },
+  '.cm-button': {
+    padding: '3px 10px',
+    border: '1px solid var(--border)',
+    borderRadius: '4px',
+    backgroundColor: 'var(--surface)',
+    backgroundImage: 'none',
+    color: 'var(--text)',
+    fontSize: '12px'
+  },
+  '.cm-button:hover': { borderColor: 'var(--accent)' },
+  '.cm-button:active': {
+    backgroundColor: 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
+    backgroundImage: 'none'
+  },
+  '.cm-panel.cm-search label': { color: 'var(--text)', fontSize: '12px' },
+  '.cm-panel.cm-search input[type=checkbox]': { accentColor: 'var(--accent)' },
+  '.cm-panel.cm-search [name=close]': {
+    color: 'var(--text-dim)',
+    fontSize: '16px',
+    cursor: 'pointer'
+  },
+  '.cm-panel.cm-search [name=close]:hover': { color: 'var(--text)' },
+  // Matches as the response body's find marks them.
+  '.cm-searchMatch': { backgroundColor: 'var(--find-hit)', borderRadius: '2px' },
+  '.cm-searchMatch-selected, .cm-searchMatch-selected span': {
+    backgroundColor: 'var(--find-current)',
+    color: 'var(--find-current-text)'
+  },
   '.cm-diagnostic': { fontFamily: 'var(--mono)', fontSize: '11px', padding: '4px 8px' },
   '.cm-diagnostic-error': { borderLeftColor: 'var(--client)' },
   '.cm-diagnostic-warning': { borderLeftColor: 'var(--redirect)' },

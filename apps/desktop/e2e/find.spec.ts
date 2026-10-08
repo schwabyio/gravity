@@ -187,6 +187,46 @@ test('⌘F in a script editor is CodeMirror’s own search, not the body’s', a
   await page.keyboard.press('Escape')
 })
 
+test('the script editor’s search reads clearly in dark mode', async () => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.locator('.scripts-pane').getByRole('textbox', { name: 'Tests' }).click()
+  await page.keyboard.press('ControlOrMeta+f')
+  const controls = page.locator('.scripts-pane .cm-search').locator('.cm-textfield, .cm-button')
+  await expect(controls).toHaveCount(7)
+  // Each field and button's text against what is behind it: WCAG's 4.5:1 for text.
+  const contrasts = await controls.evaluateAll((elements) => {
+    // Run in the page, where `globalThis` is its window.
+    type Style = { color: string; backgroundColor: string; backgroundImage: string }
+    const { getComputedStyle } = globalThis as unknown as {
+      getComputedStyle: (element: unknown) => Style
+    }
+    const channels = (color: string) =>
+      color
+        .match(/[\d.]+/g)!
+        .slice(0, 3)
+        .map(Number)
+    const luminance = (color: string) => {
+      const [r, g, b] = channels(color).map((value) => {
+        const c = value / 255
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+      })
+      return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+    }
+    return elements.map((element) => {
+      const style = getComputedStyle(element)
+      // A gradient behind the text, CodeMirror's own, cannot be read off: count it as none.
+      if (style.backgroundImage !== 'none') return 1
+      const [light, dark] = [luminance(style.color), luminance(style.backgroundColor)].sort(
+        (a, b) => b - a
+      )
+      return (light! + 0.05) / (dark! + 0.05)
+    })
+  })
+  for (const contrast of contrasts) expect(contrast).toBeGreaterThanOrEqual(4.5)
+  await page.keyboard.press('Escape')
+  await page.emulateMedia({ colorScheme: null })
+})
+
 test('finds in Raw as in As checked, each in what it shows', async () => {
   await openStep('get xml')
   await page.keyboard.press('ControlOrMeta+f')
