@@ -132,7 +132,8 @@ describe('htmlReport', () => {
     expect(summary.indexOf('Total Run Time')).toBeLessThan(summary.indexOf('Results Overview'))
     expect(summary).toContain('<h2>Results Overview</h2>')
     expect(summary).toContain('<th>Collection ID</th>')
-    expect(summary).toContain('<a href="smoke.html">smoke</a>')
+    // Each collection's page opens in a tab of its own, the summary left where it was.
+    expect(summary).toContain('<a href="smoke.html" target="_blank" rel="noopener">smoke</a>')
     expect(summary).toContain('data-hide="passed" aria-pressed="true"')
     // A search box narrows the rows, matched on each one's id.
     expect(summary).toContain('placeholder="Search collections"')
@@ -195,7 +196,7 @@ describe('htmlReport', () => {
       'summary.html'
     )!
     expect(summary).toContain(
-      '<a href="XTEST_DEMO_DATA_FILE.html">XTEST_<wbr>DEMO_<wbr>DATA_<wbr>FILE</a>'
+      '<a href="XTEST_DEMO_DATA_FILE.html" target="_blank" rel="noopener">XTEST_<wbr>DEMO_<wbr>DATA_<wbr>FILE</a>'
     )
     // Searched as written.
     expect(summary).toContain('data-search="xtest_demo_data_file"')

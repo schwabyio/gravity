@@ -165,7 +165,7 @@ function summaryPage(run: HtmlRun): string {
     .map((c, i) => {
       const t = c.tally
       const status = statuses[i]!
-      return `<tr class="s-${status}" data-status="${status}" data-search="${escape(c.id.toLowerCase())}"><td class="r n">${i + 1}</td><td class="name"><a href="${escape(encodeURI(pageOf(c.id)))}">${breakable(c.id)}</a></td><td class="r">${duration(c.durationMs)}</td><td class="r gs">${t.steps.total}</td><td class="r">${num(t.steps.passed)}</td><td class="r">${num(t.steps.failed, true)}</td><td class="r">${num(t.steps.errored, true)}</td><td class="r">${num(t.steps.skipped)}</td><td class="r gs">${t.assertions.total}</td><td class="r">${num(t.assertions.passed)}</td><td class="r">${num(t.assertions.failed, true)}</td><td class="gs">${pill(status)}</td></tr>`
+      return `<tr class="s-${status}" data-status="${status}" data-search="${escape(c.id.toLowerCase())}"><td class="r n">${i + 1}</td><td class="name"><a href="${escape(encodeURI(pageOf(c.id)))}" target="_blank" rel="noopener">${breakable(c.id)}</a></td><td class="r">${duration(c.durationMs)}</td><td class="r gs">${t.steps.total}</td><td class="r">${num(t.steps.passed)}</td><td class="r">${num(t.steps.failed, true)}</td><td class="r">${num(t.steps.errored, true)}</td><td class="r">${num(t.steps.skipped)}</td><td class="r gs">${t.assertions.total}</td><td class="r">${num(t.assertions.passed)}</td><td class="r">${num(t.assertions.failed, true)}</td><td class="gs">${pill(status)}</td></tr>`
     })
     .join('\n')
 
