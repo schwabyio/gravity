@@ -9,6 +9,8 @@
   "scripts": {
     "predev": "node scripts/check-bundled-git.mjs && node scripts/install-electron.mjs",
     "dev": "electron-vite dev",
+    "predev:clean": "node scripts/check-bundled-git.mjs && node scripts/install-electron.mjs",
+    "dev:clean": "node scripts/dev-clean.mjs",
     "build": "electron-vite build",
     "prestart": "node scripts/check-bundled-git.mjs && node scripts/install-electron.mjs",
     "start": "electron-vite preview",
