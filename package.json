@@ -1,6 +1,6 @@
 {
   "name": "gravity-test-automation",
-  "version": "0.14.2",
+  "version": "0.14.3",
   "private": true,
   "type": "module",
   "description": "Gravity Test Automation: a desktop app and the gta CLI for backend API test automation.",
