@@ -34,7 +34,8 @@ import type { CollectionTally } from './report.js'
 
 /**
  * The run as HTML: a summary page — the result, Settings, Summary Stats with
- * a pass rate for collections, tests and assertions, the Results Overview,
+ * a pass rate for collections, tests and assertions and the total run time,
+ * the Results Overview,
  * and what was not run — and a page per collection it links to, with a
  * section per test holding its Request, Response and Assertions. Gravity's
  * palette, light or dark with the system.
@@ -188,7 +189,7 @@ function summaryPage(run: HtmlRun): string {
   return page({
     title: `${passed ? 'PASSED' : 'FAILED'} · ${run.project} · gta Summary Results`,
     run,
-    body: `${pageHead(passed ? 'passed' : 'failed', `${escape(run.project)} <span class="kind">· Summary Results</span>`, run.startedAt, run.durationMs)}
+    body: `${pageHead(passed ? 'passed' : 'failed', `${escape(run.project)} <span class="kind">· Summary Results</span>`, run.startedAt)}
 
 ${card('Settings', `<dl class="pairs">\n${settings.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('\n')}\n</dl>`)}
 
@@ -210,6 +211,7 @@ ${ringStat('Assertions', [
   ['passed', sum((t) => t.assertions.passed)],
   ['failed', sum((t) => t.assertions.failed)]
 ])}
+${timeStat('Total Run Time', run.durationMs)}
 </div>`
 )}
 
@@ -802,8 +804,9 @@ ${options.body}
 `
 }
 
-const pageHead = (status: Status, title: string, startedAt: number, ms: number) =>
-  `<header class="head"><div class="title">${pill(status, true)}<h1>${title}</h1></div><div class="meta"><span>${escape(timeOfRun(startedAt))}</span><span>${duration(ms)}</span></div></header>`
+/** The result and the title, when it ran, and how long it took: the summary says that in its stats. */
+const pageHead = (status: Status, title: string, startedAt: number, ms?: number) =>
+  `<header class="head"><div class="title">${pill(status, true)}<h1>${title}</h1></div><div class="meta"><span>${escape(timeOfRun(startedAt))}</span>${ms === undefined ? '' : `<span>${duration(ms)}</span>`}</div></header>`
 
 const card = (
   title: string,
@@ -862,6 +865,15 @@ function ringStat(label: string, parts: Parts): string {
     .map(([s, v]) => `<span class="${v ? `s-${s}` : 'zero'}"><i></i>${v} ${s}</span>`)
     .join('')}</div></div></div>`
 }
+
+/**
+ * A time beside the rings, a clock where their ring is: said in words, exact on
+ * hover, each number kept with its unit so a narrow tile wraps between them.
+ */
+const timeStat = (label: string, ms: number): string =>
+  `<div class="stat"><div class="ring clock">${clock}</div><div><div class="stat-label">${label}</div><div class="stat-time" title="${Math.round(ms).toLocaleString('en-US')} ms">${runTime(ms).replace(/(\d) /g, '$1&nbsp;')}</div></div></div>`
+
+const clock = `<svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><circle cx="32" cy="32" r="25" fill="none" stroke-width="7" style="stroke:var(--surface-alt)"/><path d="M32 19v13l9 6" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--dim)"/></svg>`
 
 /** Each part an arc of the ring, a small gap between, and none too small to see. */
 function ring(parts: Parts): string {
@@ -932,6 +944,25 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 /** `381 ms`, or `1.72 s` from a second up. */
 const duration = (ms: number): string =>
   ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(2)} s`
+
+/**
+ * `1 minute 30.61 seconds`, `2 hours 5.00 seconds`, `0.38 seconds`: a run's
+ * time in words, as xrun said it, to the hundredth of a second. A unit with
+ * none of it is left out.
+ */
+export function runTime(ms: number): string {
+  const hundredths = Math.round(ms / 10)
+  const hours = Math.floor(hundredths / 360_000)
+  const minutes = Math.floor((hundredths % 360_000) / 6_000)
+  const seconds = hundredths % 6_000
+  return [
+    hours > 0 ? plural(hours, 'hour') : '',
+    minutes > 0 ? plural(minutes, 'minute') : '',
+    seconds > 0 || hundredths < 6_000 ? `${(seconds / 100).toFixed(2)} seconds` : ''
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
 
 /** `3,600,000 ms · 1 h`: the setting as written, and what it comes to when that is round. */
 function timeoutText(ms: number): string {
@@ -1077,6 +1108,7 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word}
 .ring b{position:absolute;inset:0;display:grid;place-items:center;font-size:13.5px;font-variant-numeric:tabular-nums}
 .stat-label{font-size:12px;color:var(--dim)}
 .stat-total{font-size:24px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1;margin-top:3px}
+.stat-time{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.25;margin-top:3px}
 .legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:12.5px;font-variant-numeric:tabular-nums}
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .legend i{width:8px;height:8px;border-radius:2px;background:var(--s)}

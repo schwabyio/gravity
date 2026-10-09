@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ReceivedResponse, RunResult } from '@schwabyio/gravity-core'
-import { htmlReport, type HtmlCollection, type HtmlRun } from './html.js'
+import { htmlReport, runTime, type HtmlCollection, type HtmlRun } from './html.js'
 import type { CollectionTally } from './report.js'
 
 const response = (over: Partial<ReceivedResponse> = {}): ReceivedResponse => ({
@@ -124,6 +124,12 @@ describe('htmlReport', () => {
       '<div><dt>Collection Timeout</dt><dd>60,000 ms <span class="dim">· 1 min</span></dd></div>'
     )
     expect(summary).toContain('<h2>Summary Stats</h2>')
+    // The run's time is in the stats, in words and exact on hover; the head says when it ran.
+    expect(summary).toContain(
+      '<div class="stat-label">Total Run Time</div><div class="stat-time" title="1,234 ms">1.23&nbsp;seconds</div>'
+    )
+    expect(summary).toMatch(/<div class="meta"><span>[^<]+<\/span><\/div>/)
+    expect(summary.indexOf('Total Run Time')).toBeLessThan(summary.indexOf('Results Overview'))
     expect(summary).toContain('<h2>Results Overview</h2>')
     expect(summary).toContain('<th>Collection ID</th>')
     expect(summary).toContain('<a href="smoke.html">smoke</a>')
@@ -543,5 +549,23 @@ describe('htmlReport', () => {
     expect(page.match(/44\.0 KB more not shown/g)).toHaveLength(2)
     // Neither view holds more of it than the limit.
     expect(Math.max(...page.match(/x+/g)!.map((run) => run.length))).toBe(256 * 1024)
+  })
+})
+
+describe('runTime', () => {
+  it('says a run’s time in words, to the hundredth of a second', () => {
+    expect(runTime(90_610)).toBe('1 minute 30.61 seconds')
+    expect(runTime(381)).toBe('0.38 seconds')
+    expect(runTime(0)).toBe('0.00 seconds')
+    expect(runTime(1000)).toBe('1.00 seconds')
+    expect(runTime(125_004)).toBe('2 minutes 5.00 seconds')
+    expect(runTime(7_384_560)).toBe('2 hours 3 minutes 4.56 seconds')
+  })
+
+  it('leaves out a unit with none of it, rounding first', () => {
+    expect(runTime(60_000)).toBe('1 minute')
+    expect(runTime(59_999)).toBe('1 minute')
+    expect(runTime(3_600_000)).toBe('1 hour')
+    expect(runTime(3_605_000)).toBe('1 hour 5.00 seconds')
   })
 })
