@@ -251,14 +251,14 @@ function collectionPage(run: HtmlRun, c: HtmlCollection): string {
     title: `${status.toUpperCase()} · ${c.id} · gta Collection Results`,
     run,
     body: `<nav class="crumbs"><a href="${SUMMARY_PAGE}">Summary</a><span aria-hidden="true">/</span><span>${escape(c.id)}</span></nav>
-${pageHead(status, escape(c.id), c.startedAt, c.durationMs)}
+${pageHead(status, escape(c.id), c.startedAt)}
 
 ${card(
   'Results Overview',
   [
     c.docs?.trim() ? markdown(c.docs) : '',
     data
-      ? `<dl class="pairs"><div><dt>Data File</dt><dd><code>${escape(data.file)}</code></dd></div><div><dt>Iterations</dt><dd>${data.rows}</dd></div></dl>`
+      ? `<dl class="pairs"><div><dt>Data File</dt><dd><code>${escape(data.file)}</code></dd></div><div><dt>Iterations</dt><dd>${thousands(data.rows)}</dd></div></dl>`
       : '',
     !c.outcome.ok
       ? `<section class="sub problem"><h3>Error</h3><pre>${escape(c.outcome.message)}</pre></section>`
@@ -274,6 +274,7 @@ ${ringStat('Assertions', [
   ['passed', t.assertions.passed],
   ['failed', t.assertions.failed]
 ])}
+${timeStat('Total Run Time', c.durationMs)}
 </div>`
   ]
     .filter(Boolean)
@@ -804,9 +805,9 @@ ${options.body}
 `
 }
 
-/** The result and the title, when it ran, and how long it took: the summary says that in its stats. */
-const pageHead = (status: Status, title: string, startedAt: number, ms?: number) =>
-  `<header class="head"><div class="title">${pill(status, true)}<h1>${title}</h1></div><div class="meta"><span>${escape(timeOfRun(startedAt))}</span>${ms === undefined ? '' : `<span>${duration(ms)}</span>`}</div></header>`
+/** The result and the title, and when it ran: how long it took is in the page's stats. */
+const pageHead = (status: Status, title: string, startedAt: number) =>
+  `<header class="head"><div class="title">${pill(status, true)}<h1>${title}</h1></div><div class="meta"><span>${escape(timeOfRun(startedAt))}</span></div></header>`
 
 const card = (
   title: string,

@@ -241,6 +241,31 @@ describe('htmlReport', () => {
     expect(page).not.toContain('href="javascript')
     expect(page).toContain('<div class="stat-label">Tests</div>')
     expect(page).toContain('<div class="stat-label">Assertions</div>')
+    // Its run time is in its stats, in words, as the summary has the run's; the head says when.
+    expect(page).toContain(
+      '<div class="stat-label">Total Run Time</div><div class="stat-time" title="10 ms">0.01&nbsp;seconds</div>'
+    )
+    expect(page).toMatch(/<div class="meta"><span>[^<]+<\/span><\/div>/)
+  })
+
+  it('marks the thousands in a collection page’s overview, iterations and stats alike', () => {
+    const base = collection('rows', [result('x')], true, {
+      steps: { total: 2_468, passed: 2_468, failed: 0, errored: 0, skipped: 0 },
+      assertions: { total: 9_876, passed: 9_876, failed: 0 }
+    })
+    const page = pages(
+      run({
+        ...base,
+        durationMs: 125_004,
+        outcome: base.outcome.ok
+          ? { ...base.outcome, data: { file: 'data/users.csv', rows: 1_234 } }
+          : base.outcome
+      })
+    ).get('rows.html')!
+    expect(page).toContain('<div><dt>Iterations</dt><dd>1,234</dd></div>')
+    expect(page).toContain('<div class="stat-total">2,468</div>')
+    expect(page).toContain('<i></i>9,876 passed</span>')
+    expect(page).toContain('title="125,004 ms">2&nbsp;minutes 5.00&nbsp;seconds')
   })
 
   it('opens failed tests, with each failed assertion’s expected and actual', () => {
