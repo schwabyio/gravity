@@ -861,8 +861,8 @@ function ringStat(label: string, parts: Parts): string {
   const passed = parts.find(([s]) => s === 'passed')?.[1] ?? 0
   const ran = total - (parts.find(([s]) => s === 'skipped')?.[1] ?? 0)
   const rate = ran === 0 ? '—' : `${Math.floor((passed / ran) * 100)}%`
-  return `<div class="stat"><div class="ring" title="${passed} of ${ran} that ran passed">${ring(parts)}<b>${rate}</b></div><div><div class="stat-label">${label}</div><div class="stat-total">${total}</div><div class="legend">${parts
-    .map(([s, v]) => `<span class="${v ? `s-${s}` : 'zero'}"><i></i>${v} ${s}</span>`)
+  return `<div class="stat"><div class="ring" title="${thousands(passed)} of ${thousands(ran)} that ran passed">${ring(parts)}<b>${rate}</b></div><div><div class="stat-label">${label}</div><div class="stat-total">${thousands(total)}</div><div class="legend">${parts
+    .map(([s, v]) => `<span class="${v ? `s-${s}` : 'zero'}"><i></i>${thousands(v)} ${s}</span>`)
     .join('')}</div></div></div>`
 }
 
@@ -871,7 +871,7 @@ function ringStat(label: string, parts: Parts): string {
  * hover, each number kept with its unit so a narrow tile wraps between them.
  */
 const timeStat = (label: string, ms: number): string =>
-  `<div class="stat"><div class="ring clock">${clock}</div><div><div class="stat-label">${label}</div><div class="stat-time" title="${Math.round(ms).toLocaleString('en-US')} ms">${runTime(ms).replace(/(\d) /g, '$1&nbsp;')}</div></div></div>`
+  `<div class="stat"><div class="ring clock">${clock}</div><div><div class="stat-label">${label}</div><div class="stat-time" title="${thousands(Math.round(ms))} ms">${runTime(ms).replace(/(\d) /g, '$1&nbsp;')}</div></div></div>`
 
 const clock = `<svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><circle cx="32" cy="32" r="25" fill="none" stroke-width="7" style="stroke:var(--surface-alt)"/><path d="M32 19v13l9 6" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--dim)"/></svg>`
 
@@ -940,6 +940,9 @@ const userFrames = (stack: string): string =>
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+/** `12,345`: a count with its thousands marked, as the stats show one. */
+const thousands = (n: number): string => n.toLocaleString('en-US')
 
 /** `381 ms`, or `1.72 s` from a second up. */
 const duration = (ms: number): string =>

@@ -190,6 +190,22 @@ describe('htmlReport', () => {
     expect(summary).toContain('<span class="pill s-skipped">skipped</span>')
   })
 
+  it('marks the thousands in every number its stats show', () => {
+    const big = collection('big', [result('x')], false, {
+      steps: { total: 12_345, passed: 12_000, failed: 345, errored: 0, skipped: 0 },
+      assertions: { total: 1_000_000, passed: 999_999, failed: 1 }
+    })
+    const summary = pages({ ...run(big), durationMs: 4_000_000 }).get('summary.html')!
+    expect(summary).toContain('<div class="ring" title="12,000 of 12,345 that ran passed">')
+    expect(summary).toContain(
+      '<div class="stat-label">Tests</div><div class="stat-total">12,345</div><div class="legend"><span class="s-passed"><i></i>12,000 passed</span><span class="s-failed"><i></i>345 failed</span>'
+    )
+    expect(summary).toContain(
+      '<div class="stat-total">1,000,000</div><div class="legend"><span class="s-passed"><i></i>999,999 passed</span>'
+    )
+    expect(summary).toContain('title="4,000,000 ms">1&nbsp;hour 6&nbsp;minutes 40.00&nbsp;seconds')
+  })
+
   it('gives each collection page its docs, file, stats and a way back', () => {
     const page = pages(
       run({
