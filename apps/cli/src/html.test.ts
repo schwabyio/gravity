@@ -137,6 +137,10 @@ describe('htmlReport', () => {
     expect(summary).toContain('data-hide="passed" aria-pressed="true"')
     // A search box narrows the rows, matched on each one's id.
     expect(summary).toContain('placeholder="Search collections"')
+    // The search by the title and the chips at the far end, as on a collection page.
+    expect(summary).toMatch(
+      /<h2>Results Overview<\/h2><input type="search" class="search" placeholder="Search collections"[^>]*><div class="tools-end"><button type="button" class="chip s-passed"/
+    )
     expect(summary).toContain('<tr class="s-passed" data-status="passed" data-search="smoke">')
     // Nothing failed, so there is nothing for a Failed chip to hide.
     expect(summary).not.toContain('data-hide="failed"')

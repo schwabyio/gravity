@@ -225,7 +225,8 @@ ${rows}
 </tbody></table></div>`,
   {
     flush: true,
-    tools: `${chips({ passed: count('passed'), failed: count('failed'), skipped: count('skipped') })}${searchBox('Search collections')}`
+    // As a collection page's Tests: the search by the title, what to show at the far end.
+    tools: `${searchBox('Search collections')}<div class="tools-end">${chips({ passed: count('passed'), failed: count('failed'), skipped: count('skipped') })}</div>`
   }
 )}
 ${notRun}`
@@ -1102,7 +1103,7 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;min-width:0}
 .card-h{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px 16px;border-bottom:1px solid var(--border-soft)}
 .card-h h2{margin:0 6px 0 0;font-size:13.5px;font-weight:650}
-.card-h .search,.card-h .file{margin-left:auto}
+.card-h .file{margin-left:auto}
 .card-h .file{color:var(--dim);overflow-wrap:anywhere}
 .card-body{padding:16px}
 .card-body>*+*{margin-top:16px}
