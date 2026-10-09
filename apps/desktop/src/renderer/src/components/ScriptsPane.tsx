@@ -109,6 +109,10 @@ export default function ScriptsPane(props: Props) {
     () => checkLines(result?.assertions ?? [], props.use ? 'use' : 'step', result?.ignored),
     [result, props.use]
   )
+  // A mark selects the check made on its line, then the next made there, and after the last
+  // none: shown in the response and the test results as a click on its row would.
+  const pickCheck = (about: number[]) =>
+    props.onSelect(about[about.indexOf(props.selected ?? -1) + 1] ?? null)
   // A drag starts from the width laid out: the room beside the pane is measured a frame
   // after it changes, and the width it was given can lag it until then.
   const section = useRef<HTMLElement>(null)
@@ -214,6 +218,8 @@ export default function ScriptsPane(props: Props) {
               checkFiles={props.checkFiles}
               result={result}
               collectionPath={props.stepPlace?.path ?? null}
+              selected={props.selected}
+              onPickCheck={pickCheck}
             />
             <CodeEditor
               kind="tests"
@@ -227,6 +233,8 @@ export default function ScriptsPane(props: Props) {
               }
               errorLine={props.errorLines.tests}
               checks={marks}
+              selected={props.selected}
+              onPickCheck={pickCheck}
             />
           </div>
           {showResults && (

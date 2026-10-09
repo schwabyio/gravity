@@ -20,6 +20,9 @@ interface Props {
   result: RunResult | null
   /** The step's collection file: where the collection's own scripts are written. */
   collectionPath: string | null
+  /** The check selected, and what a click on a check's mark does: as in the step's own. */
+  selected?: number | null
+  onPickCheck?: (about: number[]) => void
 }
 
 /** Where a layer's script is written, for the external editor: its file, and the step it is in. */
@@ -128,7 +131,13 @@ export default function SharedScripts(props: Props) {
             value={code}
             onChange={NOTHING}
             ariaLabel={`${key}, read only`}
-            {...(kind === 'tests' ? { checks: checkLines(assertions, of, ignored) } : {})}
+            {...(kind === 'tests'
+              ? {
+                  checks: checkLines(assertions, of, ignored),
+                  selected: props.selected ?? null,
+                  ...(props.onPickCheck ? { onPickCheck: props.onPickCheck } : {})
+                }
+              : {})}
             errorLine={error?.line}
           />
         )}

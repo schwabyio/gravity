@@ -65,6 +65,10 @@ test.beforeAll(async () => {
       "      gta.expectResponseBodyToHaveProperty('user.id', 7)",
       "      gta.expectResponseBodyToHaveProperty('user.name', 'Ada')",
       "      gta.ignoreResponseBodyProperty('extra')",
+      '  - name: two on a line',
+      `    GET: "${origin}/user"`,
+      '    tests: |',
+      "      gta.expectResponseStatusCodeToBe(200); gta.expectResponseBodyToHaveProperty('user.id', 7)",
       ''
     ].join('\n')
   )
@@ -90,6 +94,10 @@ const response = () => page.locator('.response')
 const line = (text: string) => response().locator('.body-lines li', { hasText: text })
 const check = (name: string) => testResults().locator('.check', { hasText: name })
 const responseTab = (name: string) => response().locator('.tabs button', { hasText: name })
+/** A check's ✓ or ✕ beside its line in the Tests script, and the line marked as selected. */
+const scriptMark = (name: string) =>
+  page.locator(`.scripts-pane .cm-check-mark[aria-label*="${name}"]`)
+const selectedScriptLine = () => page.locator('.scripts-pane .cm-line.cm-check-selected')
 
 test('results open under the Tests script, and the editor steps aside for them', async () => {
   await expect(testResults().locator('.test-results-title')).toHaveText('Test Results')
@@ -143,6 +151,32 @@ test('clicking a marked line selects its assertion', async () => {
   await responseTab('Body').click()
   await line('"id": 7').click()
   await expect(check('user.id')).toHaveClass(/selected/)
+})
+
+test('clicking a check’s mark in the script shows it in the response and the results', async () => {
+  // Selected anywhere, a check's line in the script is marked too.
+  await expect(selectedScriptLine()).toHaveText(
+    "gta.expectResponseBodyToHaveProperty('user.id', 7)"
+  )
+
+  await scriptMark('user.name').click()
+  await expect(check('user.name')).toHaveClass(/selected/)
+  await expect(line('"name": "Ada"')).toHaveClass(/focused/)
+  await expect(selectedScriptLine()).toHaveText(
+    "gta.expectResponseBodyToHaveProperty('user.name', 'Grace')"
+  )
+
+  // A header check opens the Headers tab at its row.
+  await scriptMark('Content-Type').click()
+  await expect(responseTab('Headers')).toHaveClass(/active/)
+  await expect(response().locator('tr', { hasText: 'Content-Type' })).toHaveClass(/focused/)
+  await expect(check('Header Content-Type')).toHaveClass(/selected/)
+
+  // Clicked again, with no other check made on its line: none is selected, anywhere.
+  await scriptMark('Content-Type').click()
+  await expect(testResults().locator('.check.selected')).toHaveCount(0)
+  await expect(selectedScriptLine()).toHaveCount(0)
+  await responseTab('Body').click()
 })
 
 test('strict validation leftovers jump to their line', async () => {
@@ -210,4 +244,21 @@ test('what the tests ignored is listed, and its lines marked, but never counted 
   // Picking one shows it in the body.
   await group.getByRole('button', { name: /extra/ }).click()
   await expect(line('"extra": "x"')).toHaveClass(/focused/)
+})
+
+test('a mark on a line with two checks selects each in turn, then neither', async () => {
+  await page.locator('.step-open', { hasText: 'two on a line' }).click()
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(testResults().locator('.test-results-summary')).toHaveText('All 2 passed')
+  const mark = page.locator('.scripts-pane .cm-check-mark')
+  await expect(mark).toHaveText(['✓'])
+
+  await mark.click()
+  await expect(response().locator('.status-pill')).toHaveClass(/focused/)
+  await mark.click()
+  await expect(line('"id": 7')).toHaveClass(/focused/)
+  await expect(response().locator('.status-pill')).not.toHaveClass(/focused/)
+  await mark.click()
+  await expect(testResults().locator('.check.selected')).toHaveCount(0)
+  await expect(selectedScriptLine()).toHaveCount(0)
 })

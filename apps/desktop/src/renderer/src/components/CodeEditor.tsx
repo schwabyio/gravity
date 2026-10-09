@@ -10,6 +10,7 @@ import { lintGutter, linter, type Diagnostic } from '@codemirror/lint'
 import {
   Compartment,
   EditorState,
+  Facet,
   RangeSet,
   RangeSetBuilder,
   StateEffect,
@@ -55,6 +56,10 @@ interface Props {
    * empty, and the gutter keeps its room, so marks arriving move nothing.
    */
   checks?: CheckLine[] | undefined
+  /** The check selected, by its place in the run's assertions: its line is marked so. */
+  selected?: number | null
+  /** A mark was clicked: these are the checks made on its line. */
+  onPickCheck?: (about: number[]) => void
   /**
    * Shown, not edited: a script that lives elsewhere — a collection's, a check
    * file's — sized to its lines rather than to the pane.
@@ -80,6 +85,8 @@ export default function CodeEditor({
   placeholder,
   errorLine,
   checks,
+  selected = null,
+  onPickCheck,
   readOnly = false,
   checkFile = false
 }: Props) {
@@ -90,6 +97,8 @@ export default function CodeEditor({
   const completions = useRef(new Compartment())
   const checksRef = useRef(checks)
   checksRef.current = checks
+  const onPickRef = useRef(onPickCheck)
+  onPickRef.current = onPickCheck
   // The project's tests.only, for a Tests script of its own: what is shown is not checked.
   const contextRule = useTestsRule()
   const rule = kind === 'tests' && !readOnly ? contextRule : null
@@ -111,6 +120,12 @@ export default function CodeEditor({
           theme,
           errorLineField,
           ...(checks !== undefined ? [checkField, checkGutter] : []),
+          ...(onPickCheck
+            ? [
+                pickCheck.of((about) => onPickRef.current?.(about)),
+                EditorView.editorAttributes.of({ class: 'cm-picks-checks' })
+              ]
+            : []),
           ...(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
           ...(placeholder ? [placeholderText(placeholder)] : []),
@@ -155,6 +170,10 @@ export default function CodeEditor({
   useEffect(() => {
     if (checks) view.current?.dispatch({ effects: setChecks.of(checks) })
   }, [checks])
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: setSelectedCheck.of(selected) })
+  }, [selected])
 
   return <div className={`code-editor${readOnly ? ' read-only' : ''}`} ref={host} />
 }
@@ -349,6 +368,12 @@ const errorLineField = StateField.define<DecorationSet>({
 /* ---------------------------------------------------------- check marks -- */
 
 const setChecks = StateEffect.define<CheckLine[]>()
+const setSelectedCheck = StateEffect.define<number | null>()
+
+/** What a click on a mark does: given the checks made on its line. */
+const pickCheck = Facet.define<(about: number[]) => void, ((about: number[]) => void) | null>({
+  combine: (values) => values[0] ?? null
+})
 
 /** A line a check was made on, where it is now, with the text it had when checked. */
 interface CheckMark {
@@ -359,6 +384,7 @@ interface CheckMark {
 
 interface CheckState {
   marks: CheckMark[]
+  selected: number | null
   decorations: DecorationSet
   gutter: RangeSet<GutterMarker>
 }
@@ -416,13 +442,17 @@ class FailureNote extends WidgetType {
 }
 
 const failedLine = Decoration.line({ class: 'cm-check-failed' })
+const selectedLine = Decoration.line({ class: 'cm-check-selected' })
 
-function drawn(marks: CheckMark[], doc: Text): CheckState {
+function drawn(marks: CheckMark[], doc: Text, selected: number | null): CheckState {
   const decorations = []
   const markers = []
   for (const mark of marks) {
     const line = doc.lineAt(mark.from)
     markers.push(new CheckMarker(mark.check).range(line.from))
+    if (selected !== null && mark.check.about.includes(selected)) {
+      decorations.push(selectedLine.range(line.from))
+    }
     if (mark.check.status === 'fail') {
       decorations.push(failedLine.range(line.from))
       if (mark.check.failures.length > 0) {
@@ -433,6 +463,7 @@ function drawn(marks: CheckMark[], doc: Text): CheckState {
   }
   return {
     marks,
+    selected,
     decorations: Decoration.set(decorations, true),
     gutter: RangeSet.of(markers, true)
   }
@@ -460,13 +491,17 @@ function followed(marks: CheckMark[], transaction: Transaction): CheckMark[] {
 }
 
 const checkField = StateField.define<CheckState>({
-  create: (state) => drawn([], state.doc),
+  create: (state) => drawn([], state.doc, null),
   update(current, transaction) {
     let marks = transaction.docChanged ? followed(current.marks, transaction) : current.marks
+    let selected = current.selected
     for (const effect of transaction.effects) {
       if (effect.is(setChecks)) marks = placed(effect.value, transaction.state.doc)
+      if (effect.is(setSelectedCheck)) selected = effect.value
     }
-    return marks === current.marks ? current : drawn(marks, transaction.state.doc)
+    return marks === current.marks && selected === current.selected
+      ? current
+      : drawn(marks, transaction.state.doc, selected)
   },
   provide: (field) => EditorView.decorations.from(field, (state) => state.decorations)
 })
@@ -474,7 +509,21 @@ const checkField = StateField.define<CheckState>({
 const checkGutter = gutter({
   class: 'cm-check-gutter',
   markers: (view) => view.state.field(checkField).gutter,
-  initialSpacer: () => spacer
+  initialSpacer: () => spacer,
+  domEventHandlers: {
+    // A mark selects a check made on its line, in the response and the test results too.
+    click(view, block) {
+      const pick = view.state.facet(pickCheck)
+      const { doc } = view.state
+      const at = doc.lineAt(block.from).number
+      const mark = view.state
+        .field(checkField)
+        .marks.find((candidate) => doc.lineAt(candidate.from).number === at)
+      if (!pick || !mark || mark.check.about.length === 0) return false
+      pick(mark.check.about)
+      return true
+    }
+  }
 })
 
 /* ----------------------------------------------------------------- theme -- */
@@ -528,6 +577,14 @@ const theme = EditorView.theme({
   '.cm-check-mark.fail': { color: 'var(--client)' },
   '.cm-check-mark.ignored': { color: 'var(--text-dim)' },
   '.cm-check-failed': { backgroundColor: 'color-mix(in srgb, var(--client) 10%, transparent)' },
+  // The selected check's line, as the response marks its lines and the results its row.
+  '.cm-check-selected': {
+    backgroundColor: 'color-mix(in srgb, var(--accent) 16%, transparent)',
+    boxShadow: 'inset 3px 0 0 var(--accent)'
+  },
+  '&.cm-picks-checks .cm-check-mark.pass, &.cm-picks-checks .cm-check-mark.fail': {
+    cursor: 'pointer'
+  },
   '.cm-check-note': {
     padding: '0 6px 2px',
     backgroundColor: 'color-mix(in srgb, var(--client) 10%, transparent)',

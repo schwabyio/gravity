@@ -20,12 +20,13 @@ describe('checkLines', () => {
         'step'
       )
     ).toEqual([
-      { line: 1, status: 'pass', title: '✓ Status is 201', failures: [] },
+      { line: 1, status: 'pass', title: '✓ Status is 201', failures: [], about: [0] },
       {
         line: 3,
         status: 'fail',
         title: '✕ status is "pending"',
-        failures: ['Expected "pending", got "new"']
+        failures: ['Expected "pending", got "new"'],
+        about: [1]
       }
     ])
   })
@@ -43,7 +44,8 @@ describe('checkLines', () => {
       line: 4,
       status: 'fail',
       title: '1 of 3 checks passed\n✓ a\n✕ b\n✕ c',
-      failures: ['b: Expected is 1, actual 2', 'c: Failed']
+      failures: ['b: Expected is 1, actual 2', 'c: Failed'],
+      about: [0, 1, 2]
     })
   })
 
@@ -55,8 +57,14 @@ describe('checkLines', () => {
         { path: 'theirs', source: { script: 'collection', line: 1 } }
       ])
     ).toEqual([
-      { line: 1, status: 'ignored', title: '– subAccounts ignored', failures: [] },
-      { line: 2, status: 'pass', title: '✓ id.value is "a"\n– extra ignored', failures: [] }
+      { line: 1, status: 'ignored', title: '– subAccounts ignored', failures: [], about: [] },
+      {
+        line: 2,
+        status: 'pass',
+        title: '✓ id.value is "a"\n– extra ignored',
+        failures: [],
+        about: [0]
+      }
     ])
   })
 
@@ -70,15 +78,16 @@ describe('checkLines', () => {
   })
 
   it('leaves out checks other scripts made, and those no line made', () => {
-    expect(
-      checkLines(
-        [
-          made('from the collection', 'pass', 1, { source: { script: 'collection', line: 1 } }),
-          { name: 'Strict: every body property is asserted', status: 'pass', target: 'strict' },
-          made('mine', 'pass', 2)
-        ],
-        'step'
-      ).map((line) => line.line)
-    ).toEqual([2])
+    const lines = checkLines(
+      [
+        made('from the collection', 'pass', 1, { source: { script: 'collection', line: 1 } }),
+        { name: 'Strict: every body property is asserted', status: 'pass', target: 'strict' },
+        made('mine', 'pass', 2)
+      ],
+      'step'
+    )
+    expect(lines.map((line) => line.line)).toEqual([2])
+    // Each check by its place among all the run's, not among the script's own.
+    expect(lines[0]!.about).toEqual([2])
   })
 })

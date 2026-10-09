@@ -19,6 +19,8 @@ export interface CheckLine {
   title: string
   /** What each failed check said. */
   failures: string[]
+  /** The checks made there, by their place in the run's assertions: what its mark selects. */
+  about: number[]
 }
 
 /** What a failed check says, as the results list would: its message, or what it wanted. */
@@ -53,23 +55,25 @@ export function checkLines(
   of: ScriptOf,
   ignored: IgnoredPath[] = []
 ): CheckLine[] {
-  const byLine = new Map<number, { made: AssertionResult[]; paths: string[] }>()
+  const byLine = new Map<number, { made: AssertionResult[]; about: number[]; paths: string[] }>()
   const at = (line: number) => {
     let entry = byLine.get(line)
-    if (!entry) byLine.set(line, (entry = { made: [], paths: [] }))
+    if (!entry) byLine.set(line, (entry = { made: [], about: [], paths: [] }))
     return entry
   }
-  for (const assertion of assertions) {
+  assertions.forEach((assertion, index) => {
     const line = lineIn(assertion.source, of)
-    if (line !== undefined) at(line).made.push(assertion)
-  }
+    if (line === undefined) return
+    at(line).made.push(assertion)
+    at(line).about.push(index)
+  })
   for (const entry of ignored) {
     const line = lineIn(entry.source, of)
     if (line !== undefined) at(line).paths.push(entry.path)
   }
   return [...byLine.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([line, { made, paths }]) => {
+    .map(([line, { made, about, paths }]) => {
       const failed = made.filter((assertion) => assertion.status === 'fail')
       const passed = made.length - failed.length
       const names = [
@@ -87,7 +91,8 @@ export function checkLines(
         // One failure speaks for itself; several say which is which.
         failures: failed.map((assertion) =>
           failed.length === 1 ? failureOf(assertion) : `${assertion.name}: ${failureOf(assertion)}`
-        )
+        ),
+        about
       }
     })
 }
