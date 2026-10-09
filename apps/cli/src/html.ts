@@ -165,7 +165,7 @@ function summaryPage(run: HtmlRun): string {
     .map((c, i) => {
       const t = c.tally
       const status = statuses[i]!
-      return `<tr class="s-${status}" data-status="${status}" data-search="${escape(c.id.toLowerCase())}"><td class="r n">${i + 1}</td><td class="name"><a href="${escape(encodeURI(pageOf(c.id)))}">${escape(c.id)}</a></td><td class="r">${duration(c.durationMs)}</td><td class="r gs">${t.steps.total}</td><td class="r">${num(t.steps.passed)}</td><td class="r">${num(t.steps.failed, true)}</td><td class="r">${num(t.steps.errored, true)}</td><td class="r">${num(t.steps.skipped)}</td><td class="r gs">${t.assertions.total}</td><td class="r">${num(t.assertions.passed)}</td><td class="r">${num(t.assertions.failed, true)}</td><td class="gs">${pill(status)}</td></tr>`
+      return `<tr class="s-${status}" data-status="${status}" data-search="${escape(c.id.toLowerCase())}"><td class="r n">${i + 1}</td><td class="name"><a href="${escape(encodeURI(pageOf(c.id)))}">${breakable(c.id)}</a></td><td class="r">${duration(c.durationMs)}</td><td class="r gs">${t.steps.total}</td><td class="r">${num(t.steps.passed)}</td><td class="r">${num(t.steps.failed, true)}</td><td class="r">${num(t.steps.errored, true)}</td><td class="r">${num(t.steps.skipped)}</td><td class="r gs">${t.assertions.total}</td><td class="r">${num(t.assertions.passed)}</td><td class="r">${num(t.assertions.failed, true)}</td><td class="gs">${pill(status)}</td></tr>`
     })
     .join('\n')
 
@@ -992,6 +992,12 @@ function bytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
+/**
+ * Escaped, and free to wrap after each `_`, `/`, `.` or `-`: a long collection
+ * id, `XTEST_DEMO_EXPECT_RESPONSE_…`, has no space to wrap at otherwise.
+ */
+const breakable = (value: string): string => escape(value).replace(/([_/.-])/g, '$1<wbr>')
+
 function escape(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -1144,7 +1150,8 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word}
 .overview tbody tr:last-child td{border-bottom:none}
 .overview .r{text-align:right}
 .overview .gs{border-left:1px solid var(--border-soft)}
-.overview td.name{min-width:17rem}
+.overview td.name{min-width:10rem;overflow-wrap:anywhere}
+@media (max-width:960px){.overview th,.overview td{padding-left:6px;padding-right:6px}.overview .groups th{padding-left:6px;padding-right:6px}}
 .overview td.n{color:var(--faint)}
 .overview tbody tr:hover td{background:var(--surface-alt)}
 .overview tr.s-failed td:first-child{box-shadow:inset 3px 0 0 var(--failed)}

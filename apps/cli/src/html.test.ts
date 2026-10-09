@@ -190,6 +190,17 @@ describe('htmlReport', () => {
     expect(summary).toContain('<span class="pill s-skipped">skipped</span>')
   })
 
+  it('lets a long collection id wrap at its underscores, so the overview fits its card', () => {
+    const summary = pages(run(collection('XTEST_DEMO_DATA_FILE', [result('x')]))).get(
+      'summary.html'
+    )!
+    expect(summary).toContain(
+      '<a href="XTEST_DEMO_DATA_FILE.html">XTEST_<wbr>DEMO_<wbr>DATA_<wbr>FILE</a>'
+    )
+    // Searched as written.
+    expect(summary).toContain('data-search="xtest_demo_data_file"')
+  })
+
   it('marks the thousands in every number its stats show', () => {
     const big = collection('big', [result('x')], false, {
       steps: { total: 12_345, passed: 12_000, failed: 345, errored: 0, skipped: 0 },
