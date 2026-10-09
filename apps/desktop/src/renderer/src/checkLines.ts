@@ -21,6 +21,8 @@ export interface CheckLine {
   failures: string[]
   /** The checks made there, by their place in the run's assertions: what its mark selects. */
   about: number[]
+  /** The body paths it ignored for strict validation: what its mark shows, with no check there. */
+  paths: string[]
 }
 
 /** What a failed check says, as the results list would: its message, or what it wanted. */
@@ -92,7 +94,8 @@ export function checkLines(
         failures: failed.map((assertion) =>
           failed.length === 1 ? failureOf(assertion) : `${assertion.name}: ${failureOf(assertion)}`
         ),
-        about
+        about,
+        paths
       }
     })
 }

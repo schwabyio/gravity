@@ -246,6 +246,29 @@ test('what the tests ignored is listed, and its lines marked, but never counted 
   await expect(line('"extra": "x"')).toHaveClass(/focused/)
 })
 
+test('a – mark shows the property its line ignored, in the body and the results', async () => {
+  const ignoredRow = (path: string) =>
+    testResults().locator('.ignored-group .check', { hasText: path })
+  // Shown from the results, its – line in the script is marked too.
+  await expect(ignoredRow('extra')).toHaveClass(/selected/)
+  await expect(selectedScriptLine()).toHaveText("gta.ignoreResponseBodyProperty('extra')")
+
+  // A check selected first is let go: one thing is pointed at.
+  await scriptMark('user.id').click()
+  await expect(check('user.id')).toHaveClass(/selected/)
+  await scriptMark('user.roles ignored').click()
+  await expect(line('"roles"')).toHaveClass(/focused/)
+  await expect(ignoredRow('user.roles')).toHaveClass(/selected/)
+  await expect(testResults().locator('.check.selected')).toHaveCount(1)
+  await expect(selectedScriptLine()).toHaveText("gta.ignoreResponseBodyProperty('user.roles')")
+
+  // Clicked again, with nothing else ignored on its line: nothing is pointed at.
+  await scriptMark('user.roles ignored').click()
+  await expect(testResults().locator('.check.selected')).toHaveCount(0)
+  await expect(selectedScriptLine()).toHaveCount(0)
+  await expect(line('"roles"')).not.toHaveClass(/focused/)
+})
+
 test('a mark on a line with two checks selects each in turn, then neither', async () => {
   await page.locator('.step-open', { hasText: 'two on a line' }).click()
   await page.getByRole('button', { name: 'Send' }).click()

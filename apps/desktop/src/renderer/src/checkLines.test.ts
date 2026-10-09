@@ -20,13 +20,14 @@ describe('checkLines', () => {
         'step'
       )
     ).toEqual([
-      { line: 1, status: 'pass', title: '✓ Status is 201', failures: [], about: [0] },
+      { line: 1, status: 'pass', title: '✓ Status is 201', failures: [], about: [0], paths: [] },
       {
         line: 3,
         status: 'fail',
         title: '✕ status is "pending"',
         failures: ['Expected "pending", got "new"'],
-        about: [1]
+        about: [1],
+        paths: []
       }
     ])
   })
@@ -45,7 +46,8 @@ describe('checkLines', () => {
       status: 'fail',
       title: '1 of 3 checks passed\n✓ a\n✕ b\n✕ c',
       failures: ['b: Expected is 1, actual 2', 'c: Failed'],
-      about: [0, 1, 2]
+      about: [0, 1, 2],
+      paths: []
     })
   })
 
@@ -57,13 +59,21 @@ describe('checkLines', () => {
         { path: 'theirs', source: { script: 'collection', line: 1 } }
       ])
     ).toEqual([
-      { line: 1, status: 'ignored', title: '– subAccounts ignored', failures: [], about: [] },
+      {
+        line: 1,
+        status: 'ignored',
+        title: '– subAccounts ignored',
+        failures: [],
+        about: [],
+        paths: ['subAccounts']
+      },
       {
         line: 2,
         status: 'pass',
         title: '✓ id.value is "a"\n– extra ignored',
         failures: [],
-        about: [0]
+        about: [0],
+        paths: ['extra']
       }
     ])
   })

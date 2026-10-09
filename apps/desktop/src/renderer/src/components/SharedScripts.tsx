@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { IgnoredPath, RunResult } from '@schwabyio/gravity-core/model'
 import type { CheckFileView, EditorTarget } from '@shared/ipc.js'
-import { checkLines, madeIn, type ScriptOf } from '../checkLines.js'
+import { checkLines, madeIn, type CheckLine, type ScriptOf } from '../checkLines.js'
 import { calledChecks, checkFileName } from '../checkSources.js'
 import type { InheritedLayer } from '../inheritance.js'
 import CodeEditor from './CodeEditor.js'
@@ -20,9 +20,10 @@ interface Props {
   result: RunResult | null
   /** The step's collection file: where the collection's own scripts are written. */
   collectionPath: string | null
-  /** The check selected, and what a click on a check's mark does: as in the step's own. */
+  /** What is pointed at, and what a click on a mark does: as in the step's own. */
   selected?: number | null
-  onPickCheck?: (about: number[]) => void
+  jumpedPath?: string | null
+  onPickMark?: (mark: CheckLine) => void
 }
 
 /** Where a layer's script is written, for the external editor: its file, and the step it is in. */
@@ -135,7 +136,8 @@ export default function SharedScripts(props: Props) {
               ? {
                   checks: checkLines(assertions, of, ignored),
                   selected: props.selected ?? null,
-                  ...(props.onPickCheck ? { onPickCheck: props.onPickCheck } : {})
+                  jumpedPath: props.jumpedPath ?? null,
+                  ...(props.onPickMark ? { onPickMark: props.onPickMark } : {})
                 }
               : {})}
             errorLine={error?.line}

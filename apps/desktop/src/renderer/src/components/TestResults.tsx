@@ -9,6 +9,8 @@ interface Props {
   selected: number | null
   onSelect: (index: number | null) => void
   onHover: (index: number | null) => void
+  /** The body path the Body tab is pointed at: an ignored one's row is marked so. */
+  jumpedPath: string | null
   /** Point the Body tab at one path, from strict validation's leftovers. */
   onJump: (path: string) => void
   /** What the step's scripts wrote with `console`. */
@@ -43,7 +45,7 @@ const GROUPS: Array<{ target: Check['assertion']['target'] | 'other'; label: str
  */
 export default function TestResults(props: Props) {
   const editor = useExternalEditor()
-  const { checks, selected } = props
+  const { checks, selected, jumpedPath } = props
   const [failuresOnly, setFailuresOnly] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -58,6 +60,14 @@ export default function TestResults(props: Props) {
       ?.querySelector<HTMLElement>(`[data-check="${selected}"]`)
       ?.scrollIntoView({ block: 'nearest' })
   }, [selected])
+
+  // So does a path jumped to that the tests ignored.
+  useEffect(() => {
+    if (jumpedPath === null) return
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-ignored="${CSS.escape(jumpedPath)}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
+  }, [jumpedPath])
 
   return (
     <section className="test-results" aria-label="Test Results">
@@ -133,7 +143,11 @@ export default function TestResults(props: Props) {
             </p>
             <ul>
               {props.ignored.map((entry, index) => (
-                <li key={index} className="check ignored">
+                <li
+                  key={index}
+                  className={`check ignored${entry.path === jumpedPath ? ' selected' : ''}`}
+                  data-ignored={entry.path}
+                >
                   <button
                     type="button"
                     className="check-head"

@@ -617,6 +617,7 @@ export default function RequestView(props: Props) {
             scriptError={scriptError}
             errorLines={{ 'pre-request': errorLine('pre-request'), tests: errorLine('tests') }}
             selected={selected}
+            jumpedPath={jumpedPath}
             onSelect={select}
             onHover={(index) => {
               setHovered(index)

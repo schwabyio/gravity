@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import type { LogEntry, RunError, RunResult } from '@schwabyio/gravity-core/model'
 import type { StepList } from '@schwabyio/gravity-core/model'
 import type { CheckFileView, EditorTarget } from '@shared/ipc.js'
-import { checkLines } from '../checkLines.js'
+import { checkLines, type CheckLine } from '../checkLines.js'
 import { sourceTags } from '../checkSources.js'
 import type { PaneWidth } from '../hooks/usePaneWidth.js'
 import type { InheritedLayer } from '../inheritance.js'
@@ -50,6 +50,8 @@ interface Props {
   /** Where the step's own scripts stopped, to mark in their editors. */
   errorLines: { 'pre-request': number | undefined; tests: number | undefined }
   selected: number | null
+  /** The body path the response is pointed at, from an ignore or strict validation's leftovers. */
+  jumpedPath: string | null
   onSelect: (index: number | null) => void
   onHover: (index: number | null) => void
   onJump: (path: string) => void
@@ -109,10 +111,18 @@ export default function ScriptsPane(props: Props) {
     () => checkLines(result?.assertions ?? [], props.use ? 'use' : 'step', result?.ignored),
     [result, props.use]
   )
-  // A mark selects the check made on its line, then the next made there, and after the last
-  // none: shown in the response and the test results as a click on its row would.
-  const pickCheck = (about: number[]) =>
-    props.onSelect(about[about.indexOf(props.selected ?? -1) + 1] ?? null)
+  // A ✓ or ✕ selects the check made on its line, then the next made there, and after the last
+  // none: shown in the response and the test results as a click on its row would. A – shows
+  // the property its line ignored the same way, alone, and the next, and after the last none.
+  const pickMark = ({ about, paths }: CheckLine) => {
+    if (about.length > 0) {
+      props.onSelect(about[about.indexOf(props.selected ?? -1) + 1] ?? null)
+      return
+    }
+    const next = paths[props.jumpedPath === null ? 0 : paths.indexOf(props.jumpedPath) + 1]
+    props.onSelect(null)
+    if (next !== undefined) props.onJump(next)
+  }
   // A drag starts from the width laid out: the room beside the pane is measured a frame
   // after it changes, and the width it was given can lag it until then.
   const section = useRef<HTMLElement>(null)
@@ -219,7 +229,8 @@ export default function ScriptsPane(props: Props) {
               result={result}
               collectionPath={props.stepPlace?.path ?? null}
               selected={props.selected}
-              onPickCheck={pickCheck}
+              jumpedPath={props.jumpedPath}
+              onPickMark={pickMark}
             />
             <CodeEditor
               kind="tests"
@@ -234,13 +245,15 @@ export default function ScriptsPane(props: Props) {
               errorLine={props.errorLines.tests}
               checks={marks}
               selected={props.selected}
-              onPickCheck={pickCheck}
+              jumpedPath={props.jumpedPath}
+              onPickMark={pickMark}
             />
           </div>
           {showResults && (
             <TestResults
               checks={checks}
               selected={props.selected}
+              jumpedPath={props.jumpedPath}
               onSelect={props.onSelect}
               onHover={props.onHover}
               onJump={props.onJump}
