@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EnvironmentRef, VariablePreviews } from '@schwabyio/gravity-core/model'
 import type { useEnvironmentEditor } from '../hooks/useEnvironmentEditor.js'
+import InfoTip from './InfoTip.js'
 import SaveStatus from './SaveStatus.js'
 import VariablesEditor from './VariablesEditor.js'
 import FlagConditionsEditor from './FlagConditionsEditor.js'
@@ -231,13 +232,20 @@ export default function EnvironmentsDrawer(props: Props) {
                   onCopyVariable={props.onCopyVariable}
                 />
                 <section className="env-flags" aria-labelledby="env-flags-title">
-                  <h3 id="env-flags-title">Feature flags</h3>
-                  <p className="hint">
-                    A <strong>command</strong> fetches fresh values before a run — from a flag
-                    service, say — printing a JSON object such as{' '}
-                    <code>{'{"newCheckout": true}'}</code>. It runs in the project folder; its
-                    values win over the fixed ones here.
-                  </p>
+                  <div className="title-with-info">
+                    <h3 id="env-flags-title">Feature flags</h3>
+                    <InfoTip
+                      about="feature flags"
+                      text={
+                        <>
+                          A <strong>command</strong> fetches fresh values before a run — from a flag
+                          service, say — printing a JSON object such as{' '}
+                          <code>{'{"newCheckout": true}'}</code>. It runs in the project folder; its
+                          values win over the fixed ones here.
+                        </>
+                      }
+                    />
+                  </div>
                   <label className="env-flag-command">
                     <span className="field-label">Command</span>
                     <input

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { VariablePreviews } from '@schwabyio/gravity-core/model'
 import { newPart, type PartRow } from '../requestState.js'
+import InfoTip from './InfoTip.js'
 import Tooltip from './Tooltip.js'
 import VariableInput from './VariableInput.js'
 
@@ -61,7 +62,14 @@ export default function MultipartEditor({
             <th className="part-kind">Type</th>
             <th>Value</th>
             <th className="part-type">Content type</th>
-            <th className="kv-action" />
+            <th className="kv-action">
+              {onPickFile && (
+                <InfoTip
+                  about="file paths"
+                  text="A file’s path is from the project folder, else its global project’s — or only that with global: before it — and can use {{variables}}. A name on more than one row is sent once for each."
+                />
+              )}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -141,12 +149,13 @@ export default function MultipartEditor({
           })}
         </tbody>
       </table>
-      <p className="hint">
-        {onPickFile
-          ? 'A file’s path is from the project folder, else its global project’s — or only that with global: before it — and can use {{variables}}.'
-          : 'Save the collection in a project to send files: their paths are from its folder.'}{' '}
-        A name on more than one row is sent once for each.
-      </p>
+      {/* Unsaved, it cannot send files at all: that says so where it shows. */}
+      {!onPickFile && (
+        <p className="hint">
+          Save the collection in a project to send files: their paths are from its folder. A name on
+          more than one row is sent once for each.
+        </p>
+      )}
       {error && (
         <p className="setting-error" role="alert">
           {error}
@@ -189,13 +198,19 @@ export function FileBodyEditor(props: {
             Choose file&hellip;
           </button>
         )}
+        {onPickFile && (
+          <InfoTip
+            about="file bodies"
+            text="Sent as it is, with a Content-Type from its extension unless a header sets one. The path is from the project folder, else its global project’s — or only that with global: before it — and can use {{variables}}."
+          />
+        )}
       </div>
-      <p className="hint">
-        Sent as it is, with a Content-Type from its extension unless a header sets one.{' '}
-        {onPickFile
-          ? 'The path is from the project folder, else its global project’s — or only that with global: before it — and can use {{variables}}.'
-          : 'Save the collection in a project to send a file: the path is from its folder.'}
-      </p>
+      {!onPickFile && (
+        <p className="hint">
+          Sent as it is, with a Content-Type from its extension unless a header sets one. Save the
+          collection in a project to send a file: the path is from its folder.
+        </p>
+      )}
       {error && (
         <p className="setting-error" role="alert">
           {error}

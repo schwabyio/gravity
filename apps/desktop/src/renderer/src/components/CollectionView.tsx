@@ -24,6 +24,7 @@ import { usePaneWidth } from '../hooks/usePaneWidth.js'
 import { filterSteps, stepTagsIn } from '../tagFilter.js'
 import { conditionsState, showFlagValue, stepFlagState, type FlagState } from '../flagState.js'
 import type { IterationCounts } from '../dataGrid.js'
+import InfoTip from './InfoTip.js'
 import FlagConditionsEditor from './FlagConditionsEditor.js'
 import CollectionSettings, { type SettingsSection } from './CollectionSettings.js'
 import DocsPanel from './DocsPanel.js'
@@ -853,10 +854,15 @@ function ForEachEditor(props: {
           placeholder="{{items}}, a variable holding a JSON array, or one written here"
           ariaLabel="Repeat for each item of"
         />
-        <p className="hint">
-          The request is sent once per item, read as <code>{'{{item}}'}</code> and as{' '}
-          <code>item</code> in code. Empty: once.
-        </p>
+        <InfoTip
+          about="repeating for each item"
+          text={
+            <>
+              The request is sent once per item, read as <code>{'{{item}}'}</code> and as{' '}
+              <code>item</code> in code. Empty: once.
+            </>
+          }
+        />
       </div>
     </details>
   )

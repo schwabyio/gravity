@@ -135,13 +135,6 @@ export function UseStepEditor(props: EditorProps) {
                   {set.problem}
                 </p>
               )}
-              <p className="hint">
-                The values this run of <strong>{set.title}</strong> gets, as{' '}
-                <code>{'{{params.name}}'}</code> in its requests and <code>params.name</code> in its
-                code. Empty takes the default. A value can use <code>{'{{variables}}'}</code>,
-                resolved as the first request starts, after the collection’s{' '}
-                <code>before.script</code>.
-              </p>
               {params.length === 0 && <p className="hint">These requests take no params.</p>}
               {params.map(([key, spec]) => (
                 <ParamField

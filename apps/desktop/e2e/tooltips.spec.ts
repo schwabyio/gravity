@@ -154,10 +154,11 @@ test('explains removing a query parameter', async () => {
 })
 
 test('an ⓘ explains on hover, and a click keeps its text up until a click elsewhere', async () => {
-  // On the Params tab, still open: what was a line above the table is behind its ⓘ.
+  // What was a line above the params table is behind the ⓘ beside REQUEST: what the tab
+  // shown below is for.
   const pane = page.locator('.request-pane')
-  const info = pane.getByRole('button', { name: 'About query parameters' })
-  await expect(pane).not.toContainText('Query parameters mirror the URL')
+  const info = pane.getByRole('button', { name: 'About the request pane' })
+  await expect(pane).not.toContainText('mirror the URL')
   await page.mouse.move(0, 0)
   await info.hover()
   await expect(tip()).toHaveText(
@@ -176,6 +177,21 @@ test('an ⓘ explains on hover, and a click keeps its text up until a click else
   await expect(tip()).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(tip()).toHaveCount(0)
+
+  // Another tab, its own text.
+  await pane.getByRole('button', { name: /^Settings/ }).click()
+  await page.mouse.move(0, 0)
+  await info.hover()
+  await expect(tip()).toContainText('A setting left empty comes from the nearest that sets it')
+  await page.mouse.move(0, 0)
+
+  // A tab with nothing to explain has no ⓘ: Docs, beside SCRIPTS.
+  const scripts = page.locator('.scripts-pane')
+  const scriptsInfo = scripts.getByRole('button', { name: 'About the scripts pane' })
+  await scripts.getByRole('button', { name: /^Docs/ }).click()
+  await expect(scriptsInfo).toHaveCount(0)
+  await scripts.getByRole('button', { name: /^Tests/ }).click()
+  await expect(scriptsInfo).toBeVisible()
 })
 
 test('appears on keyboard focus, without waiting for a hover delay', async () => {

@@ -3,6 +3,7 @@ import { AGENTS_SECTION, type RuleFinding } from '@schwabyio/gravity-core/model'
 import type { ProjectView } from '@shared/ipc.js'
 import { joinPath } from '../externalEditor.js'
 import { findingsLabel } from '../ruleFindings.js'
+import InfoTip from './InfoTip.js'
 import Markdown from './Markdown.js'
 import OpenInEditor from './OpenInEditor.js'
 
@@ -49,13 +50,21 @@ export default function RulesSection(props: {
 
   return (
     <section ref={section} aria-labelledby="project-rules-title" className="rules-section">
-      <h3 id="project-rules-title">Rules</h3>
-      <p className="hint">
-        How this project&rsquo;s files are named, laid out and written, from <code>rules.yml</code>
-        {global && <> and {global.name}&rsquo;s under it</>}. A file or step that breaks one is
-        marked <span className="rule-mark">△</span> in the sidebar and the step list; nothing stops
-        it running. <code>gta lint</code> checks the same in CI.
-      </p>
+      <div className="title-with-info">
+        <h3 id="project-rules-title">Rules</h3>
+        <InfoTip
+          about="rules"
+          text={
+            <>
+              How this project&rsquo;s files are named, laid out and written, from{' '}
+              <code>rules.yml</code>
+              {global && <> and {global.name}&rsquo;s under it</>}. A file or step that breaks one
+              is marked <span className="rule-mark">△</span> in the sidebar and the step list;
+              nothing stops it running. <code>gta lint</code> checks the same in CI.
+            </>
+          }
+        />
+      </div>
       {rules.problem && (
         <p className="setting-error rules-problem" role="alert">
           {rules.problem}

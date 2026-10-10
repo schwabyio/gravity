@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ProjectDoc, RuleFinding, VariablePreviews, Vars } from '@schwabyio/gravity-core/model'
 import type { CaFileView, ProjectEdit, ProjectView } from '@shared/ipc.js'
+import InfoTip from './InfoTip.js'
 import LineEndingsSection from './LineEndingsSection.js'
 import RulesSection from './RulesSection.js'
 import Tooltip from './Tooltip.js'
@@ -264,7 +265,19 @@ export default function ProjectSettingsDrawer({
               />
             </label>
             <label className="project-field">
-              <span className="field-label">Uses (a global project)</span>
+              <span className="field-label">
+                Uses (a global project){' '}
+                <InfoTip
+                  about="uses"
+                  text={
+                    <>
+                      A path relative to this project, written with <code>/</code> so it works on
+                      every machine. The global project gives every project that uses it its
+                      variables and environments.
+                    </>
+                  }
+                />
+              </span>
               <span className="field-with-button">
                 <input
                   value={own.draft.uses}
@@ -283,17 +296,11 @@ export default function ProjectSettingsDrawer({
                 {choosing}
               </p>
             )}
-            <p className="hint">
-              A path relative to this project, written with <code>/</code> so it works on every
-              machine. The global project gives every project that uses it its variables and
-              environments.
-              {global && (
-                <>
-                  {' '}
-                  Now: <strong>{global.name}</strong>.
-                </>
-              )}
-            </p>
+            {global && (
+              <p className="hint">
+                Now: <strong>{global.name}</strong>.
+              </p>
+            )}
             {project.problems
               .filter((problem) => problem.path === 'project.yml')
               .map((problem) => (
@@ -304,11 +311,13 @@ export default function ProjectSettingsDrawer({
           </section>
 
           <section aria-labelledby="project-vars-title">
-            <h3 id="project-vars-title">Variables</h3>
-            <p className="hint">
-              In scope for every collection in this project, over the shared variables and under
-              each collection&rsquo;s own.
-            </p>
+            <div className="title-with-info">
+              <h3 id="project-vars-title">Variables</h3>
+              <InfoTip
+                about="these variables"
+                text="In scope for every collection in this project, over the shared variables and under each collection’s own."
+              />
+            </div>
             <div aria-label="Project variables" role="group">
               <VariablesEditor
                 vars={own.draft.vars}
@@ -400,13 +409,20 @@ function CaSection(props: {
 
   return (
     <section aria-labelledby="project-ca-title">
-      <h3 id="project-ca-title">CA certificates</h3>
-      <p className="hint">
-        Requests trust the CAs your system trusts, such as the macOS Keychain or the Windows
-        certificate store, as well as Node&rsquo;s own. To trust a company or local CA on every
-        machine and in <code>gta</code>, add its certificate here, as a PEM or DER file. The path is
-        relative to this project and is written to <code>tls.ca</code>.
-      </p>
+      <div className="title-with-info">
+        <h3 id="project-ca-title">CA certificates</h3>
+        <InfoTip
+          about="trusted CAs"
+          text={
+            <>
+              Requests trust the CAs your system trusts, such as the macOS Keychain or the Windows
+              certificate store, as well as Node&rsquo;s own. To trust a company or local CA on
+              every machine and in <code>gta</code>, add its certificate here, as a PEM or DER file.
+              The path is relative to this project and is written to <code>tls.ca</code>.
+            </>
+          }
+        />
+      </div>
       {ca.length > 0 && (
         <ul className="ca-files" aria-label="CA certificates">
           {ca.map((file, index) => (

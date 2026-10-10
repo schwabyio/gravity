@@ -12,6 +12,7 @@ import {
   type DataGrid
 } from '../dataGrid.js'
 import type { useDataFileEditor } from '../hooks/useDataFileEditor.js'
+import InfoTip from './InfoTip.js'
 import SaveStatus from './SaveStatus.js'
 import OpenInEditor from './OpenInEditor.js'
 
@@ -93,6 +94,17 @@ export default function DataDrawer({ data, autoSave, onClose }: Props) {
               what={data.fileName ?? 'the data file'}
               target={data.path ? { path: data.path } : null}
             />
+            <InfoTip
+              about="data rows"
+              text={
+                <>
+                  gta runs the collection once per row, each column a variable for that run. An{' '}
+                  <code>iterationLabel</code> column names the row in reports.
+                  {grid?.kind === 'json' &&
+                    ' In a JSON file, true, false, null and numbers are stored as themselves.'}
+                </>
+              }
+            />
           </h2>
           <button type="button" className="drawer-close" onClick={onClose} aria-label="Close">
             ×
@@ -138,12 +150,6 @@ export default function DataDrawer({ data, autoSave, onClose }: Props) {
         </div>
 
         <div className="drawer-body data-body">
-          <p className="hint">
-            gta runs the collection once per row, each column a variable for that run. An{' '}
-            <code>iterationLabel</code> column names the row in reports.
-            {grid?.kind === 'json' &&
-              ' In a JSON file, true, false, null and numbers are stored as themselves.'}
-          </p>
           {(error || data.problem) && (
             <p className="data-problem" role="alert">
               {error ?? data.problem}

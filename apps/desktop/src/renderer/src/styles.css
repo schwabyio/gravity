@@ -2721,6 +2721,14 @@ button.info-tip.pinned {
   background: var(--surface);
 }
 
+/* A pane's name and the ⓘ beside it, which says what the pane is for. */
+.pane-name {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
 /* The name gives way in a narrow pane; Hide never does. */
 .pane-title {
   min-width: 0;
@@ -5134,6 +5142,11 @@ button.tag.filter.on {
   margin: 10px 0 6px;
 }
 
+.flags-add .tooltip-trigger,
+.part-file .tooltip-trigger {
+  align-self: center;
+}
+
 .flags-add input {
   flex: 1;
   font-family: var(--mono);
@@ -5779,15 +5792,18 @@ section[aria-labelledby='project-eol-title'] button {
   color: var(--text);
 }
 
+/* The list to repeat for, and its ⓘ beside it. */
 .foreach-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   max-width: 520px;
   margin-top: 6px;
 }
 
-.foreach-field .hint {
-  margin: 4px 0 0;
-  font-size: 11px;
-  color: var(--text-dim);
+.foreach-field .var-input {
+  flex: 1;
+  min-width: 0;
 }
 
 /* A request set's step: whether a use step's own tests check its response. */

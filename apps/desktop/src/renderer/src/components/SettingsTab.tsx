@@ -96,11 +96,6 @@ export default function SettingsTab({ level, own, inherited = {}, onChange }: Pr
   const forStep = level === 'step'
   return (
     <div className="settings-tab">
-      <p className="hint">
-        {forStep
-          ? 'A setting left empty comes from the nearest that sets it — the collection’s settings (⚙ beside its name), its base collection’s, its endpoint base’s — or else the default.'
-          : 'A setting left empty is the default. A step can still set its own.'}
-      </p>
       <div className="settings-list">
         {ROWS.map((row) => {
           const from = forStep ? inherited[row.key] : undefined

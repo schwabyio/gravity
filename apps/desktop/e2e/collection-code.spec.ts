@@ -101,6 +101,14 @@ test('a number that is not one is marked, and not written', async () => {
 
 test('the pre-request script and tests are written as blocks before the steps', async () => {
   await drawerTab('Pre-request').click()
+  // What the tab is for, behind the ⓘ beside the drawer's title.
+  await page.mouse.move(0, 0)
+  await drawer()
+    .getByRole('heading', { name: /Collection settings/ })
+    .getByRole('button', { name: 'About this tab' })
+    .hover()
+  await expect(page.getByRole('tooltip')).toContainText('Runs before every step')
+  await page.mouse.move(0, 0)
   await drawer().getByRole('textbox', { name: 'Collection pre-request script' }).click()
   await page.keyboard.type("gta.set('id', 'abc')")
   await drawerTab('Tests').click()

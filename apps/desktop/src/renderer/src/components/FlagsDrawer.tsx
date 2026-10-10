@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { parseFlagValue, type FlagValue } from '@schwabyio/gravity-core/model'
 import type { FlagsView } from '@shared/ipc.js'
 import { showFlagValue } from '../flagState.js'
+import InfoTip from './InfoTip.js'
 import Tooltip from './Tooltip.js'
 
 interface Props {
@@ -152,11 +153,17 @@ export default function FlagsDrawer(props: Props) {
                   <button type="submit" disabled={adding.trim() === ''}>
                     Override
                   </button>
+                  <InfoTip
+                    about="overrides"
+                    text={
+                      <>
+                        Overrides are kept in the app for this project and environment, and never
+                        written to the repository. <code>gta</code> takes them as{' '}
+                        <code>--flag name=value</code>.
+                      </>
+                    }
+                  />
                 </form>
-                <p className="hint">
-                  Overrides are kept in the app for this project and environment, and never written
-                  to the repository. <code>gta</code> takes them as <code>--flag name=value</code>.
-                </p>
               </section>
             </>
           )}

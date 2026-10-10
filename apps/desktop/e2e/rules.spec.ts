@@ -431,9 +431,12 @@ test('with no rules, nothing is marked, the editors are as ever and Project sett
   await row('list-orders').click()
   await step('list').locator('.step-open').click()
   await expect(page.locator('.scripts-pane .tests-rule-hint')).toHaveCount(0)
-  // The tests' usual explanation, behind the ⓘ on their tabs.
+  // The tests' usual explanation, behind the ⓘ beside SCRIPTS.
   await page.mouse.move(0, 0)
-  await page.locator('.scripts-pane').getByRole('button', { name: 'About this tab' }).hover()
+  await page
+    .locator('.scripts-pane')
+    .getByRole('button', { name: 'About the scripts pane' })
+    .hover()
   await expect(page.getByRole('tooltip')).toContainText('with gta, res and assert built in')
   await page.mouse.move(0, 0)
 

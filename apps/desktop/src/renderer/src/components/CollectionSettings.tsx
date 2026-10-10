@@ -75,7 +75,7 @@ interface Props {
  */
 export default function CollectionSettings(props: Props) {
   const testsRule = useTestsRule()
-  /** What each tab is for, behind an ⓘ beside the tabs. */
+  /** What each tab is for, behind an ⓘ beside the title; General's headings have their own. */
   const tabInfo: Partial<Record<Tab, ReactNode>> = {
     params: (
       <>
@@ -160,7 +160,11 @@ export default function CollectionSettings(props: Props) {
         tabIndex={-1}
       >
         <header className="drawer-head">
-          <h2>Collection settings</h2>
+          {/* What the tab shown below is for, beside the title, as the panes have it. */}
+          <h2>
+            Collection settings
+            {tabInfo[tab] && <InfoTip about="this tab" text={tabInfo[tab]} />}
+          </h2>
           <button type="button" className="drawer-close" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -187,8 +191,6 @@ export default function CollectionSettings(props: Props) {
               )}
             </button>
           ))}
-          {/* What the tab shown is for, out of the way of what is in it. */}
-          {tabInfo[tab] && <InfoTip about="this tab" text={tabInfo[tab]} />}
         </nav>
 
         <div
@@ -324,7 +326,13 @@ export default function CollectionSettings(props: Props) {
               </section>
 
               <section aria-labelledby="collection-requests-title">
-                <h3 id="collection-requests-title">Request settings</h3>
+                <div className="title-with-info">
+                  <h3 id="collection-requests-title">Request settings</h3>
+                  <InfoTip
+                    about="these settings"
+                    text="A setting left empty is the default. A step can still set its own."
+                  />
+                </div>
                 <SettingsTab
                   level="collection"
                   own={collection.settings ?? {}}

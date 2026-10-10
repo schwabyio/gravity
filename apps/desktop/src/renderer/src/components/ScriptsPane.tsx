@@ -13,7 +13,6 @@ import type { Check } from '../testLinks.js'
 import CodeEditor from './CodeEditor.js'
 import DocsEditor from './DocsEditor.js'
 import Markdown from './Markdown.js'
-import InfoTip from './InfoTip.js'
 import PaneHead from './PaneHead.js'
 import PencilIcon from './PencilIcon.js'
 import SharedScripts, { layerScriptTarget } from './SharedScripts.js'
@@ -134,6 +133,28 @@ export default function ScriptsPane(props: Props) {
       <Resizer pane={pane} label="Resize the scripts pane" edge="left" />
       <PaneHead
         title="Scripts"
+        info={
+          // What the script shown is for; the tests under a project's rules say so below,
+          // and docs need no explaining.
+          tab === 'pre-request' ? (
+            <>
+              Runs before the request is built. Set the variables the request uses with{' '}
+              <code>gta.set(name, value)</code> — for example <code>gta.uuidv7()</code> or{' '}
+              <code>gta.date(…)</code>.
+            </>
+          ) : tab === 'tests' && props.use ? (
+            <>
+              Runs after the reusable requests, on the last one&rsquo;s response — with{' '}
+              <code>params</code> as this step passed them. Check files are there as{' '}
+              <code>checks.&lt;file&gt;</code>.
+            </>
+          ) : tab === 'tests' && !testsRule ? (
+            <>
+              Runs after the response. Write any JavaScript, with <code>gta</code>, <code>res</code>{' '}
+              and <code>assert</code> built in — type <code>gta.</code> for its functions.
+            </>
+          ) : null
+        }
         hide={{
           text: 'Hide ▸',
           label: 'Hide the scripts',
@@ -157,39 +178,6 @@ export default function ScriptsPane(props: Props) {
         <button className={tab === 'docs' ? 'active' : ''} onClick={() => props.onTab('docs')}>
           Docs {docs && <span className="count dot">•</span>}
         </button>
-        {/* What the script shown is for, out of the way of writing it. */}
-        {tab === 'pre-request' && (
-          <InfoTip
-            about="this tab"
-            text={
-              <>
-                Runs before the request is built. Set the variables the request uses with{' '}
-                <code>gta.set(name, value)</code> — for example <code>gta.uuidv7()</code> or{' '}
-                <code>gta.date(…)</code>.
-              </>
-            }
-          />
-        )}
-        {tab === 'tests' && (props.use || !testsRule) && (
-          <InfoTip
-            about="this tab"
-            text={
-              props.use ? (
-                <>
-                  Runs after the reusable requests, on the last one&rsquo;s response — with{' '}
-                  <code>params</code> as this step passed them. Check files are there as{' '}
-                  <code>checks.&lt;file&gt;</code>.
-                </>
-              ) : (
-                <>
-                  Runs after the response. Write any JavaScript, with <code>gta</code>,{' '}
-                  <code>res</code> and <code>assert</code> built in — type <code>gta.</code> for its
-                  functions.
-                </>
-              )
-            }
-          />
-        )}
       </div>
 
       {/* Keyed by tab: each tab's editors are its own, never one rebuilt for the other. */}

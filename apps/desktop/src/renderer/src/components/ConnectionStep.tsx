@@ -1,4 +1,5 @@
 import type { EditorState } from '../requestState.js'
+import InfoTip from './InfoTip.js'
 
 /**
  * Connections (SPEC.md §2.11): a request's event stream kept open under a
@@ -70,9 +71,15 @@ export function ConnectionField(props: { value: string; onChange: (connection: s
         value={props.value}
         onChange={(e) => props.onChange(nameOf(e.target.value))}
       />
-      <span className="hint">
-        Later steps read it with connection: and no method. It stays open until the run ends.
-      </span>
+      <InfoTip
+        about="connections"
+        text={
+          <>
+            Later steps read it with <code>connection:</code> and no method. It stays open until the
+            run ends.
+          </>
+        }
+      />
     </label>
   )
 }

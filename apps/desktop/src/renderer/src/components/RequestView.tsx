@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react'
 import type { CheckFileView, EndpointView, LibraryFileView, RequestSetView } from '@shared/ipc.js'
 import {
   findEndpoint,
@@ -176,9 +184,31 @@ export default function RequestView(props: Props) {
     setRequestOpen(false)
     setPinnedOpen(false)
   }
+  // What the tab shown is for, beside the pane's name; a tab with nothing to say has no ⓘ.
+  const tabInfo: Record<RequestTab, ReactNode> = {
+    params: 'Query parameters mirror the URL — editing either one updates the other.',
+    headers:
+      'Sent with this request, over those it inherits: one of the same name here replaces an inherited one, in any case.',
+    body: 'One kind — JSON, XML, text, a form, multipart, GraphQL or a file — with its Content-Type added unless a header sets one.',
+    settings:
+      'A setting left empty comes from the nearest that sets it — the collection’s settings (⚙ beside its name), its base collection’s, its endpoint base’s — or else the default.'
+  }
+  const requestInfo =
+    props.request.use !== null ? (
+      // A use step's one tab, With.
+      <>
+        The values the reusable requests get, as <code>{'{{params.name}}'}</code> in their requests
+        and <code>params.name</code> in their code. Empty takes the default. A value can use{' '}
+        <code>{'{{variables}}'}</code>, resolved as the first request starts, after the
+        collection&rsquo;s <code>before.script</code>.
+      </>
+    ) : (
+      tabInfo[shownTab]
+    )
   const editorHead = (
     <PaneHead
       title="Request"
+      info={requestInfo}
       hide={{
         text: '◂ Hide',
         label: 'Hide the request editor',
