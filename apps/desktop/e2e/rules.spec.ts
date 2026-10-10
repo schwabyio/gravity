@@ -101,7 +101,7 @@ test.afterAll(async () => {
 })
 
 const row = (id: string) => page.locator('.collection-row', { hasText: new RegExp(`^${id}`) })
-const folderRow = (name: string) => page.locator('.group-row', { hasText: new RegExp(`^.${name}`) })
+const folderRow = (name: string) => page.locator('.group-row', { hasText: new RegExp(`^${name}`) })
 const step = (name: string) => page.locator('.step-list li', { hasText: name })
 
 test('rows mark where files and folders break the rules, and the project counts them', async () => {

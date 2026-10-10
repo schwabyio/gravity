@@ -17,6 +17,7 @@ import {
 } from '../consoleLog.js'
 import { formatMs, formatSize } from '../format.js'
 import type { PaneWidth } from '../hooks/usePaneWidth.js'
+import ChevronIcon from './ChevronIcon.js'
 import CopyButton from './CopyButton.js'
 import { statusClass } from './ResponsePane.js'
 import Resizer from './Resizer.js'
@@ -225,8 +226,8 @@ function RequestRow(props: {
     <li className={`console-row request status-${result.status}${open ? ' open' : ''}`}>
       <button type="button" className="console-line" aria-expanded={open} onClick={props.onToggle}>
         <time className="console-time">
-          <span className="console-caret" aria-hidden="true">
-            {open ? '▾' : '▸'}
+          <span className="console-caret">
+            <ChevronIcon size={10} open={open} />
           </span>
           {clockTime(sentAt(entry))}
         </time>

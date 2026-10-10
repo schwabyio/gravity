@@ -8,6 +8,8 @@ import {
 import type { ProjectView } from '@shared/ipc.js'
 import { MARK_WORDS, type GitMarks } from '../gitMarks.js'
 import { findingsOf } from '../ruleFindings.js'
+import ChevronIcon from './ChevronIcon.js'
+import FolderIcon from './FolderIcon.js'
 import GitBadge from './GitBadge.js'
 import NameForm from './NameForm.js'
 import RuleMark from './RuleMark.js'
@@ -221,7 +223,8 @@ function CollectionRow(props: {
     <>
       <div
         className={`collection-item${props.selected ? ' selected' : ''}${props.acting === 'menu' ? ' menu-open' : ''}`}
-        style={{ paddingLeft: props.depth * 14 }}
+        // In a folder, lined up under the folder's name.
+        style={{ paddingLeft: props.depth * 18 }}
         draggable
         onDragStart={(event) => {
           event.dataTransfer.effectAllowed = 'move'
@@ -525,7 +528,6 @@ function Directory(props: {
         >
           <button
             className="row group-row"
-            style={{ paddingLeft: 14 }}
             onClick={() => setOpen(!chosen)}
             aria-expanded={open}
             title={
@@ -534,7 +536,8 @@ function Directory(props: {
                 : undefined
             }
           >
-            <span className="chevron">{open ? '▾' : '▸'}</span>
+            <ChevronIcon open={open} />
+            <FolderIcon open={open} />
             <span className="label">{node.name}</span>
             <RuleMark findings={props.findings} />
             <GitBadge mark={folderMark} dot />

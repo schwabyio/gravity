@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ProjectView } from '@shared/ipc.js'
 import { pullState, pushState } from '../gitActions.js'
 import { findingsLabel } from '../ruleFindings.js'
+import ChevronIcon from './ChevronIcon.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 import { joinPath, useExternalEditor } from '../externalEditor.js'
@@ -80,7 +81,7 @@ export default function ProjectHeading(props: Props) {
         aria-expanded={open}
         title={project.path}
       >
-        <span className="chevron">{open ? '▾' : '▸'}</span>
+        <ChevronIcon open={open} />
         <span className="repo-name">{project.name}</span>
       </button>
 
