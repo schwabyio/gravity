@@ -31,6 +31,7 @@ import OpenInEditor from './OpenInEditor.js'
 import GearIcon from './GearIcon.js'
 import Resizer from './Resizer.js'
 import StepList, { type AddAction } from './StepList.js'
+import StepSectionHead from './StepSectionHead.js'
 import TagEditor from './TagEditor.js'
 import Tooltip from './Tooltip.js'
 import VariableInput from './VariableInput.js'
@@ -87,12 +88,13 @@ interface Props {
   /** Stop showing it: its edits are kept, and with auto save on it is saved. */
   onClose: () => void
   onCancel: () => void
-  onAddStep: (list: ListName) => void
+  /** Add a step to a list: after the step at `after`, or at its end. */
+  onAddStep: (list: ListName, after?: number) => void
   /** Request sets a use step can run. */
   sets: RequestSetView[]
-  onAddUse: (list: ListName) => void
+  onAddUse: (list: ListName, after?: number) => void
   /** Add a step reading a connection the collection's steps open (SPEC.md §2.11). */
-  onAddRead: (list: ListName) => void
+  onAddRead: (list: ListName, after?: number) => void
   /** The connections this collection's Sends hold open, and a way to close them. */
   connections: ConnectionView[]
   onCloseConnection: (name: string) => void
@@ -242,70 +244,63 @@ export default function CollectionView(props: Props) {
   }
   const flagStates = flagStatesOf(props.selectedList)
 
-  const useSetTooltip = (where: string) =>
-    props.sets.length > 0
-      ? `Run reusable requests here${where}, with values of your own`
-      : 'No reusable requests yet: make a file of them from the project’s ⋯ menu'
-  /** Once a step opens a connection: a step reading it. */
-  const readFor = (list: ListName): AddAction[] =>
-    opened.length > 0
-      ? [
-          {
-            label: '+ Read a connection',
-            onClick: () => props.onAddRead(list),
-            tooltip: 'A step that sends nothing: it checks the events a connection holds'
-          }
-        ]
-      : []
-  /** The buttons under each list that add to it. */
-  const addsFor = (list: ListName): AddAction[] => {
-    if (list !== 'steps') {
-      return [
-        { label: `+ Add ${list} step`, onClick: () => props.onAddStep(list) },
-        {
-          label: `+ Use reusable requests in ${list}`,
-          onClick: () => props.onAddUse(list),
-          disabled: props.sets.length === 0,
-          tooltip: useSetTooltip(` in ${list}`)
-        },
-        ...readFor(list)
-      ]
-    }
+  /** Why reusable requests cannot be added yet, when they cannot. */
+  const noSets =
+    props.sets.length === 0
+      ? 'No reusable requests yet: make a file of them from the project’s ⋯ menu'
+      : null
+  /**
+   * What can be added to a list: at its end, from its heading's +, or below the
+   * step at `after`, from that step's ⋯. Reading a connection, once a step opens one.
+   */
+  const addsTo = (list: ListName, after?: number): AddAction[] => {
+    const below = after === undefined ? '' : ' below'
     return [
       {
-        label: `+ Add ${props.library === 'endpoints' ? 'endpoint' : 'step'}`,
-        onClick: () => props.onAddStep('steps')
+        icon: 'new',
+        label: `Add ${props.library === 'endpoints' ? 'endpoint' : 'step'}${below}`,
+        onClick: () => props.onAddStep(list, after)
       },
       {
-        label: '+ Use reusable requests',
-        onClick: () => props.onAddUse('steps'),
-        disabled: props.sets.length === 0,
-        tooltip: useSetTooltip('')
+        icon: 'use',
+        label: `Use reusable requests${below}`,
+        onClick: () => props.onAddUse(list, after),
+        ...(noSets ? { disabled: true, note: noSets } : {})
       },
-      ...readFor('steps'),
-      // A list with steps has its own add buttons, above or below.
-      ...(canHaveStages && setupSteps.length === 0
+      ...(opened.length > 0
         ? [
             {
-              label: '+ Add setup step',
-              onClick: () => props.onAddStep('setup'),
-              tooltip:
-                'Setup runs once before the steps, not once per row of a data file, and stops at its first failing step; what it sets lasts the whole run'
-            }
-          ]
-        : []),
-      ...(canHaveStages && teardownSteps.length === 0
-        ? [
-            {
-              label: '+ Add teardown step',
-              onClick: () => props.onAddStep('teardown'),
-              tooltip:
-                'Teardown runs once after the steps, even when one of them failed or the run was stopped'
+              icon: 'read' as const,
+              label: `Read a connection${below}`,
+              onClick: () => props.onAddRead(list, after)
             }
           ]
         : [])
     ]
   }
+  /** The steps' + also starts setup and teardown, until each has a step. */
+  const stagesToAdd: AddAction[] = canHaveStages
+    ? [
+        ...(setupSteps.length === 0
+          ? [
+              {
+                icon: 'new' as const,
+                label: 'Add setup step',
+                onClick: () => props.onAddStep('setup')
+              }
+            ]
+          : []),
+        ...(teardownSteps.length === 0
+          ? [
+              {
+                icon: 'new' as const,
+                label: 'Add teardown step',
+                onClick: () => props.onAddStep('teardown')
+              }
+            ]
+          : [])
+      ]
+    : []
 
   const listOf = (list: ListName) => {
     const listSteps = stepsOf(props.collection, list)
@@ -323,7 +318,7 @@ export default function CollectionView(props: Props) {
         changes={props.changes?.steps[list]}
         removed={props.changes?.removed[list] ?? 0}
         onSelect={(index) => props.onSelect(list, index)}
-        adds={addsFor(list)}
+        addsBelow={(index) => addsTo(list, index)}
         sets={props.sets}
         childResults={props.childResults[list]}
         itemResults={props.itemResults[list]}
@@ -760,7 +755,7 @@ export default function CollectionView(props: Props) {
             )}
             {setupSteps.length > 0 && (
               <section className="step-section setup" aria-label="Setup">
-                <h2 className="step-section-title">Setup</h2>
+                <StepSectionHead title="Setup" groups={[addsTo('setup')]} />
                 <p className="step-section-note">
                   Runs once before the steps{props.dataFile ? ', not once per row' : ''}, and stops
                   at its first failing step. What it sets lasts the whole run.
@@ -770,12 +765,12 @@ export default function CollectionView(props: Props) {
             )}
             {/* Named always, setup and teardown or not; an endpoints file's steps are its endpoints. */}
             <section className="step-section steps" aria-label={stepsTitle}>
-              <h2 className="step-section-title">{stepsTitle}</h2>
+              <StepSectionHead title={stepsTitle} groups={[addsTo('steps'), stagesToAdd]} />
               {listOf('steps')}
             </section>
             {teardownSteps.length > 0 && (
               <section className="step-section teardown" aria-label="Teardown">
-                <h2 className="step-section-title">Teardown</h2>
+                <StepSectionHead title="Teardown" groups={[addsTo('teardown')]} />
                 <p className="step-section-note">
                   Runs once after the steps, even when one of them failed or the run was stopped.
                 </p>

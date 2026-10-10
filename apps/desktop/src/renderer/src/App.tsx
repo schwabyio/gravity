@@ -1092,6 +1092,10 @@ export default function App() {
     dataRowToRun
   ])
 
+  /** The step a new one goes in after: the one at `after` in `list`; none, for the end. */
+  const afterIdOf = (list: StepList, after?: number): string | null =>
+    after === undefined || !open ? null : (idsOf(open, list)[after] ?? null)
+
   const cancel = () => {
     if (!activeRunId.current) return
     window.desktop.runCancel(activeRunId.current)
@@ -1499,9 +1503,10 @@ export default function App() {
                   onRunAll={() => void runAll()}
                   onClose={closeCollection}
                   onCancel={cancel}
-                  onAddStep={(list) =>
+                  // After the step whose ⋯ it came from, or from a list's +, at its end.
+                  onAddStep={(list, after) =>
                     editor.addStep(
-                      editor.selectedId,
+                      afterIdOf(list, after),
                       isLibraryOf('endpoints') ? { GET: '/path/{id}' } : undefined,
                       list
                     )
@@ -1510,15 +1515,19 @@ export default function App() {
                     isLibraryOf('endpoints') ? 'endpoints' : isLibraryOf('bases') ? 'bases' : null
                   }
                   sets={sets}
-                  onAddUse={(list) => {
+                  onAddUse={(list, after) => {
                     const first = sets.find((set) => !set.problem) ?? sets[0]
                     if (first) {
-                      editor.addStep(editor.selectedId, { use: referenceFor(sets, first) }, list)
+                      editor.addStep(
+                        afterIdOf(list, after),
+                        { use: referenceFor(sets, first) },
+                        list
+                      )
                     }
                   }}
-                  onAddRead={(list) => {
+                  onAddRead={(list, after) => {
                     const [first] = connectionNames(doc)
-                    if (first) editor.addStep(editor.selectedId, { connection: first }, list)
+                    if (first) editor.addStep(afterIdOf(list, after), { connection: first }, list)
                   }}
                   connections={(collectionPath && held[collectionPath]) || NO_CONNECTIONS}
                   onCloseConnection={(name) => {

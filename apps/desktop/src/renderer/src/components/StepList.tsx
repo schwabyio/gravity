@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import {
   isReadStep,
   isUseStep,
@@ -27,13 +27,14 @@ import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 import { useExternalEditor } from '../externalEditor.js'
 
-/** A button under the list that adds a step. */
+/** A way to add a step: to a list's end from its heading's +, or below a step from its ⋯. */
 export interface AddAction {
+  icon: MenuIconName
   label: string
   onClick: () => void
   disabled?: boolean
-  /** What it does, or why it is off. */
-  tooltip?: string
+  /** Why it is off, said under it. */
+  note?: string
 }
 
 interface Props {
@@ -59,8 +60,8 @@ interface Props {
   /** How many of the last commit's steps of this list are gone. */
   removed?: number
   onSelect: (index: number) => void
-  /** The buttons under the list that add steps. */
-  adds: AddAction[]
+  /** What a step's ⋯ menu can add below it. */
+  addsBelow: (index: number) => AddAction[]
   /** Request sets a use step can run. */
   sets: RequestSetView[]
   /** For each use step, by index: its set's results, one per request. */
@@ -349,6 +350,20 @@ export default function StepList(props: Props) {
                         label="Duplicate"
                         onClick={() => props.onDuplicate(index)}
                       />
+                      {/* What goes in after this step, where the list's own + adds to its end. */}
+                      <div className="menu-divider" role="separator" />
+                      {props.addsBelow(index).map((add) => (
+                        <Fragment key={add.label}>
+                          <MenuItem
+                            icon={add.icon}
+                            label={add.label}
+                            onClick={add.onClick}
+                            {...(add.disabled ? { disabled: true } : {})}
+                          />
+                          {add.disabled && add.note && <p className="menu-note">{add.note}</p>}
+                        </Fragment>
+                      ))}
+                      <div className="menu-divider" role="separator" />
                       {editor && (
                         <MenuItem
                           icon="open"
@@ -449,28 +464,6 @@ export default function StepList(props: Props) {
           {props.removed} step{props.removed === 1 ? '' : 's'} removed since the last commit
         </p>
       )}
-      <div className="add-steps">
-        {props.adds.map((add) => {
-          const button = (
-            <button
-              key={add.label}
-              type="button"
-              className="add-step"
-              onClick={add.onClick}
-              disabled={add.disabled}
-            >
-              {add.label}
-            </button>
-          )
-          return add.tooltip ? (
-            <Tooltip key={add.label} text={add.tooltip}>
-              {button}
-            </Tooltip>
-          ) : (
-            button
-          )
-        })}
-      </div>
     </div>
   )
 }

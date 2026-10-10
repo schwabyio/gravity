@@ -19,6 +19,8 @@ export type MenuIconName =
   | 'up'
   | 'down'
   | 'delete'
+  | 'use'
+  | 'read'
 
 /**
  * The icon at the start of a menu item: the app's own where it has one, the
@@ -103,6 +105,15 @@ const DRAWN: Record<
       <path d="M8 4.5V8l2.5 1.5" />
     </>
   ),
+  // A request coming back round: run what is written elsewhere, here.
+  use: (
+    <>
+      <path d="M13 5.5H6a3 3 0 0 0 0 6h4.5" />
+      <path d="M10.5 3 13 5.5 10.5 8" />
+    </>
+  ),
+  // A pulse, as a stream's events come.
+  read: <path d="M1.5 8h3l1.5-4 3 8 1.5-4h4" />,
   up: <path d="M8 13V3M4 7l4-4 4 4" />,
   down: <path d="M8 3v10M4 9l4 4 4-4" />,
   delete: (

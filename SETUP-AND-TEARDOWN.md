@@ -141,8 +141,8 @@ teardown:
   teardown, its requests run after a failure, a cancel or a timeout.
 - A `use:` step cannot have `forEach`, though the requests in the file can. A reusable
   requests file has no setup or teardown of its own.
-- In the desktop app, the setup and teardown sections each have a **+ Use reusable
-  requests in setup** (or **in teardown**) button.
+- In the desktop app, the **+** beside SETUP or TEARDOWN adds one with **Use reusable
+  requests**, and a step's ⋯ menu adds one below it.
 
 ## Cleaning up after the rows
 
@@ -187,8 +187,9 @@ teardown:
 
 ## In the desktop app
 
-- Setup and teardown are sections above and below the steps. **+ Add setup step** and
-  **+ Add teardown step** start them.
+- Setup and teardown are sections above and below the steps. The **+** beside STEPS
+  starts them, with **Add setup step** and **Add teardown step**. After that, each has a
+  **+** of its own, and a step's ⋯ menu adds a step below it.
 - **Run all** runs them around the steps. With a tag filter on, it runs them around the
   steps the filter shows.
 - **Sending one step runs only that step**, never setup. A step that needs setup's token

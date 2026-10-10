@@ -326,7 +326,8 @@ test('a scratch pad is renamed from its menu, its folder too, and an open collec
   await expect(project('Spike').locator('.uses-badge')).toHaveText('uses Shared')
   // The open collection followed: what it writes lands in the renamed folder.
   await expect(header()).toHaveText('ping-check')
-  await page.getByRole('button', { name: '+ Add step' }).click()
+  await page.getByRole('button', { name: 'Add to steps' }).click()
+  await page.getByRole('menuitem', { name: 'Add step', exact: true }).click()
   await expect
     .poll(() => readSoon(path.join(spike, 'collections', 'ping-check.yml')))
     .toContain('- name: New step')
@@ -394,7 +395,8 @@ test('a collection moves to another folder, from its menu or by dragging', async
   const steps = () =>
     (readSoon(pad('collections', 'smoke', 'ping-check.yml')) ?? '').split('- name:').length
   const before = steps()
-  await page.getByRole('button', { name: '+ Add step' }).click()
+  await page.getByRole('button', { name: 'Add to steps' }).click()
+  await page.getByRole('menuitem', { name: 'Add step', exact: true }).click()
   await expect.poll(steps).toBe(before + 1)
 
   // Dragged onto the project's heading: back to the root of collections/.

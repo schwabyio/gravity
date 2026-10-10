@@ -167,8 +167,13 @@ test('a missing required value stops the step before anything is sent', async ()
 })
 
 test('a new use step runs another set; each of its requests is shown on its own', async () => {
-  await page.getByRole('button', { name: '+ Use reusable requests' }).click()
-  // It goes in after the selected step, and is selected itself.
+  // From the first step's ⋯: it goes in below that step, and is selected itself.
+  await page
+    .locator('.step-list > li')
+    .first()
+    .getByRole('button', { name: /^More actions for/ })
+    .click()
+  await page.getByRole('menuitem', { name: 'Use reusable requests below' }).click()
   await expect(page.locator('.step-list > li').nth(1)).toHaveClass(/selected/)
   await page.getByLabel('Reusable requests', { exact: true }).selectOption('orders')
   // Its tests are in the scripts pane, open beside it: a use step's only script.

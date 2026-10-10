@@ -126,8 +126,9 @@ test('the setting persists, and with auto save off nothing is written until Save
 
 test('steps can be added, renamed, duplicated, moved and deleted', async () => {
   await page.locator('.step-open', { hasText: 'list' }).click()
-  // Structure changes write at once, whatever the auto save setting.
-  await page.getByRole('button', { name: '+ Add step' }).click()
+  // Structure changes write at once, whatever the auto save setting. A step's ⋯ adds below it.
+  await step('list').getByRole('button', { name: 'More actions for list' }).click()
+  await page.getByRole('menuitem', { name: 'Add step below' }).click()
   await expect(stepNames()).toHaveText(['list', 'New step', 'create', 'remove'])
   await expect.poll(onDisk).toContain('- name: New step')
 
@@ -178,6 +179,16 @@ test('steps can be added, renamed, duplicated, moved and deleted', async () => {
   await expect
     .poll(() => onDisk().indexOf('- name: remove'))
     .toBeGreaterThan(onDisk().indexOf('- name: create'))
+
+  // The list's + adds to its end, wherever the selection is. Reusable requests wait for a
+  // file of them, and say so.
+  await page.getByRole('button', { name: 'Add to steps' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Use reusable requests' })).toBeDisabled()
+  await expect(page.locator('.section-add-menu .menu-note')).toContainText(
+    'No reusable requests yet'
+  )
+  await page.getByRole('menuitem', { name: 'Add step', exact: true }).click()
+  await expect(stepNames()).toHaveText(['list', 'search', 'create', 'remove', 'New step'])
 
   reset()
   await expect(stepNames()).toHaveText(['list', 'create', 'remove'], { timeout: 15_000 })

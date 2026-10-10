@@ -96,7 +96,8 @@ test('a request keeps its stream open as a connection, set in its Settings tab',
 
   // Only now that a step opens one can a step read it: added after the order is placed.
   await openStep('place order')
-  await page.getByRole('button', { name: '+ Read a connection' }).click()
+  await page.getByRole('button', { name: 'More actions for place order' }).click()
+  await page.getByRole('menuitem', { name: 'Read a connection below' }).click()
   const read = page.locator('.step-list li', { hasText: 'read orders' })
   await expect(read.locator('.method')).toHaveText('READ')
   await expect.poll(onDisk, { timeout: 5_000 }).toContain('  - connection: orders\n')

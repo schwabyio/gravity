@@ -176,8 +176,12 @@ test('an endpoints file is made in the app, and its endpoints added like steps',
     .toEqual([{ GET: '/path/{id}' }])
   // An endpoint is not under a base itself.
   await expect(page.locator('.endpoint-note')).toHaveCount(0)
-  // Under the endpoints listed, the button still adds an endpoint, by that name.
-  await expect(page.getByRole('region', { name: 'Endpoints' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '+ Add endpoint' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '+ Add step' })).toHaveCount(0)
+  // Once there are endpoints, their list's + adds another, by that name.
+  await page
+    .getByRole('region', { name: 'Endpoints' })
+    .getByRole('button', { name: 'Add to endpoints' })
+    .click()
+  await expect(page.getByRole('menuitem', { name: 'Add endpoint' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Add step', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Add to endpoints' }).click()
 })

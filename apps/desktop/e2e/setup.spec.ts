@@ -219,9 +219,12 @@ test('setup and teardown steps are added, moved and deleted in their own lists',
   await expect(page.getByRole('region', { name: 'Setup' })).toHaveCount(0)
   const original = read('plain')
 
-  await page.getByRole('button', { name: '+ Add setup step' }).click()
+  // The steps' + starts setup and teardown.
+  await page.getByRole('button', { name: 'Add to steps' }).click()
+  await page.getByRole('menuitem', { name: 'Add setup step' }).click()
   await expect.poll(() => YAML.parse(read('plain')).setup, { timeout: 5_000 }).toHaveLength(1)
-  await page.getByRole('button', { name: '+ Add teardown step' }).click()
+  await page.getByRole('button', { name: 'Add to steps' }).click()
+  await page.getByRole('menuitem', { name: 'Add teardown step' }).click()
   await expect.poll(() => YAML.parse(read('plain')).teardown, { timeout: 5_000 }).toHaveLength(1)
   const text = read('plain')
   expect(text.indexOf('setup:')).toBeLessThan(text.indexOf('steps:'))
@@ -229,8 +232,9 @@ test('setup and teardown steps are added, moved and deleted in their own lists',
   // The steps are as they were, comment and all.
   expect(text).toContain(original.slice(original.indexOf('steps:')).trimEnd())
 
-  // A second setup step, from the setup list's own button, then renamed and moved.
-  await section('Setup').getByRole('button', { name: '+ Add setup step' }).click()
+  // A second setup step, from the setup list's own +, then renamed and moved.
+  await section('Setup').getByRole('button', { name: 'Add to setup' }).click()
+  await page.getByRole('menuitem', { name: 'Add step', exact: true }).click()
   await expect.poll(() => YAML.parse(read('plain')).setup, { timeout: 5_000 }).toHaveLength(2)
   await section('Setup').locator('.step-open').first().dblclick()
   await page.getByLabel('Step name').fill('grant')
