@@ -3,6 +3,7 @@ import type { ProjectView } from '@shared/ipc.js'
 import { pullState, pushState } from '../gitActions.js'
 import { findingsLabel } from '../ruleFindings.js'
 import ChevronIcon from './ChevronIcon.js'
+import MenuIcon, { type MenuIconName } from './MenuIcon.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 import { joinPath, useExternalEditor } from '../externalEditor.js'
@@ -53,7 +54,7 @@ export default function ProjectHeading(props: Props) {
   // A click anywhere else, or another menu opening, closes the menu.
   const menus = useMenuDismiss(menu, () => setMenu(false))
 
-  const item = (label: string, action: () => void) => (
+  const item = (icon: MenuIconName, label: string, action: () => void) => (
     <button
       type="button"
       role="menuitem"
@@ -62,6 +63,7 @@ export default function ProjectHeading(props: Props) {
         action()
       }}
     >
+      <MenuIcon name={icon} />
       {label}
     </button>
   )
@@ -215,21 +217,28 @@ export default function ProjectHeading(props: Props) {
           </button>
           {menu && (
             <div className="project-menu" role="menu">
-              {item('New collection', props.onNewCollection)}
-              {item('New folder', props.onNewDirectory)}
-              {item('New reusable requests file', props.onNewSet)}
-              {item('New endpoints file', props.onNewEndpoints)}
-              {item('New base collection', props.onNewBase)}
-              {git && item('Changes and commit', () => props.onChanges('changes'))}
-              {git && item('History', () => props.onChanges('history'))}
-              {project.scratch && item('Rename', props.onRename)}
-              {item('Project settings', props.onSettings)}
+              {/* What to make, then git, then the project itself. */}
+              {item('new', 'New collection', props.onNewCollection)}
+              {item('new-folder', 'New folder', props.onNewDirectory)}
+              {item('new', 'New reusable requests file', props.onNewSet)}
+              {item('new', 'New endpoints file', props.onNewEndpoints)}
+              {item('new', 'New base collection', props.onNewBase)}
+              <div className="menu-divider" role="separator" />
+              {git && (
+                <>
+                  {item('commit', 'Changes and commit', () => props.onChanges('changes'))}
+                  {item('history', 'History', () => props.onChanges('history'))}
+                  <div className="menu-divider" role="separator" />
+                </>
+              )}
+              {project.scratch && item('rename', 'Rename', props.onRename)}
+              {item('settings', 'Project settings', props.onSettings)}
               {editor &&
                 project.projectSource !== null &&
-                item(`${editor.label}: project.yml`, () =>
+                item('open', `${editor.label}: project.yml`, () =>
                   editor.open({ path: joinPath(project.path, 'project.yml') })
                 )}
-              {item('Show in folder', props.onReveal)}
+              {item('folder', 'Show in folder', props.onReveal)}
             </div>
           )}
         </span>

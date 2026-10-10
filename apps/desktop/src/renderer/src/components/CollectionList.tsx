@@ -11,6 +11,7 @@ import { findingsOf } from '../ruleFindings.js'
 import ChevronIcon from './ChevronIcon.js'
 import FolderIcon from './FolderIcon.js'
 import GitBadge from './GitBadge.js'
+import MenuIcon, { type MenuIconName } from './MenuIcon.js'
 import NameForm from './NameForm.js'
 import RuleMark from './RuleMark.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
@@ -172,7 +173,7 @@ function CollectionRow(props: {
     ...(summary.directory !== null ? [null] : []),
     ...props.folders.filter((folder) => folder !== summary.directory)
   ]
-  const item = (label: string, action: () => void, danger = false) => (
+  const item = (icon: MenuIconName, label: string, action: () => void, danger = false) => (
     <button
       type="button"
       role="menuitem"
@@ -182,6 +183,7 @@ function CollectionRow(props: {
         action()
       }}
     >
+      <MenuIcon name={icon} />
       {label}
     </button>
   )
@@ -287,21 +289,25 @@ function CollectionRow(props: {
           </button>
           {props.acting === 'menu' && (
             <div className="project-menu" role="menu">
-              {item('New request', () => {
+              {item('new', 'New request', () => {
                 props.onAct(null)
                 actions.onNewRequest(summary)
               })}
-              {item('New reusable requests file', () => props.onAct('set'))}
-              {item('Rename', () => props.onAct('rename'))}
+              {item('new', 'New reusable requests file', () => props.onAct('set'))}
+              {item('rename', 'Rename', () => props.onAct('rename'))}
               {editor &&
-                item(editor.label, () => {
+                item('open', editor.label, () => {
                   props.onAct(null)
                   editor.open({ path: summary.path })
                 })}
-              {elsewhere.length > 0 && item('Move to folder…', () => props.onAct('folder'))}
-              {actions.targets.length > 0 && item('Copy to project…', () => props.onAct('copy'))}
-              {actions.targets.length > 0 && item('Move to project…', () => props.onAct('move'))}
+              {elsewhere.length > 0 &&
+                item('move-to-folder', 'Move to folder…', () => props.onAct('folder'))}
+              {actions.targets.length > 0 &&
+                item('copy', 'Copy to project…', () => props.onAct('copy'))}
+              {actions.targets.length > 0 &&
+                item('move-to-project', 'Move to project…', () => props.onAct('move'))}
               {item(
+                'delete',
                 'Delete',
                 () => {
                   props.onAct(null)
@@ -567,6 +573,7 @@ function Directory(props: {
                     actions.onNewCollectionIn(node.name)
                   }}
                 >
+                  <MenuIcon name="new" />
                   New collection
                 </button>
                 <button
@@ -577,6 +584,7 @@ function Directory(props: {
                     props.onAct('rename')
                   }}
                 >
+                  <MenuIcon name="rename" />
                   Rename
                 </button>
                 <button
@@ -589,6 +597,7 @@ function Directory(props: {
                     actions.onDeleteFolder(node.name)
                   }}
                 >
+                  <MenuIcon name="delete" />
                   Delete
                 </button>
               </div>

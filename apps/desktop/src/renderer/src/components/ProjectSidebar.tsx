@@ -12,6 +12,7 @@ import { findingsOf } from '../ruleFindings.js'
 import { filterCollections, filtering, keepsFile } from '../sidebarFilter.js'
 import CollapseIcon from './CollapseIcon.js'
 import GitBadge from './GitBadge.js'
+import MenuIcon, { type MenuIconName } from './MenuIcon.js'
 import { gitMarks, MARK_WORDS, type GitMark } from '../gitMarks.js'
 import { useExternalEditor } from '../externalEditor.js'
 import CollectionList, { type CollectionActions, type FolderDrag } from './CollectionList.js'
@@ -162,7 +163,7 @@ export default function ProjectSidebar(props: Props) {
     return message
   }
 
-  const menuItem = (label: string, action: () => void, danger = false) => (
+  const menuItem = (icon: MenuIconName, label: string, action: () => void, danger = false) => (
     <button
       type="button"
       role="menuitem"
@@ -172,6 +173,7 @@ export default function ProjectSidebar(props: Props) {
         action()
       }}
     >
+      <MenuIcon name={icon} />
       {label}
     </button>
   )
@@ -239,10 +241,13 @@ export default function ProjectSidebar(props: Props) {
               </button>
               {workspaceMenu && (
                 <div className="project-menu" role="menu">
-                  {menuItem('New workspace', () => setNaming({ kind: 'workspace' }))}
-                  {menuItem('Rename workspace', () => setNaming({ kind: 'rename-workspace' }))}
+                  {menuItem('new', 'New workspace', () => setNaming({ kind: 'workspace' }))}
+                  {menuItem('rename', 'Rename workspace', () =>
+                    setNaming({ kind: 'rename-workspace' })
+                  )}
                   {props.active &&
                     menuItem(
+                      'delete',
                       'Delete workspace',
                       () => {
                         const active = props.active
@@ -667,6 +672,7 @@ function LibraryRow(props: {
                   editor.open({ path: file.path })
                 }}
               >
+                <MenuIcon name="open" />
                 {editor.label}
               </button>
             </div>

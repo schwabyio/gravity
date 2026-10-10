@@ -21,6 +21,7 @@ import {
   type StepHover,
   type StepOutcome
 } from '../stepOutcome.js'
+import MenuIcon, { type MenuIconName } from './MenuIcon.js'
 import RuleMark from './RuleMark.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
@@ -330,6 +331,7 @@ export default function StepList(props: Props) {
                   {menu === index && forPicked(index) ? (
                     <div className="step-menu" role="menu">
                       <MenuItem
+                        icon="delete"
                         label={
                           picked.size === shown().length
                             ? `Delete all ${picked.size} steps`
@@ -341,10 +343,15 @@ export default function StepList(props: Props) {
                     </div>
                   ) : menu === index ? (
                     <div className="step-menu" role="menu">
-                      <MenuItem label="Rename" onClick={() => setRenaming(index)} />
-                      <MenuItem label="Duplicate" onClick={() => props.onDuplicate(index)} />
+                      <MenuItem icon="rename" label="Rename" onClick={() => setRenaming(index)} />
+                      <MenuItem
+                        icon="copy"
+                        label="Duplicate"
+                        onClick={() => props.onDuplicate(index)}
+                      />
                       {editor && (
                         <MenuItem
+                          icon="open"
                           label={editor.label}
                           onClick={() =>
                             editor.open({ path: props.path, step: { list: props.list, index } })
@@ -353,21 +360,29 @@ export default function StepList(props: Props) {
                       )}
                       {editor && set && (
                         <MenuItem
+                          icon="open"
                           label={`${editor.label}: ${set.path.split(/[\\/]/).pop()}`}
                           onClick={() => editor.open({ path: set.path })}
                         />
                       )}
                       <MenuItem
+                        icon="up"
                         label="Move up"
                         disabled={index === 0}
                         onClick={() => props.onMove(index, index - 1)}
                       />
                       <MenuItem
+                        icon="down"
                         label="Move down"
                         disabled={index === count - 1}
                         onClick={() => props.onMove(index, index + 1)}
                       />
-                      <MenuItem label="Delete" danger onClick={() => confirmDelete(index)} />
+                      <MenuItem
+                        icon="delete"
+                        label="Delete"
+                        danger
+                        onClick={() => confirmDelete(index)}
+                      />
                     </div>
                   ) : null}
                 </span>
@@ -515,6 +530,7 @@ function ResultHover(props: {
 }
 
 function MenuItem(props: {
+  icon: MenuIconName
   label: string
   onClick: () => void
   disabled?: boolean
@@ -528,6 +544,7 @@ function MenuItem(props: {
       disabled={props.disabled}
       onClick={props.onClick}
     >
+      <MenuIcon name={props.icon} />
       {props.label}
     </button>
   )

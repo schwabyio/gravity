@@ -3199,12 +3199,11 @@ mark.find-hit.current {
 }
 
 .step-menu button {
-  padding: 5px 10px;
+  padding: 6px 10px;
   border: none;
   border-radius: 5px;
   background: none;
   color: var(--text);
-  font-size: 12px;
   text-align: left;
 }
 
@@ -4456,6 +4455,35 @@ button.tag.filter.on {
 
 .project-menu button.danger {
   color: var(--client);
+}
+
+/* Every menu's items alike: an icon, then what it does, in one size wherever the
+   menu opens — the project heading's buttons and the workspace's would lend theirs. */
+.project-menu button,
+.step-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.project-menu button > svg,
+.step-menu button > svg {
+  flex: none;
+  color: var(--text-dim);
+}
+
+.project-menu button.danger > svg,
+.step-menu button.danger > svg {
+  color: inherit;
+}
+
+.menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
 }
 
 .uses-badge {
