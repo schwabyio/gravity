@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { COLLECTIONS_DIR, ENVIRONMENTS_DIR } from '../format/constants.js'
 import { parseCollection } from '../format/index.js'
@@ -6,6 +5,7 @@ import { relativePosix } from '../paths.js'
 import { idOfFile, idProblem, duplicateIds } from './ids.js'
 import { findDataFile, readDataFile } from './dataFile.js'
 import { directoryOf, discoverProject } from './project.js'
+import { readText } from './readFolder.js'
 import { stepLabel, type Collection } from '../model/documents.js'
 import type { CollectionSummary, LoadProblem } from '../model/tree.js'
 
@@ -46,7 +46,7 @@ export async function loadCollection(file: string, root: string): Promise<Loaded
   let doc: Collection = { steps: [] }
   const problems: LoadProblem[] = []
   try {
-    doc = parseCollection(await fs.readFile(absolute, 'utf8'), relativePath).data
+    doc = parseCollection(await readText(absolute), relativePath).data
   } catch (cause) {
     problems.push({
       path: relativePath,

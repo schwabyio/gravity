@@ -7,6 +7,7 @@ import {
   rawExchange,
   rawRequest,
   rawResponse,
+  rowsText,
   sentAt,
   SHOW_LABELS,
   shownRows,
@@ -37,8 +38,9 @@ interface Props {
 
 /**
  * The console: every Send's and Run all's requests, what their scripts wrote,
- * and what went wrong, newest at the bottom. A request opens to show itself
- * and its response as raw text, each with a Copy.
+ * and what went wrong, newest at the bottom, with the load log among them. A
+ * request opens to show itself and its response as raw text, each with a Copy;
+ * Copy at the top takes every line shown, for a report.
  */
 export default function ConsolePanel({ log, pane, onClose }: Props) {
   const [show, setShow] = useState<ConsoleShow>('all')
@@ -112,6 +114,11 @@ export default function ConsolePanel({ log, pane, onClose }: Props) {
           ))}
         </select>
         <span className="spacer" />
+        <CopyButton
+          what="these lines"
+          label="Copy"
+          onCopy={() => (rows.length === 0 ? false : window.desktop.app.copyText(rowsText(rows)))}
+        />
         <button type="button" onClick={clear} disabled={log.entries.length === 0}>
           Clear
         </button>
@@ -208,6 +215,18 @@ function Row({ row, open, onToggle }: { row: ConsoleRow; open: boolean; onToggle
       )
     case 'request':
       return <RequestRow entry={row.entry} source={row.source} open={open} onToggle={onToggle} />
+    case 'load':
+      return (
+        <li className={`console-row load${row.problem ? ' load-problem' : ''}`}>
+          <div className="console-line">
+            <time className="console-time">{clockTime(row.at)}</time>
+            <span className="console-tag" title={row.subject}>
+              {row.subject}
+            </span>
+            <span className="console-text">{row.text}</span>
+          </div>
+        </li>
+      )
   }
 }
 

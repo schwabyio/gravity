@@ -9,7 +9,7 @@ import react from '@vitejs/plugin-react'
  */
 const sourcemap = process.env['GRAVITY_COVERAGE'] === '1'
 
-/** The app's version, shown at the right of the status bar. */
+/** The app's version, shown at the right of the status bar and first in the load log. */
 const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8'))
 
 export default defineConfig({
@@ -18,6 +18,8 @@ export default defineConfig({
     // Its runtime dependencies are declared in this package too, which keeps them
     // external and tells the packager what to ship.
     plugins: [externalizeDepsPlugin({ exclude: ['@schwabyio/gravity-core'] })],
+    // Electron's own version, not the app's, is what `app.getVersion()` says unpackaged.
+    define: { __GRAVITY_VERSION__: JSON.stringify(pkg.version) },
     build: {
       sourcemap,
       rollupOptions: {

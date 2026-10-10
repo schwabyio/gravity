@@ -332,12 +332,15 @@ export default function ProjectSidebar(props: Props) {
 
       {props.cloning && (
         <p className="sidebar-status" role="status">
-          Cloning {props.cloning.target.split(/[\\/]/).pop()}… {props.cloning.phase}
+          <span className="loading-spinner" aria-hidden="true" />
+          {props.cloning.operation === 'add' ? 'Adding projects from' : 'Cloning'}{' '}
+          {props.cloning.target.split(/[\\/]/).pop()}… {props.cloning.phase}
           {props.cloning.percent !== null && ` ${props.cloning.percent}%`}
         </p>
       )}
 
-      {props.notice && !props.error && (
+      {/* While an add says how far along it is, its "Adding…" would only say it again. */}
+      {props.notice && !props.error && props.cloning?.operation !== 'add' && (
         <p className="sidebar-status" role="status">
           {props.notice}
         </p>
@@ -510,6 +513,11 @@ export default function ProjectSidebar(props: Props) {
                 !nothingFound &&
                 (!project.available ? (
                   <p className="hint unavailable">Folder is missing — it may have been moved.</p>
+                ) : project.loading &&
+                  project.collections.length === 0 &&
+                  project.directories.length === 0 ? (
+                  // Not read yet, rather than empty.
+                  <p className="hint project-loading">Loading…</p>
                 ) : !project.hasCollections ? (
                   <p className="hint shared-project">
                     A shared project, with no collections of its own.

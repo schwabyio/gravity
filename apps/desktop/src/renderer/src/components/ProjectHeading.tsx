@@ -123,7 +123,12 @@ export default function ProjectHeading(props: Props) {
         </Tooltip>
       )}
 
-      {git ? (
+      {project.loading ? (
+        // Where the branch will show once git answers: on Windows, a while.
+        <Tooltip text="Loading: reading its files and asking git">
+          <span className="loading-spinner" role="img" aria-label={`Loading ${project.name}`} />
+        </Tooltip>
+      ) : git ? (
         <span className="repo-git">
           <Tooltip
             text={`${git.upstream ? `Tracks ${git.upstream}` : 'No upstream'}: open Changes and branches`}

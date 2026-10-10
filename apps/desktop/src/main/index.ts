@@ -1,5 +1,7 @@
+import os from 'node:os'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
+import { observeReadRetries } from '@schwabyio/gravity-core'
 import { IpcChannel } from '../shared/ipc.js'
 import { setupGit } from './bundledGit.js'
 import {
@@ -7,22 +9,43 @@ import {
   broadcastProjects,
   broadcastRunProgress,
   broadcastSettings,
-  registerIpc
+  registerIpc,
+  registerLoadLog
 } from './ipc.js'
+import { duration, LoadLog } from './loadLog.js'
 import { migrateUserData, placeUserData } from './migrateUserData.js'
 import { runSupervisor } from './runSupervisor.js'
 import { ProjectService } from './projectService.js'
 
 const isDev = !app.isPackaged
 
+declare const __GRAVITY_VERSION__: string
+
 placeUserData()
 migrateUserData()
+// What listing projects took, from the first moment, for the console and for a report.
+const loadLog = new LoadLog()
+loadLog.write(
+  'app',
+  `Gravity ${__GRAVITY_VERSION__} on ${process.platform} ${os.release()} (${process.arch})`
+)
+// Reads tried again: what antivirus holding a fresh clone's files looks like. One that never
+// worked is a problem where it shows — on its project, its collection — so not one here too.
+observeReadRetries(({ path: file, code, tries, read }) =>
+  loadLog.write(
+    'files',
+    read
+      ? `${file} read on try ${tries}, after ${code}`
+      : `${file} could not be read in ${tries} tries (${code})`
+  )
+)
 // A discarded change goes to the Trash, so it can be got back. Looked up on
 // each call rather than bound once. Scratch pads live in the app's own data,
 // asked for only once the app is ready and `--user-data-dir` has been applied.
 const projects = new ProjectService({
   moveAside: (file) => shell.trashItem(file),
-  scratchPads: () => path.join(app.getPath('userData'), 'Scratch pads')
+  scratchPads: () => path.join(app.getPath('userData'), 'Scratch pads'),
+  log: (subject, text, problem) => loadLog.write(subject, text, problem)
 })
 
 function createWindow(): void {
@@ -73,6 +96,7 @@ function createWindow(): void {
 
 app.whenReady().then(async () => {
   registerIpc(projects)
+  registerLoadLog(loadLog)
   broadcastProjects(projects)
   broadcastGitProgress(projects)
   broadcastRunProgress()
@@ -83,15 +107,35 @@ app.whenReady().then(async () => {
   // window is up rather than delaying first paint. git is set up alongside,
   // not first: on Windows that can take seconds, and listing each project
   // from its files need not wait for it.
+  const gitStarted = performance.now()
   const git = setupGit()
   void git.then(
     (setup) => {
-      if (setup.note) console.warn(setup.note)
+      const which = setup.bundled ? 'bundled git' : `git at ${setup.binary}`
+      loadLog.write(
+        'git',
+        setup.version
+          ? `${which} ${setup.version} answered in ${duration(performance.now() - gitStarted)}`
+          : 'No git answered: projects are watched by their files only',
+        setup.version === null
+      )
+      if (setup.note) {
+        console.warn(setup.note)
+        loadLog.write('git', setup.note, true)
+      }
     },
-    (cause) => console.warn('git could not be set up:', cause)
+    (cause) => {
+      console.warn('git could not be set up:', cause)
+      loadLog.write('git', `git could not be set up: ${String(cause)}`, true)
+    }
   )
   projects.setGit(git)
-  await projects.init()
+  const listing = performance.now()
+  const state = await projects.init()
+  loadLog.write(
+    'app',
+    `Listed ${state.projects.length === 1 ? '1 project' : `${state.projects.length} projects`} in ${duration(performance.now() - listing)}`
+  )
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

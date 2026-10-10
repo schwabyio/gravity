@@ -65,6 +65,7 @@ import { openInEditor } from './editor.js'
 import { runSupervisor } from './runSupervisor.js'
 import { flagService } from './flagService.js'
 import { scriptRuleFindings } from './scriptRules.js'
+import type { LoadLog } from './loadLog.js'
 import type { ProjectService } from './projectService.js'
 
 const index = z.number().int().nonnegative()
@@ -1060,6 +1061,12 @@ const toWindows = (channel: string, payload: unknown) => {
 }
 
 const tellConsole = (event: ConsoleEvent) => toWindows(IpcChannel.eventConsole, event)
+
+/** The load log in the console: its lines so far for a window that asks, then each as it is written. */
+export function registerLoadLog(log: LoadLog): () => void {
+  ipcMain.handle(IpcChannel.consoleHistory, () => log.history())
+  return log.onEvent(tellConsole)
+}
 
 /**
  * A run as the console tells it (`ConsoleEvent`): its start, then its end —

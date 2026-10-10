@@ -1,9 +1,9 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { COLLECTIONS_DIR, DOC_EXTENSION, IGNORED_DIRECTORIES } from '../format/constants.js'
 import { GitRepo } from '../git/index.js'
 import { canonical as canonicalize, isInside } from '../paths.js'
 import { readProject } from './project.js'
+import { readFolder } from './readFolder.js'
 
 /** How deep the non-git fallback walk will go before giving up. */
 const MAX_WALK_DEPTH = 10
@@ -94,7 +94,7 @@ async function filesViaWalk(root: string, current: string, depth = 0): Promise<s
 
   let entries
   try {
-    entries = await fs.readdir(current, { withFileTypes: true })
+    entries = await readFolder(current)
   } catch {
     return []
   }
@@ -137,7 +137,8 @@ export async function findProjects(folder: string): Promise<string[]> {
   const walk = async (current: string, depth: number): Promise<void> => {
     let entries
     try {
-      entries = await fs.readdir(current, { withFileTypes: true })
+      // Held for a moment by antivirus, it is read again; held for good, it is passed by.
+      entries = await readFolder(current)
     } catch {
       return
     }

@@ -110,6 +110,8 @@ export const IpcChannel = {
   appCloseReply: 'app:closeReply',
   /** Put text on the clipboard: what the console copies. */
   appCopyText: 'app:copyText',
+  /** What the console was told before the window asked: the load log since the app started. */
+  consoleHistory: 'console:history',
   variablesPreview: 'variables:preview',
   variablesCopy: 'variables:copy',
   scriptCheck: 'script:check',
@@ -267,10 +269,12 @@ export interface GitSetupView {
 }
 
 /** A clone's progress, from git's own output. */
+/** A long piece of work under way: a clone, or adding a folder's projects, alone or after a clone. */
 export interface GitProgress {
-  operation: 'clone'
-  /** Where it is cloning into. */
+  operation: 'clone' | 'add'
+  /** Where it is cloning into; the folder whose projects are being added. */
   target: string
+  /** git's phase of a clone; for an add, which project of how many is being read: `3 of 6: orders`. */
   phase: string
   percent: number | null
   /** True once it has finished, either way. */
@@ -368,6 +372,11 @@ export interface ProjectView {
   git: GitStatusView | null
   /** Why git state is unavailable, when it is. */
   gitNote: string | null
+  /**
+   * Still being read: not yet listed, or listed from its files with git yet to
+   * answer for the first time — slow to start on Windows.
+   */
+  loading?: boolean
   /** Whether it has a `collections/` directory at all. */
   hasCollections: boolean
   collections: CollectionSummary[]
@@ -644,6 +653,25 @@ export type ConsoleEvent =
       /** Why the run could not run, when it could not. */
       failure?: string
     }
+  | LoadEvent
+
+/**
+ * A line of the load log: what the app did to list projects and set git up —
+ * how long it took, what it found, what it read again and what it could not
+ * read — for the console, and for whoever reports the app being slow.
+ */
+export interface LoadEvent {
+  kind: 'load'
+  /** In order, and unique for the session: the history and the live events overlap. */
+  seq: number
+  /** Epoch milliseconds. */
+  at: number
+  /** What it is about: a project's name, `git`, `app`, `files`. */
+  subject: string
+  text: string
+  /** Something went wrong: a folder that could not be read, git that could not be set up. */
+  problem?: boolean
+}
 
 /** A collection's data file, for the editor: its text and its table, or why it is not one. */
 export interface ReadDataResult {
@@ -680,8 +708,10 @@ export interface DesktopApi {
   onRunProgress(callback: (progress: RunProgress) => void): Unsubscribe
   /** An event stream a run is reading, as it is read. */
   onRunLive(callback: (live: RunLive) => void): Unsubscribe
-  /** Every run's start, results and end, for the console. */
+  /** Every run's start, results and end, for the console, and the load log's lines. */
   onConsole(callback: (event: ConsoleEvent) => void): Unsubscribe
+  /** The load log's lines from before the window asked: startup's above all. */
+  consoleHistory(): Promise<LoadEvent[]>
   /** Close a connection a collection's Sends hold, or with no name all of them. */
   closeConnection(collectionPath: string, name?: string): void
   onConnections(callback: (view: ConnectionsView) => void): Unsubscribe

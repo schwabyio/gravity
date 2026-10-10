@@ -8,14 +8,15 @@ import {
   type RunResult,
   type SentRequest
 } from '@schwabyio/gravity-core/model'
-import type { ConsoleEvent, ConsoleRunKind, IterationRef } from '@shared/ipc.js'
+import type { ConsoleEvent, ConsoleRunKind, IterationRef, LoadEvent } from '@shared/ipc.js'
 import { formatMs, formatSize } from './format.js'
 import { matches } from './sidebarFilter.js'
 
 /**
  * The console: every run's requests, script output and errors, whichever
- * collection it was of, kept until Clear or quit. Pure, so the panel and its
- * tests agree on what it holds and what it shows.
+ * collection it was of, and the load log — what listing projects took — kept
+ * until Clear or quit. Pure, so the panel and its tests agree on what it holds
+ * and what it shows.
  */
 
 /** The most results kept: past it, the oldest go, with what their scripts wrote. */
@@ -57,6 +58,8 @@ export type ConsoleEntry =
       totals?: RunTotals
       failure?: string
     }
+  /** A line of the load log. */
+  | { kind: 'load'; key: number; event: LoadEvent }
 
 export interface ConsoleState {
   entries: ConsoleEntry[]
@@ -108,6 +111,8 @@ export function consoleReducer(state: ConsoleState, action: ConsoleAction): Cons
           }
         ]
       })
+    case 'load':
+      return { ...state, next, entries: [...state.entries, { kind: 'load', key, event }] }
     case 'end': {
       const { [event.runId]: run = null, ...runs } = state.runs
       return {
@@ -159,6 +164,8 @@ export type ConsoleRow =
   | { kind: 'log'; key: string; log: LogEntry; source: string }
   /** What stopped a step. */
   | { kind: 'error'; key: string; error: RunError; source: string }
+  /** A line of the load log, about a project, git, the app or a file. */
+  | { kind: 'load'; key: string; at: number; subject: string; text: string; problem: boolean }
 
 const RUN_NAME: Record<ConsoleRunKind, string> = { send: 'Send', steps: 'Run', all: 'Run all' }
 
@@ -203,6 +210,10 @@ const totalsText = (totals: RunTotals): string =>
  */
 function linesOf(entry: ConsoleEntry): ConsoleRow[] {
   const key = String(entry.key)
+  if (entry.kind === 'load') {
+    const { at, subject, text, problem = false } = entry.event
+    return [{ kind: 'load', key, at, subject, text, problem }]
+  }
   if (entry.kind === 'start') {
     return entry.run.kind === 'all'
       ? [{ kind: 'start', key, at: entry.at, text: startText(entry.run) }]
@@ -257,12 +268,13 @@ export function rowsOf(entry: ConsoleEntry): ConsoleRow[] {
 }
 
 /** Which lines the console shows. */
-export type ConsoleShow = 'all' | 'requests' | 'logs' | 'problems'
+export type ConsoleShow = 'all' | 'requests' | 'logs' | 'loading' | 'problems'
 
 export const SHOW_LABELS: Record<ConsoleShow, string> = {
   all: 'Everything',
   requests: 'Requests',
   logs: 'Script output',
+  loading: 'Loading projects',
   problems: 'Failures, warnings and errors'
 }
 
@@ -276,6 +288,7 @@ export function isProblem(row: ConsoleRow): boolean {
     case 'error':
       return true
     case 'end':
+    case 'load':
       return row.problem
     default:
       return false
@@ -286,6 +299,7 @@ const SHOWN: Record<ConsoleShow, (row: ConsoleRow) => boolean> = {
   all: () => true,
   requests: (row) => row.kind === 'request' || row.kind === 'skipped',
   logs: (row) => row.kind === 'log',
+  loading: (row) => row.kind === 'load',
   problems: isProblem
 }
 
@@ -305,6 +319,8 @@ function wordsOf(row: ConsoleRow): string[] {
       return [row.log.message, row.source]
     case 'error':
       return [row.error.message, row.source]
+    case 'load':
+      return [row.subject, row.text]
   }
 }
 
@@ -331,6 +347,8 @@ export function problemCounts(entries: ConsoleEntry[]): { errors: number; warnin
   let warnings = 0
   for (const entry of entries) {
     if (entry.kind === 'end' && entry.failure !== undefined) errors++
+    // A folder that could not be read: what the project shows may be short.
+    if (entry.kind === 'load' && entry.event.problem) warnings++
     if (entry.kind !== 'result') continue
     if (entry.result.status === 'error') errors++
     for (const log of entry.result.logs ?? []) {
@@ -339,6 +357,44 @@ export function problemCounts(entries: ConsoleEntry[]): { errors: number; warnin
     }
   }
   return { errors, warnings }
+}
+
+/**
+ * The lines as text, one to a line, as the console shows them: what Copy puts
+ * on the clipboard, for a report of what happened.
+ */
+export function rowsText(rows: ConsoleRow[]): string {
+  return rows.map(rowText).join('\n')
+}
+
+/** Lines with no time of their own line up under those with one. */
+const NO_TIME = ' '.repeat('00:00:00.000'.length)
+
+function rowText(row: ConsoleRow): string {
+  switch (row.kind) {
+    case 'start':
+    case 'end':
+      return `${clockTime(row.at)}  ${row.text}`
+    case 'request': {
+      const { result } = row.entry
+      const ms = result.response?.timings.totalMs ?? result.durationMs
+      return [
+        clockTime(sentAt(row.entry)),
+        `${result.request.method} ${result.request.url}`,
+        outcomeOf(result),
+        formatMs(ms),
+        row.source
+      ].join('  ')
+    }
+    case 'skipped':
+      return `${clockTime(row.at)}  skipped  ${row.reason}  ${row.source}`
+    case 'log':
+      return `${NO_TIME}  ${row.log.phase}  ${row.log.message}  ${row.source}`
+    case 'error':
+      return `${NO_TIME}  ${row.error.phase} error  ${row.error.message}  ${row.source}`
+    case 'load':
+      return `${clockTime(row.at)}  ${row.problem ? 'PROBLEM ' : ''}${row.subject} · ${row.text}`
+  }
 }
 
 /* ------------------------------------------------------------------- raw -- */

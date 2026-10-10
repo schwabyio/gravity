@@ -88,7 +88,9 @@ test.afterAll(async () => {
 
 const consoleButton = () => page.locator('.status-bar').getByRole('button', { name: /^Console/ })
 const panel = () => page.getByRole('region', { name: 'Console', exact: true })
-const lines = () => panel().locator('.console-row')
+// The lines of runs: the load log has lines of its own, from startup on.
+const lines = () => panel().locator('.console-row:not(.load)')
+const loadLines = () => panel().locator('.console-row.load')
 const request = (text: string) => panel().locator('.console-row.request', { hasText: text })
 const clipboard = () => app.evaluate(({ clipboard }) => clipboard.readText())
 
@@ -207,6 +209,28 @@ test('the console filters by kind and by what is typed', async () => {
   await filter.press('Escape')
   await expect(filter).toHaveValue('')
   await expect(lines()).not.toHaveCount(0)
+})
+
+test('the load log says what listing each project took, and Copy takes the lines shown', async () => {
+  const show = panel().getByLabel('Show')
+  await show.selectOption('loading')
+  await expect(lines()).toHaveCount(0)
+  await expect(loadLines().filter({ hasText: /^.*Gravity \d+\.\d+\.\d+ on / })).toHaveCount(1)
+  await expect(loadLines().filter({ hasText: /git .*answered in/ })).toHaveCount(1)
+  const listed = loadLines().filter({ hasText: 'shop-api' }).filter({ hasText: 'Listed' })
+  await expect(listed).toHaveCount(1)
+  await expect(listed).toContainText(
+    /Listed 1 collection, 1 environment in \d+ ms \(as it was added\)/
+  )
+  await expect(loadLines().filter({ hasText: 'Not in a git repository' })).toHaveCount(1)
+  // Nothing went wrong, so nothing is a warning.
+  await expect(panel().locator('.console-row.load-problem')).toHaveCount(0)
+
+  await panel().getByRole('button', { name: 'Copy these lines' }).click()
+  await expect
+    .poll(clipboard)
+    .toMatch(/^\d\d:\d\d:\d\d\.\d{3} {2}app · Gravity .*\n.*shop-api · Listed 1 collection/s)
+  await show.selectOption('all')
 })
 
 test('Clear empties the console', async () => {

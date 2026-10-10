@@ -29,6 +29,7 @@ const api: DesktopApi = {
   onRunProgress: (callback) => subscribe(IpcChannel.eventRunProgress, callback),
   onRunLive: (callback) => subscribe(IpcChannel.eventRunLive, callback),
   onConsole: (callback) => subscribe(IpcChannel.eventConsole, callback),
+  consoleHistory: () => ipcRenderer.invoke(IpcChannel.consoleHistory),
   closeConnection: (collectionPath: string, name?: string) =>
     ipcRenderer.send(IpcChannel.connectionClose, collectionPath, name),
   onConnections: (callback) => subscribe(IpcChannel.eventConnections, callback),

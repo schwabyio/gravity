@@ -21,6 +21,7 @@ import { stripBom } from '../model/text.js'
 import { nameProblem, relativePosix, samePath, spellingProblem, toPosix } from '../paths.js'
 import { duplicateIds, idProblem } from './ids.js'
 import { projectRootOf, readProject, type GlobalProject } from './project.js'
+import { readFolder, readText } from './readFolder.js'
 import { loadProjectTls, type ProjectTrust } from './projectTls.js'
 
 /**
@@ -63,11 +64,11 @@ const setsIn = (root: string, source: RequestSetRef['source']) =>
 export async function libraryFiles(root: string, home: string): Promise<string[]> {
   const directory = path.join(root, home)
   const files: string[] = []
-  for (const entry of await readDir(directory)) {
+  for (const entry of await readFolder(directory)) {
     if (entry.isFile() && entry.name.endsWith(DOC_EXTENSION)) {
       files.push(path.join(directory, entry.name))
     } else if (entry.isDirectory() && !entry.name.startsWith('.')) {
-      for (const inner of await readDir(path.join(directory, entry.name))) {
+      for (const inner of await readFolder(path.join(directory, entry.name))) {
         if (inner.isFile() && inner.name.endsWith(DOC_EXTENSION)) {
           files.push(path.join(directory, entry.name, inner.name))
         }
@@ -102,7 +103,7 @@ async function readSet(
 ): Promise<RequestSetRef> {
   const name = relativePosix(directory, file).slice(0, -DOC_EXTENSION.length)
   try {
-    const doc = parseCollection(await fs.readFile(file, 'utf8'), file).data
+    const doc = parseCollection(await readText(file), file).data
     const problem = idProblem(doc, file)
     return problem ? { name, path: file, source, doc, problem } : { name, path: file, source, doc }
   } catch (cause) {
@@ -172,10 +173,10 @@ async function resolveIn(
 /** Whether another file in the home has this file's id, which makes neither usable. */
 async function sharedId(file: string, directory: string): Promise<string | undefined> {
   const names: string[] = []
-  for (const entry of await readDir(directory)) {
+  for (const entry of await readFolder(directory)) {
     if (entry.isFile()) names.push(path.join(directory, entry.name))
     else if (entry.isDirectory() && !entry.name.startsWith('.')) {
-      for (const inner of await readDir(path.join(directory, entry.name))) {
+      for (const inner of await readFolder(path.join(directory, entry.name))) {
         if (inner.isFile()) names.push(path.join(directory, entry.name, inner.name))
       }
     }
@@ -204,7 +205,7 @@ export async function loadChecks(
   const byName = new Map<string, CheckFile>()
   for (const place of [...(global ? [global.root] : []), root]) {
     const directory = path.join(place, CHECKS_DIR)
-    for (const entry of await readDir(directory)) {
+    for (const entry of await readFolder(directory)) {
       if (!entry.isFile() || !entry.name.endsWith('.js')) continue
       const name = entry.name.slice(0, -'.js'.length)
       if (!/^[A-Za-z_$][\w$]*$/.test(name)) continue
@@ -213,7 +214,7 @@ export async function loadChecks(
         name,
         filename: relativePosix(root, file),
         // Windows editors may save a byte order mark, which would hide `export` on line 1.
-        code: stripBom(await fs.readFile(file, 'utf8'))
+        code: stripBom(await readText(file))
       })
     }
   }
@@ -368,14 +369,6 @@ export async function loadLibrary(collectionPath: string): Promise<Library> {
     endpoints,
     base: async (reference) => (await resolveBase(root, global, reference)).doc,
     tls
-  }
-}
-
-async function readDir(directory: string) {
-  try {
-    return await fs.readdir(directory, { withFileTypes: true })
-  } catch {
-    return []
   }
 }
 

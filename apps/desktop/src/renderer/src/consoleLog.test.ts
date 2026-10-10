@@ -14,6 +14,7 @@ import {
   rawRequest,
   rawResponse,
   rowsOf,
+  rowsText,
   sentAt,
   shownRows,
   sourceOf,
@@ -368,5 +369,62 @@ describe('a result as the console names and lists it', () => {
     )
     expect(logged.map((row) => row.kind)).toEqual(['request', 'log', 'log', 'error'])
     expect(logged.map(isProblem)).toEqual([true, true, false, true])
+  })
+})
+
+describe('the load log', () => {
+  const load = (seq: number, subject: string, text: string, problem = false): ConsoleEvent => ({
+    kind: 'load',
+    seq,
+    at: new Date(2026, 9, 10, 9, 0, 0, seq).getTime(),
+    subject,
+    text,
+    ...(problem ? { problem } : {})
+  })
+  const state = play([
+    load(1, 'git', 'bundled git 2.53.0 answered in 1.2 s'),
+    load(2, 'orders', 'Listed 120 collections, 7 environments in 640 ms (as it was added)'),
+    start('r1', 'send'),
+    { kind: 'result', runId: 'r1', at: 2_000, result: result() },
+    load(
+      3,
+      'orders',
+      '../shared/environments could not be read (EBUSY: resource busy or locked)',
+      true
+    )
+  ])
+
+  it('shows each line among the requests, about its project, git or the app', () => {
+    const { rows } = shownRows(state.entries, 'all', '')
+    expect(rows.map((row) => row.kind)).toEqual(['load', 'load', 'request', 'load'])
+    expect(rows[1]).toMatchObject({ kind: 'load', subject: 'orders', problem: false })
+  })
+
+  it('shows only the load log under Loading projects, and finds a project by name', () => {
+    expect(shownRows(state.entries, 'loading', '').rows).toHaveLength(3)
+    expect(shownRows(state.entries, 'loading', 'git').rows).toHaveLength(1)
+  })
+
+  it('counts a part that could not be read as a warning, among the problems', () => {
+    expect(problemCounts(state.entries)).toEqual({ errors: 0, warnings: 1 })
+    const problems = shownRows(state.entries, 'problems', '').rows
+    expect(problems).toHaveLength(1)
+    expect(problems.every(isProblem)).toBe(true)
+  })
+
+  it('copies as text, a line each, the time first, the problem marked', () => {
+    const text = rowsText(shownRows(state.entries, 'loading', '').rows).split('\n')
+    expect(text).toEqual([
+      '09:00:00.001  git · bundled git 2.53.0 answered in 1.2 s',
+      '09:00:00.002  orders · Listed 120 collections, 7 environments in 640 ms (as it was added)',
+      '09:00:00.003  PROBLEM orders · ../shared/environments could not be read (EBUSY: resource busy or locked)'
+    ])
+  })
+
+  it('copies a request as its method, URL, outcome and time', () => {
+    const [request] = shownRows(state.entries, 'requests', '').rows
+    expect(rowsText([request!])).toBe(
+      `${clockTime(1_000)}  GET http://api.test/users/7  200 OK  9 ms  users › get user`
+    )
   })
 })

@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import {
   COLLECTIONS_DIR,
@@ -16,6 +15,7 @@ import {
 import { parseEnvironment, parseProject } from '../format/index.js'
 import type { ProjectDoc } from '../model/documents.js'
 import type { EnvironmentRef, LoadProblem } from '../model/tree.js'
+import { readFolder, readText, UnreadableError } from './readFolder.js'
 import {
   canonical,
   foldName,
@@ -107,14 +107,14 @@ export async function discoverProject(root: string): Promise<ProjectLayout> {
   const collectionsDir = path.join(root, COLLECTIONS_DIR)
   const layout: ProjectLayout = { root, collectionsDir, files: [], directories: [], problems: [] }
 
-  const entries = await readDir(collectionsDir)
+  const entries = await readFolder(collectionsDir)
   for (const entry of entries) {
     if (entry.isFile() && isCollectionFile(entry.name)) {
       layout.files.push(path.join(collectionsDir, entry.name))
     } else if (entry.isDirectory() && !isHidden(entry.name)) {
       layout.directories.push(entry.name)
       const directory = path.join(collectionsDir, entry.name)
-      for (const inner of await readDir(directory)) {
+      for (const inner of await readFolder(directory)) {
         if (inner.isFile() && isCollectionFile(inner.name)) {
           layout.files.push(path.join(directory, inner.name))
         } else if (inner.isDirectory() && !isHidden(inner.name)) {
@@ -160,7 +160,7 @@ const PROJECT_NAMES = [
  */
 async function portabilityProblems(root: string): Promise<LoadProblem[]> {
   const problems: LoadProblem[] = []
-  const atRoot = (await readDir(root)).map((entry) => entry.name)
+  const atRoot = (await advisory(root)).map((entry) => entry.name)
   for (const wanted of PROJECT_NAMES) {
     if (atRoot.includes(wanted)) continue
     const variant = atRoot.find((name) => foldName(name) === foldName(wanted))
@@ -172,7 +172,7 @@ async function portabilityProblems(root: string): Promise<LoadProblem[]> {
     }
   }
   for (const home of [COLLECTIONS_DIR, REQUESTS_DIR, ENDPOINTS_DIR, BASES_DIR]) {
-    const directories = (await readDir(path.join(root, home)))
+    const directories = (await advisory(path.join(root, home)))
       .filter((entry) => entry.isDirectory() && !isHidden(entry.name))
       .map((entry) => entry.name)
     problems.push(...portableNameProblems(home, directories))
@@ -181,7 +181,7 @@ async function portabilityProblems(root: string): Promise<LoadProblem[]> {
     [ENVIRONMENTS_DIR, DOC_EXTENSION],
     [CHECKS_DIR, '.js']
   ] as const) {
-    const files = (await readDir(path.join(root, home)))
+    const files = (await advisory(path.join(root, home)))
       .filter((entry) => entry.isFile() && entry.name.endsWith(extension))
       .map((entry) => entry.name)
     problems.push(...portableNameProblems(home, files))
@@ -245,11 +245,11 @@ export async function readProject(root: string): Promise<ProjectInfo> {
     return info
   }
   const global = await readProjectFile(target)
-  if (global.source === null) {
+  if (global.source === null && !global.problem) {
     problem(`uses: ${uses} — there is no ${PROJECT_FILE} there, so it is not a project`)
     return info
   }
-  if (global.problem || !global.doc) {
+  if (global.problem || !global.doc || global.source === null) {
     problem(`uses: ${uses} — its ${PROJECT_FILE} will not read: ${global.problem?.message ?? ''}`)
     return info
   }
@@ -266,9 +266,14 @@ async function readProjectFile(
 ): Promise<{ doc: ProjectDoc | null; source: string | null; problem: LoadProblem | null }> {
   let source: string
   try {
-    source = await fs.readFile(path.join(root, PROJECT_FILE), 'utf8')
-  } catch {
-    return { doc: null, source: null, problem: null }
+    source = await readText(path.join(root, PROJECT_FILE))
+  } catch (cause) {
+    // There, and held however often it was tried, is not the same as not there.
+    const problem =
+      cause instanceof UnreadableError
+        ? { path: PROJECT_FILE, message: `could not be read (${cause.reason})` }
+        : null
+    return { doc: null, source: null, problem }
   }
   try {
     return { doc: parseProject(source, PROJECT_FILE).data, source, problem: null }
@@ -305,13 +310,15 @@ export async function readEnvironments(
   source: EnvironmentRef['source'] = 'project'
 ): Promise<EnvironmentRef[]> {
   const environments: EnvironmentRef[] = []
-  for (const entry of await readDir(directory)) {
+  for (const entry of await readFolder(directory)) {
     if (!entry.isFile() || !entry.name.endsWith(DOC_EXTENSION)) continue
     const file = path.join(directory, entry.name)
     let name = path.basename(entry.name, DOC_EXTENSION)
     try {
-      name = parseEnvironment(await fs.readFile(file, 'utf8'), file).data.name ?? name
-    } catch {
+      name = parseEnvironment(await readText(file), file).data.name ?? name
+    } catch (cause) {
+      // One that cannot be read is not listed under a name it may not have.
+      if (cause instanceof UnreadableError) throw cause
       // A broken environment file still lists, under its filename.
     }
     environments.push({ name, path: file, source })
@@ -319,10 +326,5 @@ export async function readEnvironments(
   return environments.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function readDir(directory: string) {
-  try {
-    return await fs.readdir(directory, { withFileTypes: true })
-  } catch {
-    return []
-  }
-}
+/** A folder read only for advice on portability: one that cannot be read gives none. */
+const advisory = (directory: string) => readFolder(directory).catch(() => [])

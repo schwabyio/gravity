@@ -71,12 +71,14 @@ import {
   ruleDoc,
   RULES_FILE,
   RulesError,
+  UnreadableError,
   type BranchInfo,
   type CommitInfo,
   type EditOutcome,
   type FileDiff,
   type GitStatus,
   type LintHome,
+  type LoadProblem,
   type RuleFinding,
   type ProjectEdit,
   type PullOutcome
@@ -96,6 +98,7 @@ import type {
 } from '../shared/ipc.js'
 import type { GitSetup } from './bundledGit.js'
 import { classifyChanges, type OwnerRoot } from './changes.js'
+import { duration, plural } from './loadLog.js'
 import { DirectoryWatcher, type WatchTarget } from './watcher.js'
 import { WorkspaceRegistry, type ProjectEntry } from './workspaceRegistry.js'
 
@@ -113,7 +116,24 @@ export interface ProjectServiceOptions {
   moveAside: (file: string) => Promise<void>
   /** The folder scratch pads are made in: the app's own data, never a repository. */
   scratchPads: () => string
+  /** A line for the load log (loadLog.ts): what was listed, how long it took, what went wrong. */
+  log?: (subject: string, text: string, problem?: boolean) => void
 }
+
+/** Why a project is read, as the load log says it. */
+type RefreshReason = 'startup' | 'added' | 'files changed' | 'action'
+
+const REASON_WORDS: Record<RefreshReason, string> = {
+  startup: 'at startup',
+  added: 'as it was added',
+  'files changed': 'files changed',
+  action: 'after a change made in the app'
+}
+
+/** A read again that takes this long is logged even when it found nothing new. */
+const SLOW_LISTING_MS = 1000
+/** And git answering this late. */
+const SLOW_GIT_MS = 3000
 
 /**
  * Owns every workspace and project: reading them, their git state and watching
@@ -147,13 +167,17 @@ export class ProjectService {
   /** When each repository was last fetched in the background. */
   private readonly lastFetched = new Map<string, number>()
   private readonly autoFetchTimers = new Map<string, NodeJS.Timeout>()
-  private readonly watcher = new DirectoryWatcher((id) => void this.refresh(id))
+  private readonly watcher = new DirectoryWatcher(
+    (id) => void this.refresh(id, undefined, 'files changed')
+  )
   /** How often each project has been forgotten: a refresh begun before the last time is stale. */
   private readonly generations = new Map<string, number>()
   /** How many refreshes of each project have begun: each is numbered by its place. */
   private readonly refreshesBegun = new Map<string, number>()
   /** The number of the refresh whose view each project shows (see `refresh`). */
   private readonly refreshShown = new Map<string, number>()
+  /** Projects git has answered for since they were listed: until then each shows as loading. */
+  private readonly gitAnswered = new Set<string>()
   private readonly projectListeners = new Set<ProjectListener>()
   private readonly stateListeners = new Set<StateListener>()
   private readonly progressListeners = new Set<ProgressListener>()
@@ -223,7 +247,9 @@ export class ProjectService {
 
   async init(): Promise<WorkspacesState> {
     await this.registry.load()
-    await Promise.all(this.registry.projects().map(({ entry }) => this.refresh(entry.id)))
+    await Promise.all(
+      this.registry.projects().map(({ entry }) => this.refresh(entry.id, undefined, 'startup'))
+    )
     return this.state()
   }
 
@@ -350,7 +376,7 @@ export class ProjectService {
     }
 
     const entry = await this.registry.addProject(workspaceId, root)
-    const view = (await this.listed(entry.id)) ?? placeholder(entry, workspaceId)
+    const view = (await this.listed(entry.id, 'added')) ?? placeholder(entry, workspaceId)
     this.emitState()
     return { ok: true, project: view }
   }
@@ -362,9 +388,9 @@ export class ProjectService {
    * this, never for git: on Windows that would hold up each action for
    * seconds.
    */
-  listed(id: string): Promise<ProjectView | null> {
+  listed(id: string, reason: RefreshReason = 'action'): Promise<ProjectView | null> {
     return new Promise((resolve, reject) => {
-      this.refresh(id, resolve).then(resolve, reject)
+      this.refresh(id, resolve, reason).then(resolve, reject)
     })
   }
 
@@ -375,7 +401,15 @@ export class ProjectService {
    */
   async addProjectsIn(workspaceId: string, folder: string): Promise<AddProjectsOutcome> {
     if (!(await isDirectory(folder))) return { ok: false, message: `Not a folder: ${folder}` }
+    const started = performance.now()
     const roots = await findProjects(folder)
+    const log = (text: string) => this.options.log?.(path.basename(folder), text)
+    log(`Found ${plural(roots.length, 'project')} in ${duration(performance.now() - started)}`)
+    const progress = (phase: string, done = false) => {
+      for (const listener of this.progressListeners) {
+        listener({ operation: 'add', target: folder, phase, percent: null, done })
+      }
+    }
     if (roots.length === 0) {
       return {
         ok: false,
@@ -386,13 +420,23 @@ export class ProjectService {
     if (!workspace) return { ok: false, message: 'Unknown workspace' }
     const added: string[] = []
     const already: string[] = []
-    for (const root of roots) {
-      const known = workspace.projects.some((project) => samePath(project.path, root))
-      const entry = await this.registry.addProject(workspaceId, root)
-      const view = (await this.listed(entry.id)) ?? placeholder(entry, workspaceId)
-      ;(known ? already : added).push(view.name)
+    // One at a time, each in the sidebar as soon as it is listed, saying how far along it is.
+    try {
+      for (const [index, root] of roots.entries()) {
+        progress(`${index + 1} of ${roots.length}: ${path.basename(root)}`)
+        const known = workspace.projects.some((project) => samePath(project.path, root))
+        const entry = await this.registry.addProject(workspaceId, root)
+        const view = (await this.listed(entry.id, 'added')) ?? placeholder(entry, workspaceId)
+        ;(known ? already : added).push(view.name)
+        this.emitState()
+      }
+    } finally {
+      progress('', true)
     }
-    this.emitState()
+    log(
+      `Added ${plural(added.length, 'project')} in ${duration(performance.now() - started)}` +
+        (already.length > 0 ? `; ${already.length} already in the workspace` : '')
+    )
     return { ok: true, added, already }
   }
 
@@ -648,6 +692,7 @@ export class ProjectService {
 
   private forget(id: string): void {
     this.generations.set(id, (this.generations.get(id) ?? 0) + 1)
+    this.gitAnswered.delete(id)
     this.watcher.unwatch(id)
     this.stopAutoFetch(id)
     this.views.delete(id)
@@ -758,7 +803,9 @@ export class ProjectService {
   async refresh(
     id: string,
     /** Called with the project's first view: from its files, if git is slow to answer. */
-    listed?: (view: ProjectView) => void
+    listed?: (view: ProjectView) => void,
+    /** Why it is read, for the load log. */
+    reason: RefreshReason = 'action'
   ): Promise<ProjectView | null> {
     const generation = this.generations.get(id) ?? 0
     const stale = () => (this.generations.get(id) ?? 0) !== generation
@@ -776,13 +823,15 @@ export class ProjectService {
 
     if (!(await isDirectory(entry.path))) {
       if (stale()) return null
-      const view = { ...placeholder(entry, workspaceId), available: false }
+      const view = { ...placeholder(entry, workspaceId), available: false, loading: false }
       if (!mayShow()) return this.views.get(id) ?? view
       this.views.set(id, view)
       this.emitProject(view)
       return view
     }
 
+    const started = performance.now()
+    const previous = this.views.get(id)
     // git is read alongside the files rather than before them: on Windows it
     // can be slow to start, and the files need not wait for it. A scratch pad
     // has none, even were the app's data folder in a repository.
@@ -791,16 +840,40 @@ export class ProjectService {
       : this.readRepo(entry.path)
     // Its failure is met below; until then it must not count as unhandled.
     reading.catch(() => undefined)
-    const layout = await discoverProject(entry.path)
+    // A part held by another program however often it was tried — antivirus, on a
+    // fresh clone — is what was listed of it before, with a problem saying why: never
+    // a project that quietly has fewer environments than it has.
+    const unreadable: LoadProblem[] = []
+    const part = async <T>(read: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await read()
+      } catch (cause) {
+        if (!(cause instanceof UnreadableError)) throw cause
+        // Said in full, path and all: the project's heading shows problems by their messages.
+        const where = relativePosix(entry.path, cause.path)
+        const held = cause.code === 'EBUSY' || cause.code === 'EPERM'
+        unreadable.push({
+          path: where,
+          message: `${where} could not be read (${cause.reason})${held ? ': another program, antivirus perhaps, may have it open' : ''}`
+        })
+        return fallback
+      }
+    }
+    const layout = await part(() => discoverProject(entry.path), null)
     const info = await readProject(entry.path)
     // Ids checked against each other, as gta checks them: a shared id is a problem on both.
-    const collections = (await loadProjectCollections(entry.path, layout.files)).map(summarize)
-    const environments = await projectEnvironments(entry.path, info.global)
-    const sets = await listRequestSets(entry.path, info.global)
-    const checks = await loadChecks(entry.path, info.global)
-    const endpointFiles = await listEndpointFiles(entry.path, info.global)
-    const endpoints = await loadEndpoints(entry.path, info.global)
-    const bases = await listBases(entry.path, info.global)
+    const collections = layout
+      ? (await loadProjectCollections(entry.path, layout.files)).map(summarize)
+      : (previous?.collections ?? [])
+    const environments = await part(
+      () => projectEnvironments(entry.path, info.global),
+      previous?.environments ?? []
+    )
+    const sets = await part(() => listRequestSets(entry.path, info.global), [])
+    const checks = await part(() => loadChecks(entry.path, info.global), [])
+    const endpointFiles = await part(() => listEndpointFiles(entry.path, info.global), [])
+    const endpoints = await part(() => loadEndpoints(entry.path, info.global), [])
+    const bases = await part(() => listBases(entry.path, info.global), [])
     const tls = await loadProjectTls(entry.path, info)
     const rules = await readRules(entry.path, info.global)
     const libraryFile = (
@@ -822,13 +895,14 @@ export class ProjectService {
       name: info.doc?.name ?? path.basename(entry.path),
       available: true,
       scratch: entry.scratch,
-      hasCollections: await isDirectory(layout.collectionsDir),
+      hasCollections: await isDirectory(path.join(entry.path, COLLECTIONS_DIR)),
       collections,
-      directories: layout.directories,
+      directories: layout?.directories ?? previous?.directories ?? [],
       // A tls.ca file that cannot be used, reported against its own path.
       problems: [
         ...info.problems,
-        ...layout.problems,
+        ...(layout?.problems ?? []),
+        ...unreadable,
         ...tls.problems,
         ...(rules.view.problem ? [{ path: RULES_FILE, message: rules.view.problem }] : [])
       ],
@@ -901,6 +975,7 @@ export class ProjectService {
       findings: rules.findings
     }
     const chosen = () => ({ selectedEnvironment: entry.selectedEnvironment })
+    this.logListing(files, previous, reason, performance.now() - started, unreadable)
 
     // While git is still being set up, at startup, the files do not wait for it at all.
     const answered =
@@ -916,7 +991,9 @@ export class ProjectService {
         repoRoot: before?.repoRoot ?? null,
         git: before?.git ?? null,
         gitNote: before?.gitNote ?? null,
-        busy: before?.busy ?? false
+        busy: before?.busy ?? false,
+        // Only before git has ever answered: after that, what it said last stands meanwhile.
+        loading: !this.gitAnswered.has(id)
       }
       if (mayShow()) {
         this.views.set(id, shown)
@@ -934,8 +1011,11 @@ export class ProjectService {
       repoRoot: repo?.root ?? null,
       git,
       gitNote,
-      busy: repo !== null && this.isBusy(repo.root)
+      busy: repo !== null && this.isBusy(repo.root),
+      loading: false
     }
+    this.gitAnswered.add(id)
+    this.logGit(view, reason, performance.now() - started)
 
     if (!mayShow()) return this.views.get(id) ?? view
     this.views.set(id, view)
@@ -943,6 +1023,49 @@ export class ProjectService {
     this.scheduleAutoFetch(entry)
     this.emitProject(view)
     return view
+  }
+
+  /**
+   * What a read of a project found, for the load log: every time it is first
+   * listed; after that, only what it found different, a read that was slow, and
+   * what could not be read.
+   */
+  private logListing(
+    view: Omit<ProjectView, RepoFields>,
+    previous: ProjectView | undefined,
+    reason: RefreshReason,
+    ms: number,
+    unreadable: LoadProblem[]
+  ): void {
+    const log = this.options.log
+    if (!log) return
+    const counts = (found: Pick<ProjectView, 'collections' | 'environments'>) =>
+      `${plural(found.collections.length, 'collection')}, ${plural(found.environments.length, 'environment')}`
+    const changed =
+      previous !== undefined &&
+      (previous.collections.length !== view.collections.length ||
+        previous.environments.length !== view.environments.length)
+    if (reason === 'startup' || reason === 'added') {
+      log(view.name, `Listed ${counts(view)} in ${duration(ms)} (${REASON_WORDS[reason]})`)
+    } else if (changed) {
+      log(
+        view.name,
+        `Read again (${REASON_WORDS[reason]}): ${counts(view)}, where it had ${counts(previous)}`
+      )
+    } else if (ms >= SLOW_LISTING_MS) {
+      log(view.name, `Read again (${REASON_WORDS[reason]}) in ${duration(ms)}: ${counts(view)}`)
+    }
+    for (const problem of unreadable) log(view.name, problem.message, true)
+  }
+
+  /** When git answered a read of a project: the first time, and any time it was slow. */
+  private logGit(view: ProjectView, reason: RefreshReason, ms: number): void {
+    const log = this.options.log
+    if (!log || view.scratch) return
+    if (reason !== 'startup' && reason !== 'added' && ms < SLOW_GIT_MS) return
+    if (view.gitNote) log(view.name, `git: ${view.gitNote}`, view.isRepo)
+    else if (view.git) log(view.name, `git answered in ${duration(ms)}`)
+    else log(view.name, `Not in a git repository, found in ${duration(ms)}`)
   }
 
   /** The repository a project is in, if any, and its state as the renderer shows it. */
@@ -1429,6 +1552,8 @@ const placeholder = (entry: ProjectEntry, workspaceId: string): ProjectView => (
   repoRoot: null,
   git: null,
   gitNote: null,
+  // Not read yet.
+  loading: true,
   hasCollections: true,
   collections: [],
   directories: [],
