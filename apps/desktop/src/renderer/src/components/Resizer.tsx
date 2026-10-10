@@ -35,6 +35,11 @@ const ARROWS: Record<'columns' | 'rows', Partial<Record<string, number>>> = {
  * Width is derived from the distance dragged rather than from the pointer's
  * absolute position, so the divider never jumps to meet the cursor on grab.
  *
+ * The drag ends when the capture does, not on a pointerup: a release the
+ * window never sees — let go over another app, say — has no pointerup, and
+ * Chromium ends the capture at the next move instead. Waiting for a pointerup
+ * left the resize cursor on everywhere.
+ *
  * Keyboard-operable and double-click to reset, because a divider dragged to a
  * useless width should not need a fresh install to undo.
  */
@@ -61,10 +66,9 @@ export default function Resizer({ pane, label, offset, edge = 'right' }: Props) 
     pane.setWidth(origin.current.width + sign * (at(event) - origin.current.at))
   }
 
-  const end = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!origin.current) return
+  // A pointerup or a pointercancel releases the capture on its own.
+  const end = () => {
     origin.current = null
-    event.currentTarget.releasePointerCapture(event.pointerId)
     document.body.classList.remove('resizing', 'resizing-rows')
   }
 
@@ -98,8 +102,7 @@ export default function Resizer({ pane, label, offset, edge = 'right' }: Props) 
       tabIndex={0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={end}
-      onPointerCancel={end}
+      onLostPointerCapture={end}
       onDoubleClick={pane.reset}
       onKeyDown={onKeyDown}
       title="Drag to resize · double-click to reset"

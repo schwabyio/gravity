@@ -123,6 +123,30 @@ test('double-clicking a divider resets it', async () => {
   expect(await widthOf(stepsColumn())).toBe(320)
 })
 
+test('a release the window never hears still ends the drag', async () => {
+  const before = await widthOf(sidebar())
+  const box = (await sidebarHandle().boundingBox())!
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 40, y, { steps: 4 })
+  expect(await widthOf(sidebar())).toBeCloseTo(before + 40, -1)
+
+  // Let go over another app: no pointerup, only the next move, with no button held.
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + 400, y, buttons: 0 })
+  await expect(page.locator('body')).not.toHaveClass(/resizing/)
+  await expect(stepsColumn()).not.toHaveCSS('cursor', 'col-resize')
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + 200, y, buttons: 0 })
+  expect(await widthOf(sidebar())).toBeCloseTo(before + 40, -1)
+
+  // Playwright still has the button down.
+  await page.mouse.up()
+  await cdp.detach()
+  await sidebarHandle().dblclick()
+})
+
 test('reports its size to assistive technology', async () => {
   await expect(sidebarHandle()).toHaveAttribute('aria-valuenow', '300')
   await expect(sidebarHandle()).toHaveAttribute('aria-valuemin', '200')
