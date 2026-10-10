@@ -1969,8 +1969,11 @@ button:disabled {
   padding: 0 16px 10px 34px;
 }
 
+/* Taller than it starts by a drag of its corner, as the text box it replaced was. */
 .docs-writing .docs-editor {
-  height: 160px;
+  height: 220px;
+  min-height: 140px;
+  resize: vertical;
 }
 
 .docs-edit {
@@ -2004,26 +2007,104 @@ button:disabled {
   font-size: 12px;
 }
 
-/* Docs written as markdown, in a plain box: the collection's above its steps, a step's in its tab. */
+/* Docs written as markdown, the collection's above its steps, a step's in its tab: Write and
+   Preview, the formatting tools, then the text, all in one box. */
 .docs-editor {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   min-height: 120px;
-  padding: 8px 10px;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);
-  color: var(--text);
-  font:
-    13px/1.5 system-ui,
-    -apple-system,
-    'Segoe UI',
-    sans-serif;
-  resize: vertical;
 }
 
-.docs-editor:focus {
+.docs-editor:has(.cm-focused) {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
+}
+
+/* The tools straight after Write and Preview, not at the far end of a wide editor. */
+.docs-editor-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt);
+}
+
+.docs-editor-modes {
+  display: flex;
+  gap: 2px;
+}
+
+.docs-editor-modes button {
+  padding: 2px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.docs-editor-modes button:hover:not(:disabled) {
+  border-color: transparent;
+  color: var(--text);
+}
+
+.docs-editor-modes button[aria-pressed='true'],
+.docs-editor-modes button[aria-pressed='true']:hover {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.docs-editor-tools {
+  display: flex;
+  flex-wrap: wrap;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+
+.docs-editor-tools button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.docs-editor-tools button:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.docs-editor-tools .serif {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 14px;
+}
+
+.docs-editor-text {
+  flex: 1;
+  min-height: 0;
+}
+
+.docs-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px;
 }
 
 .docs-tab {
@@ -2034,7 +2115,6 @@ button:disabled {
 
 .docs-tab .docs-editor {
   flex: 1;
-  resize: none;
 }
 
 /* A step's docs, read: the pencil at their top right, clear of the text. */

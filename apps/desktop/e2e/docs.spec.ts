@@ -269,3 +269,47 @@ test('a collection without docs gets them from + Docs, written above its steps',
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: '+ Docs' })).toBeVisible()
 })
+
+test('docs are formatted from the toolbar or the keys, and previewed as they will read', async () => {
+  await page.getByRole('button', { name: '+ Docs' }).click()
+  const box = page.getByRole('textbox', { name: 'Collection docs' })
+  await expect(box).toBeFocused()
+  const editor = page.locator('.docs-panel .docs-editor')
+  const tool = (name: string) => editor.getByRole('toolbar').getByRole('button', { name })
+
+  // Bold marks the word the cursor is in; ⌘I, with no word there, a pair to type between.
+  await page.keyboard.type('Checks orders')
+  await tool('Bold').click()
+  await expect(box).toBeFocused()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' and ')
+  await page.keyboard.press('ControlOrMeta+i')
+  await page.keyboard.type('refunds')
+  // A list from the toolbar, which Enter carries on.
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await tool('Bulleted list').click()
+  await page.keyboard.type('one')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('two')
+  await expect
+    .poll(plainFile, { timeout: 5_000 })
+    .toContain('docs: |-\n  Checks **orders** and _refunds_\n  - one\n  - two\nsteps:')
+
+  // Each tool says what it is, and its key where it has one.
+  await page.mouse.move(0, 0)
+  await tool('Bold').hover()
+  await expect(page.getByRole('tooltip')).toHaveText(/^Bold \((⌘|Ctrl\+)B\)$/)
+
+  // Preview shows them rendered, in place of the text and its tools; Write brings both back.
+  await editor.getByRole('button', { name: 'Preview' }).click()
+  const preview = editor.getByRole('region', { name: 'Preview' })
+  await expect(preview.locator('strong')).toHaveText('orders')
+  await expect(preview.locator('em')).toHaveText('refunds')
+  await expect(preview.locator('li')).toHaveText(['one', 'two'])
+  await expect(box).toBeHidden()
+  await expect(editor.getByRole('toolbar')).toHaveCount(0)
+  await editor.getByRole('button', { name: 'Write' }).click()
+  await expect(box).toBeFocused()
+  await expect(preview).toHaveCount(0)
+})
