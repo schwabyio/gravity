@@ -33,8 +33,14 @@ export interface SuiteRunOptions {
   context?: ScopeContext
   /** The data file's rows: `steps` run once for each, in order. Absent or empty: once. */
   rows?: SuiteRow[] | null
+  /** Stops the run: a cancel, a timeout. Teardown runs after it all the same (SPEC.md §2.10). */
   signal?: AbortSignal
-  /** Stop at the first failure: the rest of setup, or of the rows, is not run. */
+  /**
+   * Stops teardown once `signal` has stopped the run, sooner than its limit,
+   * `TEARDOWN_AFTER_STOP_MS`: the app's second Cancel.
+   */
+  teardownSignal?: AbortSignal
+  /** Stop at the first failure: the rest of the rows is not run. Setup always stops at its first. */
   bail?: boolean
   /**
    * As each request finishes: the step it belongs to in its own list
@@ -61,6 +67,9 @@ export interface SuiteRunOptions {
   produced?: Map<string, VarValue>
 }
 
+/** How long teardown may take after a cancel or a timeout has stopped the run (SPEC.md §2.10). */
+export const TEARDOWN_AFTER_STOP_MS = 60_000
+
 /**
  * Run a collection the way gta and the app's Run all do (SPEC.md §2.8, §2.10):
  * `setup` once, `steps` once for each data row (or once without a data file),
@@ -68,9 +77,11 @@ export interface SuiteRunOptions {
  *
  * Every value setup sets lasts the run, and so does one a row sets with
  * `gta.set(…, { scope: 'run' })`; anything else a row sets lasts only that
- * row. A setup step that fails stops the rows, and a bail stops the rows still
- * to come; teardown runs after either, every step of it, since it is the
- * cleanup. A cancelled run stops where it is, teardown included.
+ * row. Setup stops at its first failing step, since the steps after it count
+ * on it, and the rows with it; a bail stops the rows still to come. Teardown
+ * runs after either, every step of it, since it is the cleanup — and after a
+ * cancel or a timeout too, within a limit of its own, unless nothing had run
+ * yet to clean up after. Stopped while it runs, it stops where it is.
  */
 export async function runSuite(options: SuiteRunOptions): Promise<CollectionRunSummary> {
   const connections = options.connections ?? new Connections()
@@ -92,7 +103,7 @@ async function runStages(
   const produced = options.produced ? { produced: options.produced } : {}
   const summaries: CollectionRunSummary[] = []
   /** Setup and teardown run with no data row, and everything they set lasts. */
-  const once = (stage: 'setup' | 'teardown', stopEarly: boolean) =>
+  const once = (stage: 'setup' | 'teardown', stopEarly: boolean, stop = signal) =>
     runCollection({
       collection,
       collectionPath,
@@ -100,14 +111,15 @@ async function runStages(
       run: { values, wide: true, ...produced },
       ...shared,
       ...(context ? { context: { ...context, dataRow: null } } : {}),
-      ...(signal ? { signal } : {}),
+      ...(stop ? { signal: stop } : {}),
       bail: stopEarly,
       onResult: (index, result) => onResult?.(index, result, undefined)
     })
 
   let stopped = false
   if (collection.setup?.length) {
-    const setup = await once('setup', bail)
+    // Bailing whatever the run says: a setup step counts on the ones before it.
+    const setup = await once('setup', true)
     summaries.push(setup)
     stopped = setup.failed + setup.errored > 0
   }
@@ -141,7 +153,18 @@ async function runStages(
     if (bail && summary.failed + summary.errored > 0) stopped = true
   }
 
-  if (collection.teardown?.length && !signal?.aborted) summaries.push(await once('teardown', false))
+  if (collection.teardown?.length) {
+    const began = summaries.some((summary) => summary.results.length > 0)
+    if (!signal?.aborted) {
+      summaries.push(await once('teardown', false))
+    } else if (began) {
+      // The run was stopped, and the cleanup runs all the same: for a while, and only
+      // until whatever stops it — the app's second Cancel — says so.
+      const limit = AbortSignal.timeout(TEARDOWN_AFTER_STOP_MS)
+      const stop = options.teardownSignal ? AbortSignal.any([limit, options.teardownSignal]) : limit
+      summaries.push(await once('teardown', false, stop))
+    }
+  }
 
   return {
     total: summaries.reduce((n, s) => n + s.total, 0) + unrun,

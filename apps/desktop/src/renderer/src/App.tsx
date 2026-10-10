@@ -209,6 +209,8 @@ export default function App() {
   /** The step running now; '' while a run is in flight with no step to mark; null when idle. */
   const [runningId, setRunningId] = useState<string | null>(null)
   const [runningAll, setRunningAll] = useState(false)
+  /** Stop was pressed during Run all: teardown is cleaning up, and the next Stop stops it. */
+  const [stoppingAll, setStoppingAll] = useState(false)
   const activeRunId = useRef<string | null>(null)
   /**
    * The run results belong to: the one in flight, or the last one to finish,
@@ -1045,6 +1047,7 @@ export default function App() {
     }
     setError(null)
     if (all) setRunningAll(true)
+    setStoppingAll(false)
     const plan = runPlan.current.ids
     setRunningId(plan.setup[0] ?? plan.steps[0] ?? plan.teardown[0] ?? '')
 
@@ -1066,6 +1069,7 @@ export default function App() {
     if (activeRunId.current !== runId) return
     activeRunId.current = null
     setRunningAll(false)
+    setStoppingAll(false)
     setRunningId(null)
     if (response.ok) {
       if (all) changeFile(path, (file) => ({ ...file, summary: response.summary }))
@@ -1089,7 +1093,9 @@ export default function App() {
   ])
 
   const cancel = () => {
-    if (activeRunId.current) window.desktop.runCancel(activeRunId.current)
+    if (!activeRunId.current) return
+    window.desktop.runCancel(activeRunId.current)
+    if (runningAll && (doc?.teardown?.length ?? 0) > 0) setStoppingAll(true)
   }
 
   // Cmd/Ctrl+Enter sends, Cmd/Ctrl+S saves.
@@ -1485,6 +1491,7 @@ export default function App() {
                   runningAt={runningAt}
                   busy={runningId !== null}
                   runningAll={runningAll}
+                  stoppingAll={stoppingAll}
                   summary={summary}
                   draftIndexes={editor.dirtyIndexes}
                   changes={sinceCommit}

@@ -187,16 +187,14 @@ describe('setup and teardown', () => {
     expect(summary).toMatchObject({ total: 6, failed: 2, passed: 1, skipped: 3 })
   })
 
-  it('stop setup at its first failure when told to bail, and the rows with it', async () => {
+  it('stop setup at its first failure, bail or not, and the rows with it', async () => {
     const failing = { POST: `${origin}/fail`, tests: 'gta.expectResponseStatusCodeToBe(200)' }
-    const { summary } = await suite(
-      {
-        setup: [failing, { POST: `${origin}/grant` }],
-        steps: [{ GET: `${origin}/one` }],
-        teardown: [{ DELETE: `${origin}/grant` }]
-      },
-      { bail: true }
-    )
+    // The grant would go without the token the failed step did not get.
+    const { summary } = await suite({
+      setup: [failing, { POST: `${origin}/grant` }],
+      steps: [{ GET: `${origin}/one` }],
+      teardown: [{ DELETE: `${origin}/grant` }]
+    })
     expect(seen).toEqual(['POST /fail', 'DELETE /grant'])
     // The second setup step and the one step, never begun.
     expect(summary).toMatchObject({ total: 4, failed: 1, passed: 1, skipped: 2 })
@@ -213,11 +211,76 @@ describe('setup and teardown', () => {
     expect(summary.passed).toBe(2)
   })
 
-  it('stop where they are on a cancel, teardown included', async () => {
+  /** Run `doc`, calling `when` with each result as it lands. */
+  async function stopping(
+    doc: Record<string, unknown>,
+    when: (result: RunResult) => void,
+    teardownSignal?: AbortSignal
+  ) {
+    seen = []
+    const collection = CollectionSchema.parse({ id: 'seed', ...doc })
+    return runSuite({
+      collection,
+      collectionPath,
+      signal: cancel.signal,
+      ...(teardownSignal ? { teardownSignal } : {}),
+      onResult: (_index, result) => when(result)
+    })
+  }
+  let cancel = new AbortController()
+
+  it('still run teardown, every step of it, after a cancel stops the steps', async () => {
+    cancel = new AbortController()
+    const summary = await stopping(
+      {
+        steps: [{ GET: `${origin}/one` }, { GET: `${origin}/two` }],
+        teardown: [{ DELETE: `${origin}/a` }, { DELETE: `${origin}/b` }]
+      },
+      (result) => {
+        if (!result.stage) cancel.abort()
+      }
+    )
+    expect(seen).toEqual(['GET /one', 'DELETE /a', 'DELETE /b'])
+    expect(summary).toMatchObject({ total: 4, passed: 3, skipped: 1 })
+  })
+
+  it('stop teardown after a cancel when told to, as a second Cancel does', async () => {
+    cancel = new AbortController()
+    const again = new AbortController()
+    await stopping(
+      {
+        steps: [{ GET: `${origin}/one` }, { GET: `${origin}/two` }],
+        teardown: [{ DELETE: `${origin}/a` }, { DELETE: `${origin}/b` }]
+      },
+      (result) => (result.stage ? again : cancel).abort(),
+      again.signal
+    )
+    expect(seen).toEqual(['GET /one', 'DELETE /a'])
+  })
+
+  it('stop teardown where it is on a cancel made while it runs', async () => {
+    cancel = new AbortController()
+    await stopping(
+      {
+        steps: [{ GET: `${origin}/one` }],
+        teardown: [{ DELETE: `${origin}/a` }, { DELETE: `${origin}/b` }]
+      },
+      (result) => {
+        if (result.stage === 'teardown') cancel.abort()
+      }
+    )
+    expect(seen).toEqual(['GET /one', 'DELETE /a'])
+  })
+
+  it('run no teardown after a cancel that came before anything ran', async () => {
     const controller = new AbortController()
     controller.abort()
     await suite(
-      { steps: [{ GET: `${origin}/one` }], teardown: [{ DELETE: `${origin}/grant` }] },
+      {
+        setup: [{ POST: `${origin}/grant` }],
+        steps: [{ GET: `${origin}/one` }],
+        teardown: [{ DELETE: `${origin}/grant` }]
+      },
       { signal: controller.signal }
     )
     expect(seen).toEqual([])

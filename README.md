@@ -125,7 +125,9 @@ Both run on macOS, Windows and Linux.
 
 - Steps run in order and share variables. Collections can run in parallel.
 - Data-driven runs: a CSV or JSON file beside a collection runs it once per row.
-- Setup and teardown run once around all the rows. Teardown runs even after a failure.
+- Setup and teardown run once around all the rows. Setup stops at its first failure;
+  teardown runs even after a failure, a cancel or a timeout.
+  [SETUP-AND-TEARDOWN.md](./SETUP-AND-TEARDOWN.md) says when to use them, and when not.
 - Tags select whole collections, or single steps with `stepTags: true`.
   `exclude: true` keeps work in progress out of group runs.
 - Feature flags: a collection or step runs only when its flags hold, and is otherwise
@@ -301,6 +303,9 @@ with a complete project to start from.
 
 [FUNCTIONS.md](./FUNCTIONS.md) documents every `gta` function that `tests` and
 `before.script` can call, with examples.
+
+[SETUP-AND-TEARDOWN.md](./SETUP-AND-TEARDOWN.md) is an overview of setup and teardown:
+how they run, when to use them, and when plain steps or reusable requests do better.
 
 ## Development
 

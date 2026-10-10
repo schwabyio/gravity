@@ -29,7 +29,14 @@ beforeAll(async () => {
     'environments/local.yml': `name: local\nvars:\n  baseUrl: ${server.origin}\n`,
     'collections/one.yml': collection('one', ['/ok', '/ok']),
     'collections/two.yml': collection('two', ['/ok']),
-    'collections/slow.yml': collection('slow', ['/slow'])
+    'collections/slow.yml': collection('slow', ['/slow']),
+    'collections/slow-cleanup.yml': [
+      collection('slow-cleanup', ['/slow']),
+      'teardown:',
+      '  - name: clean up',
+      "    DELETE: '{{baseUrl}}/ok/cleanup'",
+      '    tests: gta.expectResponseStatusCodeToBe(200)'
+    ].join('\n')
   })
 }, 30_000)
 
@@ -67,6 +74,14 @@ describe('dist/gta.js', () => {
     expect(code).toBe(1)
     expect(stdout).toContain('Timed out after 500 ms (timeoutCollection)')
     expect(stdout).toContain('Collections:  1 total, 0 passed, 1 failed')
+  })
+
+  it('lets teardown clean up after a collection stopped at timeoutCollection, and says how it went', async () => {
+    const { code, stdout } = await gta('slow-cleanup', '--timeoutCollection', '500')
+    expect(code).toBe(1)
+    expect(stdout).toContain(
+      'Timed out after 500 ms (timeoutCollection). Teardown ran after it: 1 of 1 passed.'
+    )
   })
 
   it('writes a JUnit report of a timed-out run', async () => {

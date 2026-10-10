@@ -256,7 +256,7 @@ run with a default.
 | ------------------------ | ------------ | -------------- | --------------------------------------------------------------------------- |
 | `environmentType`        | string       | none           | The environment to run against, by name. It must exist (§6).                |
 | `limitConcurrency`       | integer ≥ 1  | `1`            | Collections run at once. Steps within a collection always run in order.     |
-| `timeoutCollection`      | integer ≥ 1  | `3600000`      | Milliseconds before a collection is stopped and reported failed.            |
+| `timeoutCollection`      | integer ≥ 1  | `3600000`      | Stop a collection after this many ms and fail it; its teardown still runs.  |
 | `bail`                   | boolean      | `false`        | Stop a collection at its first failing step; the rest are reported skipped. |
 | `tags`                   | list of tags | `[]`           | Run only what these select (§2.4). Empty runs everything.                   |
 | `notTags`                | list of tags | `[]`           | Leave out what these name (§2.4).                                           |
@@ -1144,10 +1144,14 @@ steps: # once per row of approved-domains.csv, as before
 - **A row keeps a value for the rows after it** with
   `gta.set(name, value, { scope: 'run' })`. Anything else a row sets lasts only that
   row, as §2.8 says.
-- **Setup failing stops the rows.** They are not run and count as skipped. Teardown
-  still runs.
-- **Teardown always runs**, every step of it, after failures and after `bail`. A run that
-  is cancelled, or stopped by `timeoutCollection`, stops where it is.
+- **Setup stops at its first step that fails**, with `bail` or without: a setup step
+  counts on the ones before it. The setup steps after it and the rows are not run, and
+  count as skipped. Teardown still runs.
+- **Teardown always runs**, every step of it, after failures and after `bail` — and after
+  a run is cancelled or stopped by `timeoutCollection`, when it has at most 60 seconds of
+  its own. A cancel or timeout before anything ran runs no teardown, since there is
+  nothing to clean up after. One that comes while teardown runs stops it where it is,
+  and so does a second Stop in the desktop app.
 - **The collection applies to them**: its headers, settings, `before`, `tests` and
   flags, as to any step. Their steps may be use steps and may use `forEach`, but carry
   no `tags`: they run whenever the collection does.

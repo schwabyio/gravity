@@ -32,6 +32,8 @@ const PLAIN = (url: string) =>
 test.beforeAll(async () => {
   server = http.createServer((req, res) => {
     received.push(`${req.method} ${req.url}`)
+    // Held until the run stops waiting: for Stop to stop.
+    if (req.url?.startsWith('/slow')) return
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify({ url: req.url }))
   })
@@ -127,6 +129,21 @@ test.beforeAll(async () => {
     ].join('\n')
   )
   write('collections/plain.yml', PLAIN(`${origin}/each/{{item}}`))
+  write(
+    'collections/stoppable.yml',
+    [
+      'id: stoppable',
+      'steps:',
+      '  - name: wait',
+      `    GET: "${origin}/slow/wait"`,
+      'teardown:',
+      '  - name: clean up',
+      `    DELETE: "${origin}/slow/clean"`,
+      '  - name: after',
+      `    DELETE: "${origin}/after"`,
+      ''
+    ].join('\n')
+  )
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: shop, stdio: 'pipe' })
 
   app = await launchApp({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
@@ -139,6 +156,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close()
+  server.closeAllConnections()
   await new Promise<void>((resolve) => server.close(() => resolve()))
   fs.rmSync(tmp, { recursive: true, force: true })
 })
@@ -387,4 +405,22 @@ test('a collection with only setup and teardown still runs them', async () => {
   await page.getByRole('button', { name: 'Run all' }).click()
   await expect(page.locator('.run-summary')).toContainText('2 passed', { timeout: 10_000 })
   expect(received).toEqual(['POST /bare/grant', 'DELETE /bare/grant'])
+})
+
+test('Stop still runs teardown, and a second Stop stops that too', async () => {
+  await page.locator('.collection-row', { hasText: 'stoppable' }).click()
+  received = []
+  await page.getByRole('button', { name: 'Run all' }).click()
+  await expect.poll(() => received).toEqual(['GET /slow/wait'])
+
+  // Stopped, the steps go, and teardown cleans up after them.
+  await page.getByRole('button', { name: 'Stop', exact: true }).click()
+  await expect.poll(() => received).toEqual(['GET /slow/wait', 'DELETE /slow/clean'])
+  const stopTeardown = page.getByRole('button', { name: 'Stop teardown' })
+  await expect(stopTeardown).toBeVisible()
+
+  // Stopped again, so is teardown: its last step never goes.
+  await stopTeardown.click()
+  await expect(page.getByRole('button', { name: 'Run all' })).toBeVisible()
+  expect(received).not.toContain('DELETE /after')
 })

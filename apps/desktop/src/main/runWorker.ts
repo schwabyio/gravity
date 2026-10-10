@@ -80,6 +80,8 @@ interface CloseConnectionMessage {
 type Incoming = RunStepMessage | RunCollectionMessage | CancelMessage | CloseConnectionMessage
 
 const inFlight = new Map<string, AbortController>()
+/** What stops a run's teardown, once a Cancel has stopped its steps: the next Cancel. */
+const cleanups = new Map<string, AbortController>()
 /** What stops the event stream each run is reading now: its Stop button. */
 const stoppers = new Map<string, AbortController>()
 
@@ -120,7 +122,10 @@ function watchFor(runId: string): StreamWatch {
 process.parentPort.on('message', (event) => {
   const message = event.data as Incoming
   if (message.type === 'cancel') {
-    inFlight.get(message.runId)?.abort()
+    // The first Cancel stops the steps, and teardown cleans up after them; the next stops that.
+    const run = inFlight.get(message.runId)
+    if (run && !run.signal.aborted) run.abort()
+    else cleanups.get(message.runId)?.abort()
     return
   }
   if (message.type === 'stop') {
@@ -227,6 +232,8 @@ async function handleStep(message: RunStepMessage): Promise<void> {
 async function handleCollection(message: RunCollectionMessage): Promise<void> {
   const controller = new AbortController()
   inFlight.set(message.runId, controller)
+  const cleanup = new AbortController()
+  cleanups.set(message.runId, cleanup)
   try {
     const collection = CollectionSchema.parse(message.collection)
     const run = contextFor(message)
@@ -236,11 +243,13 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
     if (!message.keepConnections) sends.close()
     // As gta runs it (SPEC.md §2.8, §2.10): setup once, then with a data file
     // once per row — each row a fresh scope, rows in order — then teardown.
-    // Cancel stops where it is.
+    // Cancel stops the steps where they are, and teardown still runs; Cancel
+    // again stops it.
     const summary = await runSuite({
       collection,
       collectionPath: message.collectionPath,
       signal: controller.signal,
+      teardownSignal: cleanup.signal,
       rows: message.dataRows?.length
         ? message.dataRows.map((row) => ({
             source: row.source,
@@ -271,6 +280,7 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
     postFailure(message.runId, cause)
   } finally {
     inFlight.delete(message.runId)
+    cleanups.delete(message.runId)
     stoppers.delete(message.runId)
   }
 }

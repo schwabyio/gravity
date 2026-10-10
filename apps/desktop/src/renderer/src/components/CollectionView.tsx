@@ -76,6 +76,8 @@ interface Props {
   /** A run is in flight: nothing else may start. */
   busy: boolean
   runningAll: boolean
+  /** Stop was pressed during Run all, and teardown is cleaning up after it. */
+  stoppingAll?: boolean
   summary: CollectionRunSummary | null
   draftIndexes: Record<ListName, Set<number>>
   /** What changed since the last commit: its steps, and the rest of it; null with nothing to compare. */
@@ -288,7 +290,7 @@ export default function CollectionView(props: Props) {
               label: '+ Add setup step',
               onClick: () => props.onAddStep('setup'),
               tooltip:
-                'Setup runs once before the steps, and before every row of a data file; what it sets lasts the whole run'
+                'Setup runs once before the steps, not once per row of a data file, and stops at its first failing step; what it sets lasts the whole run'
             }
           ]
         : []),
@@ -297,7 +299,8 @@ export default function CollectionView(props: Props) {
             {
               label: '+ Add teardown step',
               onClick: () => props.onAddStep('teardown'),
-              tooltip: 'Teardown runs once after the steps, even when one of them failed'
+              tooltip:
+                'Teardown runs once after the steps, even when one of them failed or the run was stopped'
             }
           ]
         : [])
@@ -581,9 +584,20 @@ export default function CollectionView(props: Props) {
         )}
 
         {props.runningAll ? (
-          <button type="button" className="cancel" onClick={props.onCancel}>
-            Stop
-          </button>
+          // Stopped, the run still cleans up after itself; a second Stop stops that too.
+          <Tooltip
+            text={
+              props.stoppingAll
+                ? 'Teardown is cleaning up after the stopped run: stop it too'
+                : teardownSteps.length > 0
+                  ? 'Stop the run: teardown still cleans up after it'
+                  : 'Stop the run'
+            }
+          >
+            <button type="button" className="cancel" onClick={props.onCancel}>
+              {props.stoppingAll ? 'Stop teardown' : 'Stop'}
+            </button>
+          </Tooltip>
         ) : (
           <button
             type="button"
@@ -748,8 +762,8 @@ export default function CollectionView(props: Props) {
               <section className="step-section setup" aria-label="Setup">
                 <h2 className="step-section-title">Setup</h2>
                 <p className="step-section-note">
-                  Runs once before the steps{props.dataFile ? ', not once per row' : ''}. What it
-                  sets lasts the whole run.
+                  Runs once before the steps{props.dataFile ? ', not once per row' : ''}, and stops
+                  at its first failing step. What it sets lasts the whole run.
                 </p>
                 {listOf('setup')}
               </section>
@@ -763,7 +777,7 @@ export default function CollectionView(props: Props) {
               <section className="step-section teardown" aria-label="Teardown">
                 <h2 className="step-section-title">Teardown</h2>
                 <p className="step-section-note">
-                  Runs once after the steps, even when one of them failed.
+                  Runs once after the steps, even when one of them failed or the run was stopped.
                 </p>
                 {listOf('teardown')}
               </section>

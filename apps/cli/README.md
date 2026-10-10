@@ -131,6 +131,9 @@ command line, each overriding the one before. An unknown setting is an error.
 | `autoOpenTestResultHtml` | `false`        | Write the HTML report and open it when the run ends            |
 | `testResultsBasePath`    | `test-results` | Where reports go: relative to the project folder, or absolute  |
 
+A collection stopped at `timeoutCollection` still runs its teardown, for up to 60 seconds,
+so it cleans up after itself; the failure says how the teardown went.
+
 The results folder is emptied before every run, so everything in it is from the last one.
 `gta` only ever deletes a folder that holds nothing but its own reports.
 
@@ -307,7 +310,7 @@ since you name what runs, and a collection with `exclude: true` runs too. The op
 | `steps`    | Run only these steps, named as reports name them or numbered from 1. They run in the file's order, and setup and teardown still run. |
 | `vars`     | Values the run starts with. They sit over the environment and under a data row.                                                      |
 | `bail`     | Stop at the first failing step.                                                                                                      |
-| `signal`   | An `AbortSignal` that stops the run.                                                                                                 |
+| `signal`   | An `AbortSignal` that stops the run. Its teardown still runs after it, for up to 60 seconds.                                         |
 | `onResult` | `(result, step) => void`, called as each request finishes.                                                                           |
 
 **`project.use(name, params, options)`** runs reusable requests as a `use:` step would:
