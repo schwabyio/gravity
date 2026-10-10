@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { LibraryFileView } from '@shared/ipc.js'
 import type {
   Collection,
@@ -13,6 +13,7 @@ import { headerRows, toHeaders, type HeaderRow } from '../requestState.js'
 import { testsRuleText, useTestsRule } from '../testsRule.js'
 import CodeEditor from './CodeEditor.js'
 import FlagConditionsEditor from './FlagConditionsEditor.js'
+import InfoTip from './InfoTip.js'
 import KeyValueEditor from './KeyValueEditor.js'
 import ParamsEditor from './ParamsEditor.js'
 import SettingsTab from './SettingsTab.js'
@@ -74,6 +75,36 @@ interface Props {
  */
 export default function CollectionSettings(props: Props) {
   const testsRule = useTestsRule()
+  /** What each tab is for, behind an ⓘ beside the tabs. */
+  const tabInfo: Partial<Record<Tab, ReactNode>> = {
+    params: (
+      <>
+        This collection is a reusable requests file: a step elsewhere runs it with <code>use:</code>
+        , passing these as <code>with:</code>. Its requests read them as{' '}
+        <code>{'{{params.name}}'}</code>, its code as <code>params.name</code>. Run on its own, it
+        takes the defaults.
+      </>
+    ),
+    variables: (
+      <>
+        In scope for every step, as <code>{'{{name}}'}</code> or <code>gta.get(name)</code>. The
+        environment overrides them. Plain values only: compute anything else in the pre-request
+        script with <code>gta.set</code>.
+      </>
+    ),
+    'pre-request': (
+      <>
+        Runs before every step, ahead of the step&rsquo;s own pre-request script. A value set here
+        with <code>gta.set</code> is fresh for each step.
+      </>
+    ),
+    tests: (
+      <>
+        Runs after every step&rsquo;s response, ahead of the step&rsquo;s own tests.{' '}
+        <code>gta</code> is built in — type <code>gta.</code> for its functions.
+      </>
+    )
+  }
   const { collection, onStepTags, onSettings, onClose, section } = props
   const panel = useRef<HTMLElement>(null)
   const headersSection = useRef<HTMLElement>(null)
@@ -156,6 +187,8 @@ export default function CollectionSettings(props: Props) {
               )}
             </button>
           ))}
+          {/* What the tab shown is for, out of the way of what is in it. */}
+          {tabInfo[tab] && <InfoTip about="this tab" text={tabInfo[tab]} />}
         </nav>
 
         <div
@@ -165,11 +198,18 @@ export default function CollectionSettings(props: Props) {
             <>
               {props.bases && (
                 <section aria-labelledby="collection-extends-title">
-                  <h3 id="collection-extends-title">Extends</h3>
-                  <p className="hint">
-                    A base collection&rsquo;s headers, settings, variables and scripts, under this
-                    one&rsquo;s own. Bases live in <code>bases/</code>.
-                  </p>
+                  <div className="title-with-info">
+                    <h3 id="collection-extends-title">Extends</h3>
+                    <InfoTip
+                      about="extends"
+                      text={
+                        <>
+                          A base collection&rsquo;s headers, settings, variables and scripts, under
+                          this one&rsquo;s own. Bases live in <code>bases/</code>.
+                        </>
+                      }
+                    />
+                  </div>
                   <div className="extends-row">
                     <select
                       aria-label="Base collection"
@@ -231,11 +271,13 @@ export default function CollectionSettings(props: Props) {
                 </section>
               )}
               <section aria-labelledby="collection-flags-title">
-                <h3 id="collection-flags-title">Feature flags</h3>
-                <p className="hint">
-                  Flags the whole collection needs: when one does not have its value, every step is
-                  skipped and reported so. A flag the environment does not declare is an error.
-                </p>
+                <div className="title-with-info">
+                  <h3 id="collection-flags-title">Feature flags</h3>
+                  <InfoTip
+                    about="feature flags"
+                    text="Flags the whole collection needs: when one does not have its value, every step is skipped and reported so. A flag the environment does not declare is an error."
+                  />
+                </div>
                 <FlagConditionsEditor
                   owner="collection"
                   conditions={collection.flags}
@@ -266,11 +308,13 @@ export default function CollectionSettings(props: Props) {
               </section>
 
               <section ref={headersSection} aria-labelledby="collection-headers-title">
-                <h3 id="collection-headers-title">Headers</h3>
-                <p className="hint">
-                  Sent with every step. A step header with the same name, in any case, replaces one
-                  of these for that step.
-                </p>
+                <div className="title-with-info">
+                  <h3 id="collection-headers-title">Headers</h3>
+                  <InfoTip
+                    about="headers"
+                    text="Sent with every step. A step header with the same name, in any case, replaces one of these for that step."
+                  />
+                </div>
                 <HeadersEditor
                   headers={collection.headers}
                   onChange={props.onHeaders}
@@ -292,23 +336,12 @@ export default function CollectionSettings(props: Props) {
 
           {tab === 'params' && (
             <section aria-label="Params">
-              <p className="hint">
-                This collection is a reusable requests file: a step elsewhere runs it with{' '}
-                <code>use:</code>, passing these as <code>with:</code>. Its requests read them as{' '}
-                <code>{'{{params.name}}'}</code>, its code as <code>params.name</code>. Run on its
-                own, it takes the defaults.
-              </p>
               <ParamsEditor params={collection.params} onChange={props.onParams} />
             </section>
           )}
 
           {tab === 'variables' && (
             <section aria-label="Variables">
-              <p className="hint">
-                In scope for every step, as <code>{'{{name}}'}</code> or <code>gta.get(name)</code>.
-                The environment overrides them. Plain values only: compute anything else in the
-                pre-request script with <code>gta.set</code>.
-              </p>
               <VariablesEditor
                 vars={collection.vars}
                 // No Secret type here, so every value is a plain one.
@@ -321,10 +354,6 @@ export default function CollectionSettings(props: Props) {
 
           {tab === 'pre-request' && (
             <div className="script-editor">
-              <p className="hint">
-                Runs before every step, ahead of the step&rsquo;s own pre-request script. A value
-                set here with <code>gta.set</code> is fresh for each step.
-              </p>
               <CodeEditor
                 kind="pre-request"
                 value={collection.before?.script ?? ''}
@@ -340,17 +369,13 @@ export default function CollectionSettings(props: Props) {
 
           {tab === 'tests' && (
             <div className="script-editor">
-              <p className="hint">
-                Runs after every step&rsquo;s response, ahead of the step&rsquo;s own tests.{' '}
-                <code>gta</code> is built in — type <code>gta.</code> for its functions.
-                {testsRule && (
-                  <>
-                    {' '}
-                    This project&rsquo;s rules allow {testsRuleText(testsRule)} here (
-                    <code>tests.only</code> in {testsRule.source}).
-                  </>
-                )}
-              </p>
+              {/* The project's rules say what the tests may call: that stays in sight. */}
+              {testsRule && (
+                <p className="hint">
+                  This project&rsquo;s rules allow {testsRuleText(testsRule)} here (
+                  <code>tests.only</code> in {testsRule.source}).
+                </p>
+              )}
               <CodeEditor
                 kind="tests"
                 value={collection.tests ?? ''}

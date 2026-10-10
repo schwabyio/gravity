@@ -171,8 +171,16 @@ test('setup and teardown show in lists of their own, around the steps', async ()
   await expect(section('Setup').locator('.step-name')).toHaveText(['grant'])
   await expect(section('Steps').locator('.step-name')).toHaveText(['write', 'read'])
   await expect(section('Teardown').locator('.step-name')).toHaveText(['revoke'])
-  await expect(section('Setup')).toContainText('Runs once before the steps, not once per row')
-  await expect(section('Teardown')).toContainText('even when one of them failed')
+  // How each runs is behind the ⓘ beside its name.
+  await page.mouse.move(0, 0)
+  await section('Setup').getByRole('button', { name: 'About setup' }).hover()
+  await expect(page.getByRole('tooltip')).toContainText(
+    'Runs once before the steps, not once per row'
+  )
+  await page.mouse.move(0, 0)
+  await section('Teardown').getByRole('button', { name: 'About teardown' }).hover()
+  await expect(page.getByRole('tooltip')).toContainText('even when one of them failed')
+  await page.mouse.move(0, 0)
 })
 
 test('Run all runs setup once, the steps per row, then teardown once per item', async () => {

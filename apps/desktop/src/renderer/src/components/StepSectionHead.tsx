@@ -1,5 +1,6 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { useMenuDismiss } from '../hooks/useMenuDismiss.js'
+import InfoTip from './InfoTip.js'
 import MenuIcon from './MenuIcon.js'
 import type { AddAction } from './StepList.js'
 import Tooltip from './Tooltip.js'
@@ -9,6 +10,8 @@ interface Props {
   title: string
   /** What its + adds, to the end of the list: groups, a line between each. */
   groups: AddAction[][]
+  /** How the list runs, behind an ⓘ beside its name. */
+  info?: ReactNode
 }
 
 /**
@@ -16,7 +19,7 @@ interface Props {
  * to the end of the list: always in reach at the top, however long the list.
  * A step's own ⋯ adds below that step.
  */
-export default function StepSectionHead({ title, groups }: Props) {
+export default function StepSectionHead({ title, groups, info }: Props) {
   const [open, setOpen] = useState(false)
   const menus = useMenuDismiss(open, () => setOpen(false))
   const shown = groups.filter((group) => group.length > 0)
@@ -27,6 +30,7 @@ export default function StepSectionHead({ title, groups }: Props) {
   return (
     <div className="step-section-head">
       <h2 className="step-section-title">{title}</h2>
+      {info && <InfoTip about={title.toLowerCase()} text={info} />}
       {shown.length > 0 && (
         <span className="project-menu-wrap">
           <Tooltip text={`Add to the end of ${list}`}>

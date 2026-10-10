@@ -2336,6 +2336,50 @@ body.resizing.resizing-rows * {
   cursor: row-resize !important;
 }
 
+/* ---------- info tips ---------- */
+
+/* An explanation kept behind a small ⓘ, beside what it explains (InfoTip). A button
+   rule of its own, over those of where it sits: a table's action column, say. */
+button.info-tip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-dim);
+  vertical-align: middle;
+}
+
+button.info-tip:hover:not(:disabled),
+button.info-tip.pinned {
+  color: var(--accent);
+}
+
+/* In a row of tabs: beside the last one, not a tab itself. */
+.tabs button.info-tip {
+  align-self: center;
+  margin-left: 2px;
+  padding: 0;
+  border-bottom: none;
+}
+
+/* A drawer section's heading with its ⓘ: the heading's own spacing, on the row. */
+.title-with-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 14px 0 4px;
+}
+
+.drawer-body .title-with-info h3 {
+  margin: 0;
+}
+
 /* ---------- tooltips ---------- */
 
 /* Inline-flex so wrapping a button does not disturb the row it sits in. */
@@ -2371,7 +2415,10 @@ body.resizing.resizing-rows * {
 }
 
 /* A few lines on what a control does: a title, then what to know. */
+/* As wide as its words, up to its limit, wherever it sits: near the window's edge a box
+   placed from its left would otherwise wrap to a narrow column before it is moved in. */
 .tooltip.wide {
+  width: max-content;
   max-width: 320px;
   padding: 8px 11px;
 }
@@ -5710,12 +5757,6 @@ section[aria-labelledby='project-eol-title'] button {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-.step-section-note {
-  margin: 2px 10px 0;
-  font-size: 11px;
   color: var(--text-dim);
 }
 

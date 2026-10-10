@@ -755,11 +755,11 @@ export default function CollectionView(props: Props) {
             )}
             {setupSteps.length > 0 && (
               <section className="step-section setup" aria-label="Setup">
-                <StepSectionHead title="Setup" groups={[addsTo('setup')]} />
-                <p className="step-section-note">
-                  Runs once before the steps{props.dataFile ? ', not once per row' : ''}, and stops
-                  at its first failing step. What it sets lasts the whole run.
-                </p>
+                <StepSectionHead
+                  title="Setup"
+                  groups={[addsTo('setup')]}
+                  info={`Runs once before the steps${props.dataFile ? ', not once per row' : ''}, and stops at its first failing step. What it sets lasts the whole run.`}
+                />
                 {listOf('setup')}
               </section>
             )}
@@ -770,10 +770,11 @@ export default function CollectionView(props: Props) {
             </section>
             {teardownSteps.length > 0 && (
               <section className="step-section teardown" aria-label="Teardown">
-                <StepSectionHead title="Teardown" groups={[addsTo('teardown')]} />
-                <p className="step-section-note">
-                  Runs once after the steps, even when one of them failed or the run was stopped.
-                </p>
+                <StepSectionHead
+                  title="Teardown"
+                  groups={[addsTo('teardown')]}
+                  info="Runs once after the steps, even when one of them failed or the run was stopped."
+                />
                 {listOf('teardown')}
               </section>
             )}

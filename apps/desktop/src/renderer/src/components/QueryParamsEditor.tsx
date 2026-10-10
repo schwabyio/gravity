@@ -1,5 +1,6 @@
 import type { VariablePreviews } from '@schwabyio/gravity-core/model'
 import { readQueryParams, writeQueryParams } from '../requestState.js'
+import InfoTip from './InfoTip.js'
 import Tooltip from './Tooltip.js'
 import VariableInput from './VariableInput.js'
 
@@ -35,15 +36,17 @@ export default function QueryParamsEditor({ url, onUrlChange, previews, onCopyVa
 
   return (
     <>
-      <p className="hint">
-        Query parameters mirror the URL — editing either one updates the other.
-      </p>
       <table className="kv">
         <thead>
           <tr>
             <th>Name</th>
             <th>Value</th>
-            <th className="kv-action" />
+            <th className="kv-action">
+              <InfoTip
+                about="query parameters"
+                text="Query parameters mirror the URL — editing either one updates the other."
+              />
+            </th>
           </tr>
         </thead>
         <tbody>

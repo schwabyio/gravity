@@ -153,6 +153,31 @@ test('explains removing a query parameter', async () => {
   await expect(tip()).toHaveText('Remove this parameter from the URL')
 })
 
+test('an ⓘ explains on hover, and a click keeps its text up until a click elsewhere', async () => {
+  // On the Params tab, still open: what was a line above the table is behind its ⓘ.
+  const pane = page.locator('.request-pane')
+  const info = pane.getByRole('button', { name: 'About query parameters' })
+  await expect(pane).not.toContainText('Query parameters mirror the URL')
+  await page.mouse.move(0, 0)
+  await info.hover()
+  await expect(tip()).toHaveText(
+    'Query parameters mirror the URL — editing either one updates the other.'
+  )
+
+  // Clicked, it stays when the pointer leaves, until a click anywhere else.
+  await info.click()
+  await page.mouse.move(0, 0)
+  await expect(tip()).toBeVisible()
+  await page.getByLabel('Request URL').click()
+  await expect(tip()).toHaveCount(0)
+
+  // Kept up again, Escape puts it away.
+  await info.click()
+  await expect(tip()).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(tip()).toHaveCount(0)
+})
+
 test('appears on keyboard focus, without waiting for a hover delay', async () => {
   await page.mouse.move(0, 0)
   await expect(tip()).toHaveCount(0)

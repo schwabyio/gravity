@@ -201,7 +201,7 @@ test('docs start closed', async () => {
 
 test('a step with docs gets a Docs tab beside its scripts, after Tests', async () => {
   const scripts = page.locator('.scripts-pane')
-  await expect(scripts.locator('.tabs button:not(.pane-toggle)')).toHaveText([
+  await expect(scripts.locator('.tabs button:not(.pane-toggle):not(.info-tip)')).toHaveText([
     /^Pre-request/,
     /^Tests/,
     /^Docs/

@@ -13,6 +13,10 @@ interface Props {
   children: ReactElement<Record<string, unknown>>
   /** Milliseconds of hover before it appears. Focus shows it at once. */
   delay?: number
+  /** Kept up, hover or not, while true: an ⓘ clicked to keep its text on screen (InfoTip). */
+  pinned?: boolean
+  /** It went away of itself, pinned or not: Escape, a scroll, a resize. */
+  onDismiss?: () => void
 }
 
 interface Position {
@@ -37,7 +41,14 @@ interface Position {
  * is attached with `aria-describedby`, so screen readers hear the name first and
  * the explanation after.
  */
-export default function Tooltip({ text, wide = false, children, delay = 350 }: Props) {
+export default function Tooltip({
+  text,
+  wide = false,
+  children,
+  delay = 350,
+  pinned = false,
+  onDismiss
+}: Props) {
   const id = useId()
   const triggerRef = useRef<HTMLSpanElement>(null)
   const tipRef = useRef<HTMLDivElement>(null)
@@ -70,6 +81,14 @@ export default function Tooltip({ text, wide = false, children, delay = 350 }: P
 
   useEffect(() => () => clearTimeout(timer.current), [])
 
+  // Pinned, it shows; unpinned, it goes, as it would once the pointer left.
+  useEffect(() => {
+    if (pinned) show()
+    else hide()
+  }, [pinned, show, hide])
+  const dismissed = useRef(onDismiss)
+  dismissed.current = onDismiss
+
   // Placed before its size is known, a tooltip by the window's edge would run
   // off it: moved in from the side, or above its trigger, before it paints.
   useLayoutEffect(() => {
@@ -97,16 +116,20 @@ export default function Tooltip({ text, wide = false, children, delay = 350 }: P
   // takes attention elsewhere dismisses it.
   useEffect(() => {
     if (!position) return
+    const away = () => {
+      hide()
+      dismissed.current?.()
+    }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') hide()
+      if (event.key === 'Escape') away()
     }
     window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('scroll', hide, true)
-    window.addEventListener('resize', hide)
+    window.addEventListener('scroll', away, true)
+    window.addEventListener('resize', away)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('scroll', hide, true)
-      window.removeEventListener('resize', hide)
+      window.removeEventListener('scroll', away, true)
+      window.removeEventListener('resize', away)
     }
   }, [position, hide])
 
@@ -120,11 +143,13 @@ export default function Tooltip({ text, wide = false, children, delay = 350 }: P
           clearTimeout(timer.current)
           timer.current = setTimeout(show, delay)
         }}
-        onPointerLeave={hide}
+        onPointerLeave={() => {
+          if (!pinned) hide()
+        }}
         // Pressing the button should act, not leave an explanation behind.
         onPointerDown={() => {
           pressed.current = true
-          hide()
+          if (!pinned) hide()
         }}
         onFocusCapture={() => {
           if (!pressed.current) show()
@@ -132,7 +157,7 @@ export default function Tooltip({ text, wide = false, children, delay = 350 }: P
         onBlurCapture={() => {
           // The window losing focus to a dialog is not focus moving on.
           if (document.hasFocus()) pressed.current = false
-          hide()
+          if (!pinned) hide()
         }}
       >
         {cloneElement(children, { 'aria-describedby': id })}
