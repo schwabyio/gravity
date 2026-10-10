@@ -245,8 +245,10 @@ test('setup and teardown steps are added, moved and deleted in their own lists',
 })
 
 test('a step repeated for each item writes forEach and runs once per item', async () => {
-  // With no setup or teardown left, the steps are a list of their own again.
-  await expect(page.getByRole('region', { name: 'Steps' })).toHaveCount(0)
+  // With no setup or teardown left, the steps are still named, alone.
+  await expect(section('Steps')).toHaveCount(1)
+  await expect(section('Setup')).toHaveCount(0)
+  await expect(section('Teardown')).toHaveCount(0)
   await page.locator('.step-list > li', { hasText: 'one' }).locator('.step-open').click()
   await page.locator('.step-foreach > summary').click()
   await page.getByLabel('Repeat for each item of').fill('["x", "y"]')

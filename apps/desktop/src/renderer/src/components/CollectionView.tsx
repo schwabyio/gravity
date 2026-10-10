@@ -197,6 +197,7 @@ export default function CollectionView(props: Props) {
   const setupSteps = stepsOf(props.collection, 'setup')
   const teardownSteps = stepsOf(props.collection, 'teardown')
   const hasStages = setupSteps.length > 0 || teardownSteps.length > 0
+  const stepsTitle = props.library === 'endpoints' ? 'Endpoints' : 'Steps'
   const anySteps = STEP_LISTS.some((list) => stepsOf(props.collection, list).length > 0)
   // Only a collection has setup and teardown: not a request set, a base or endpoints.
   const canHaveStages = props.library === null && !props.collection.params
@@ -750,14 +751,11 @@ export default function CollectionView(props: Props) {
                 {listOf('setup')}
               </section>
             )}
-            {hasStages ? (
-              <section className="step-section steps" aria-label="Steps">
-                <h2 className="step-section-title">Steps</h2>
-                {listOf('steps')}
-              </section>
-            ) : (
-              listOf('steps')
-            )}
+            {/* Named always, setup and teardown or not; an endpoints file's steps are its endpoints. */}
+            <section className="step-section steps" aria-label={stepsTitle}>
+              <h2 className="step-section-title">{stepsTitle}</h2>
+              {listOf('steps')}
+            </section>
             {teardownSteps.length > 0 && (
               <section className="step-section teardown" aria-label="Teardown">
                 <h2 className="step-section-title">Teardown</h2>
