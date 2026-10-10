@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useState } from 'react'
+import ChevronIcon from './ChevronIcon.js'
 import DocsEditor from './DocsEditor.js'
 import Markdown from './Markdown.js'
 import PencilIcon from './PencilIcon.js'
@@ -6,8 +7,6 @@ import Tooltip from './Tooltip.js'
 
 interface Props {
   source: string
-  /** Height in pixels shown before the panel offers to expand. */
-  collapsedHeight?: number
   /** Where edits go; without it the docs are only read. */
   onChange?: (docs: string) => void
   /** Written in place rather than read: the text box instead of the rendered docs. */
@@ -16,93 +15,77 @@ interface Props {
 }
 
 /**
- * Rendered docs, collapsed until they are worth the room.
+ * A collection's docs, under a heading of their own, closed until asked for.
  *
  * Docs on a collection run from a one-line objective to a couple of screens of
  * examples, and the step list and editor below need the vertical space more.
- * So the panel measures itself and only offers a toggle when there is actually
- * something hidden.
+ * So only the heading shows until it is clicked, and each collection opens with
+ * its docs closed.
  */
-export default function DocsPanel({
-  source,
-  collapsedHeight = 72,
-  onChange,
-  editing = false,
-  onEditing
-}: Props) {
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const [expanded, setExpanded] = useState(false)
-  const [overflows, setOverflows] = useState(false)
+export default function DocsPanel({ source, onChange, editing = false, onEditing }: Props) {
+  const [open, setOpen] = useState(false)
+  const writing = editing && onChange !== undefined
+  const shown = open || writing
 
-  useLayoutEffect(() => {
-    const element = bodyRef.current
-    if (!element) return
-    setOverflows(element.scrollHeight > collapsedHeight + 4)
-  }, [source, collapsedHeight, editing])
-
-  if (editing && onChange) {
-    return (
-      <section className="docs-panel editing">
-        <DocsEditor
-          value={source}
-          onChange={onChange}
-          label="Collection docs"
-          placeholder="Describe this collection in markdown: what it covers, and anything a reader needs first."
-          onDone={() => onEditing?.(false)}
-        />
-        <button type="button" className="docs-done" onClick={() => onEditing?.(false)}>
-          Done
-        </button>
-      </section>
-    )
+  // Docs just written stay open, to read as they will be read.
+  const done = () => {
+    setOpen(true)
+    onEditing?.(false)
   }
-  if (source.trim() === '') return null
+  // The heading closes them while they are written too: what was typed is kept.
+  const toggle = () => {
+    if (writing) onEditing?.(false)
+    setOpen(!shown)
+  }
+
+  if (!writing && source.trim() === '') return null
 
   return (
-    <section className={`docs-panel${expanded ? ' expanded' : ''}${onChange ? ' editable' : ''}`}>
-      {onChange && (
-        <Tooltip text="Edit the collection’s docs">
-          <button
-            type="button"
-            className="docs-edit"
-            onClick={() => onEditing?.(true)}
-            aria-label="Edit the collection’s docs"
-          >
-            <PencilIcon />
-          </button>
-        </Tooltip>
-      )}
+    <section className={`docs-panel${shown ? ' open' : ''}`}>
+      {/* The pencil beside the title it edits; the row past it opens and closes them too,
+          from the mouse, the toggle being the way there from the keyboard. */}
       <div
-        ref={bodyRef}
-        className="docs-body"
-        style={expanded ? undefined : { maxHeight: collapsedHeight }}
+        className="docs-head"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) toggle()
+        }}
       >
-        <Markdown source={source} />
+        <button type="button" className="docs-toggle" aria-expanded={shown} onClick={toggle}>
+          <ChevronIcon open={shown} />
+          <span className="docs-title">Docs</span>
+        </button>
+        {onChange && !writing && (
+          <Tooltip text="Edit the collection’s docs">
+            <button
+              type="button"
+              className="docs-edit"
+              onClick={() => onEditing?.(true)}
+              aria-label="Edit the collection’s docs"
+            >
+              <PencilIcon />
+            </button>
+          </Tooltip>
+        )}
       </div>
-      {overflows && (
-        // Pinned to the panel's top edge, which does not move, so the button
-        // stays under the pointer whichever way it was last clicked.
-        <Tooltip text={expanded ? 'Show less' : 'Show more'}>
-          <button
-            type="button"
-            className="docs-toggle"
-            onClick={() => setExpanded(!expanded)}
-            aria-expanded={expanded}
-            aria-label={expanded ? 'Show less' : 'Show more'}
-          >
-            {/* One chevron, turned over when expanded, so it reads as a toggle. */}
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-              <path
-                d="M3.5 6 8 10.5 12.5 6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+      {writing ? (
+        <div className="docs-writing">
+          <DocsEditor
+            value={source}
+            onChange={onChange}
+            label="Collection docs"
+            placeholder="Describe this collection in markdown: what it covers, and anything a reader needs first."
+            onDone={done}
+          />
+          <button type="button" className="docs-done" onClick={done}>
+            Done
           </button>
-        </Tooltip>
+        </div>
+      ) : (
+        open && (
+          <div className="docs-body">
+            <Markdown source={source} />
+          </div>
+        )
       )}
     </section>
   )

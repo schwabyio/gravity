@@ -86,8 +86,8 @@ test.beforeAll(async () => {
   await page.waitForSelector('.collection-row')
   await openCollection('date')
   await page.waitForSelector('.docs-panel')
-  // Docs open collapsed; expand so everything is on screen to assert against.
-  await page.getByRole('button', { name: 'Show more' }).click()
+  // Docs open closed; open them so everything is on screen to assert against.
+  await docsToggle().click()
 })
 
 test.afterAll(async () => {
@@ -98,6 +98,7 @@ test.afterAll(async () => {
 const openCollection = (name: string) => page.locator('.collection-row', { hasText: name }).click()
 
 const docs = () => page.locator('.docs-panel .md')
+const docsToggle = () => page.locator('.docs-panel .docs-toggle')
 /**
  * Items of the FIRST outer list only.
  *
@@ -158,39 +159,44 @@ test('links http(s) only, and never javascript:', async () => {
   await expect(docs()).toContainText('not one (javascript:alert(1))')
 })
 
-test('collapses long docs behind a chevron toggle', async () => {
-  const toggle = page.locator('.docs-toggle')
+test('docs sit under a Docs heading that opens and closes them', async () => {
+  const toggle = docsToggle()
+  await expect(toggle).toHaveText('Docs')
   await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-  // An icon, named for screen readers and explained on hover.
-  await expect(toggle).toHaveText('')
-  // Away first: the pointer is still where it pressed the toggle, and a press explains nothing.
-  await page.mouse.move(0, 0)
-  await toggle.hover()
-  await expect(page.getByRole('tooltip')).toHaveText('Show less')
-  await expect(page.getByRole('button', { name: 'Show less' })).toBeVisible()
+  const heading = await toggle.boundingBox()
 
-  await page.getByRole('button', { name: 'Show less' }).click()
+  // Closed, the heading is all there is: no docs, and hardly any room taken.
+  await toggle.click()
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-  await expect(page.getByRole('button', { name: 'Show more' })).toBeVisible()
+  await expect(docs()).toHaveCount(0)
+  expect((await page.locator('.docs-panel').boundingBox())!.height).toBeLessThan(40)
 
-  const collapsed = await page.locator('.docs-body').boundingBox()
-  const before = await toggle.boundingBox()
-  await page.getByRole('button', { name: 'Show more' }).click()
-  const expanded = await page.locator('.docs-body').boundingBox()
-  expect(expanded!.height).toBeGreaterThan(collapsed!.height)
+  // The heading stays put, so it can be clicked again without chasing it.
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(docs()).toBeVisible()
+  expect((await toggle.boundingBox())!.y).toBe(heading!.y)
 
-  // The toggle stays put, so it can be clicked again without chasing it.
-  const after = await toggle.boundingBox()
-  expect(after!.y).toBe(before!.y)
-  expect(after!.x + after!.width).toBe(before!.x + before!.width)
+  // The pencil sits beside the title, and the row past it opens and closes them too.
+  const pencil = await page
+    .getByRole('button', { name: 'Edit the collection’s docs' })
+    .boundingBox()
+  expect(pencil!.x - (heading!.x + heading!.width)).toBeLessThan(16)
+  const row = page.locator('.docs-head')
+  const box = (await row.boundingBox())!
+  await row.click({ position: { x: box.width - 20, y: box.height / 2 } })
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await row.click({ position: { x: box.width - 20, y: box.height / 2 } })
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
 })
 
-test('docs start collapsed', async () => {
-  // Leaving the collection and coming back resets the panel to its default state.
+test('docs start closed', async () => {
+  // Leaving the collection and coming back closes them again.
   await openCollection('plain')
   await expect(page.locator('.docs-panel')).toHaveCount(0)
   await openCollection('date')
-  await expect(page.locator('.docs-toggle')).toHaveAttribute('aria-expanded', 'false')
+  await expect(docsToggle()).toHaveAttribute('aria-expanded', 'false')
+  await expect(docs()).toHaveCount(0)
 })
 
 test('a step with docs gets a Docs tab beside its scripts, after Tests', async () => {
@@ -247,10 +253,19 @@ test('a collection without docs gets them from + Docs, written above its steps',
   await expect(page.locator('.docs-panel .md strong')).toHaveText('one')
   await expect(page.getByRole('button', { name: '+ Docs' })).toHaveCount(0)
 
+  // The heading closes them while they are written too, and what was typed is kept.
+  await page.getByRole('button', { name: 'Edit the collection’s docs' }).click()
+  await box.fill('Plain **two**.')
+  await expect.poll(plainFile, { timeout: 5_000 }).toContain('Plain **two**.')
+  await docsToggle().click()
+  await expect(box).toHaveCount(0)
+  await expect(docs()).toHaveCount(0)
+  await expect(docsToggle()).toHaveAttribute('aria-expanded', 'false')
+
   // Edited again from the pencil; emptied, they are gone from the file and + Docs is back.
   await page.getByRole('button', { name: 'Edit the collection’s docs' }).click()
   await box.fill('')
-  await expect.poll(plainFile, { timeout: 5_000 }).not.toContain('Plain **one**')
+  await expect.poll(plainFile, { timeout: 5_000 }).not.toContain('Plain **')
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: '+ Docs' })).toBeVisible()
 })

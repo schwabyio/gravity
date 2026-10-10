@@ -644,6 +644,8 @@ export default function CollectionView(props: Props) {
 
       {(collectionDocs || editingDocs) && (
         <DocsPanel
+          // Every collection opens with its docs closed.
+          key={props.relativePath}
           source={props.collection.docs ?? ''}
           {...(props.onCollectionDocs ? { onChange: props.onCollectionDocs } : {})}
           editing={editingDocs}
