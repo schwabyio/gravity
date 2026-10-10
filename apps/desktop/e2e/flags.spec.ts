@@ -205,15 +205,21 @@ test('collection and step flags are edited into the file', async () => {
   await page.keyboard.press('Escape')
   await expect(page.locator('.flag-chip')).toHaveText('region: eu')
 
+  // The step's flags are a chip on its line, opening their editor.
   await stepRow('always').locator('.step-open').click()
-  const stepFlags = page.locator('.step-flags')
-  await stepFlags.locator('summary').click()
+  const chip = page.locator('.step-flag-chip')
+  await expect(chip).toHaveText('+ flag')
+  await chip.click()
+  const stepFlags = page.getByRole('dialog', { name: 'Step feature flags' })
   await stepFlags.getByRole('button', { name: '+ Add a flag this step needs' }).click()
   await stepFlags.getByLabel('step flag name').fill('pricing')
   await stepFlags.getByLabel('step flag pricing value').fill('2')
   await expect
     .poll(() => onDisk(collectionFile), { timeout: 5_000 })
     .toMatch(/- name: always\n {4}GET: "[^"]+"\n {4}flags:(\n {6}| \{ )pricing: 2/)
+  await expect(chip).toHaveText('⚑ pricing: 2')
+  await page.keyboard.press('Escape')
+  await expect(stepFlags).toHaveCount(0)
 })
 
 test('a flag the environment does not declare shows as an error', async () => {

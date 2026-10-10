@@ -5213,22 +5213,82 @@ button.tag.filter.on {
   color: var(--client);
 }
 
-.step-flags {
-  margin-top: 6px;
+/* The selected step's own properties, chips on its line (StepChip): dashed with nothing
+   set, as + tag is; set, its value, coloured as the collection's flag chips are. */
+.step-chip-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+}
+
+.step-chip {
+  max-width: 260px;
+  overflow: hidden;
+  padding: 1px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-chip:hover:not(:disabled),
+.step-chip[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.step-chip.set {
+  border-style: solid;
+  font-family: var(--mono);
+}
+
+.step-chip.holds {
+  color: var(--ok);
+}
+
+.step-chip.skip {
+  border-style: dashed;
+  color: var(--text-dim);
+}
+
+.step-chip.error {
+  color: var(--client);
+}
+
+.step-chip-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  width: max-content;
+  min-width: 340px;
+  max-width: 520px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px color-mix(in srgb, black 18%, transparent);
   font-size: 12px;
 }
 
-.step-flags > summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.step-chip-title {
+  margin: 0 0 8px;
   color: var(--text-dim);
-  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.step-flags .flag-conditions {
-  max-width: 520px;
-  margin-top: 6px;
+.step-chip-popover .flag-conditions,
+.step-chip-popover .foreach-field {
+  max-width: none;
+  margin-top: 0;
 }
 
 .flag-state.skip {
@@ -5774,24 +5834,6 @@ section[aria-labelledby='project-eol-title'] button {
 }
 
 /* A step's forEach: the list it sends its request once per item of. */
-.step-foreach {
-  margin-top: 6px;
-  font-size: 12px;
-}
-
-.step-foreach > summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-
-.step-foreach > summary code {
-  font-family: var(--mono);
-  color: var(--text);
-}
-
 /* The list to repeat for, and its ⓘ beside it. */
 .foreach-field {
   display: flex;

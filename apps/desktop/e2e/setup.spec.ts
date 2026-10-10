@@ -280,12 +280,16 @@ test('a step repeated for each item writes forEach and runs once per item', asyn
   await expect(section('Setup')).toHaveCount(0)
   await expect(section('Teardown')).toHaveCount(0)
   await page.locator('.step-list > li', { hasText: 'one' }).locator('.step-open').click()
-  await page.locator('.step-foreach > summary').click()
+  // A chip on the step's line, opening the list to repeat for.
+  const repeat = page.locator('.step-repeat-chip')
+  await expect(repeat).toHaveText('+ repeat')
+  await repeat.click()
   await page.getByLabel('Repeat for each item of').fill('["x", "y"]')
   await expect
     .poll(() => YAML.parse(read('plain')).steps[0].forEach, { timeout: 5_000 })
     .toBe('["x", "y"]')
-  await expect(page.locator('.step-foreach > summary')).toHaveText('for each ["x", "y"]')
+  await expect(repeat).toHaveText('↻ for each ["x", "y"]')
+  await page.keyboard.press('Escape')
 
   received = []
   await page.getByRole('button', { name: 'Send' }).click()
@@ -294,7 +298,8 @@ test('a step repeated for each item writes forEach and runs once per item', asyn
   ).toHaveText('2 of 2 passed', { timeout: 10_000 })
   expect(received).toEqual(['GET /each/x', 'GET /each/y'])
 
-  // Emptied, the step is written without it.
+  // Emptied, the step is written without it, and the chip offers it again.
+  await repeat.click()
   await page.getByLabel('Repeat for each item of').fill('')
   await expect
     .poll(() => YAML.parse(read('plain')).steps[0], { timeout: 5_000 })
@@ -302,6 +307,8 @@ test('a step repeated for each item writes forEach and runs once per item', asyn
       name: 'one',
       GET: `${origin}/each/{{item}}`
     })
+  await page.keyboard.press('Escape')
+  await expect(repeat).toHaveText('+ repeat')
 })
 
 test('a use step, or a setup step, sent on its own runs only that', async () => {
@@ -340,9 +347,9 @@ test('a step its script skips says why, having sent nothing', async () => {
 
 test('a use step has no forEach to edit; a request step has', async () => {
   await rowIn('Steps', 'ping it').locator('.step-open').click()
-  await expect(page.locator('.step-foreach')).toHaveCount(0)
+  await expect(page.locator('.step-repeat-chip')).toHaveCount(0)
   await rowIn('Steps', 'maybe').locator('.step-open').click()
-  await expect(page.locator('.step-foreach')).toHaveCount(1)
+  await expect(page.locator('.step-repeat-chip')).toHaveCount(1)
 })
 
 test('an edit to a setup step is saved in setup', async () => {
