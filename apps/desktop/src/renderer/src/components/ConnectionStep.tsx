@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { EditorState } from '../requestState.js'
 import InfoTip from './InfoTip.js'
 
@@ -20,6 +21,8 @@ interface BarProps {
   running: boolean
   onSend: () => void
   onCancel: () => void
+  /** The step's flags, as a chip beside Send. */
+  chips?: ReactNode
 }
 
 /** In place of a step's method and URL: the connection it reads. */
@@ -47,6 +50,7 @@ export function ReadBar(props: BarProps) {
           <option key={option} value={option} />
         ))}
       </datalist>
+      {props.chips}
       <button type="submit" className="send" disabled={props.running || name === ''}>
         {props.running ? 'Reading…' : 'Send'}
       </button>

@@ -1261,12 +1261,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-/* The URL bar's field is the flexible column in that row. */
-.url-bar .var-input.url {
-  flex: 1;
-  min-width: 0;
-}
-
 .kv .var-input .var-field,
 .kv .var-input .var-mirror {
   padding: 5px 7px;
@@ -1482,10 +1476,11 @@ button:disabled {
   margin-top: -2px;
 }
 
-/* The URL bar's field is the flexible column in that row. */
+/* The URL bar's field is the flexible column in that row: short of room, it keeps enough
+   to read and the step's chips beside it give way first. */
 .url-bar .var-input.url {
   flex: 1;
-  min-width: 0;
+  min-width: 160px;
 }
 
 .kv .var-input .var-field,
@@ -5213,17 +5208,20 @@ button.tag.filter.on {
   color: var(--client);
 }
 
-/* The selected step's own properties, chips on its line (StepChip): dashed with nothing
-   set, as + tag is; set, its value, coloured as the collection's flag chips are. */
+/* The selected step's flags and forEach, chips on its request bar before Send (StepChip):
+   dashed with nothing set, as + tag is; set, its value, coloured as the collection's flag
+   chips are, cut short to leave the URL its room, and whole on hover. */
 .step-chip-wrap {
   position: relative;
   display: inline-flex;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 40px;
   align-self: center;
 }
 
 .step-chip {
-  max-width: 260px;
+  min-width: 0;
+  max-width: 180px;
   overflow: hidden;
   padding: 1px 8px;
   border: 1px dashed var(--border);
@@ -5260,10 +5258,11 @@ button.tag.filter.on {
   color: var(--client);
 }
 
+/* Opening down and to the left: the chips sit at the bar's right end, by Send. */
 .step-chip-popover {
   position: absolute;
   top: calc(100% + 6px);
-  left: 0;
+  right: 0;
   z-index: 30;
   width: max-content;
   min-width: 340px;
@@ -5289,15 +5288,6 @@ button.tag.filter.on {
 .step-chip-popover .foreach-field {
   max-width: none;
   margin-top: 0;
-}
-
-.flag-state.skip {
-  color: var(--text-dim);
-  font-style: italic;
-}
-
-.flag-state.error {
-  color: var(--client);
 }
 
 /* A step its feature flags would skip: still editable, visibly not part of the run. */

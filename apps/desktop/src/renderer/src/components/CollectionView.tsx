@@ -24,19 +24,15 @@ import { usePaneWidth } from '../hooks/usePaneWidth.js'
 import { filterSteps, stepTagsIn } from '../tagFilter.js'
 import { conditionsState, showFlagValue, stepFlagState, type FlagState } from '../flagState.js'
 import type { IterationCounts } from '../dataGrid.js'
-import InfoTip from './InfoTip.js'
-import FlagConditionsEditor from './FlagConditionsEditor.js'
 import CollectionSettings, { type SettingsSection } from './CollectionSettings.js'
 import DocsPanel from './DocsPanel.js'
 import OpenInEditor from './OpenInEditor.js'
 import GearIcon from './GearIcon.js'
 import Resizer from './Resizer.js'
-import StepChip from './StepChip.js'
 import StepList, { type AddAction } from './StepList.js'
 import StepSectionHead from './StepSectionHead.js'
 import TagEditor from './TagEditor.js'
 import Tooltip from './Tooltip.js'
-import VariableInput from './VariableInput.js'
 import type { CollectionChanges } from '../stepChanges.js'
 import { fileFindings, findingText, stepFindings } from '../ruleFindings.js'
 
@@ -113,9 +109,6 @@ interface Props {
   /** The selected step's own tags, as the editor holds them. */
   stepTags: string[]
   onStepTags: (tags: string[]) => void
-  /** The selected step's `forEach`, as the editor holds it (SPEC.md §2.1). */
-  stepForEach: string
-  onStepForEach: (forEach: string) => void
   /** In a request set: whether the use step's tests check the selected step (SPEC.md §2.5). */
   stepUseTests: boolean
   onStepUseTests: (useTests: boolean) => void
@@ -127,9 +120,6 @@ interface Props {
   /** The feature flag values runs use now (SPEC.md §2.9); null when none are known. */
   flagValues: Record<string, FlagValue> | null
   onCollectionFlags: (flags: FlagConditions | undefined) => void
-  /** The selected step's own flag conditions, as the editor holds them. */
-  stepFlags: FlagConditions
-  onStepFlags: (flags: FlagConditions | undefined) => void
   onCollectionSettings: (settings: Settings) => void
   onCollectionHeaders: (headers: Headers | undefined) => void
   onCollectionVars: (vars: Vars | undefined) => void
@@ -244,10 +234,6 @@ export default function CollectionView(props: Props) {
       ])
     )
   }
-  const flagStates = flagStatesOf(props.selectedList)
-  /** The selected step's flags, by name, and how they stand: null when they hold. */
-  const stepFlagNames = Object.keys(props.stepFlags)
-  const selectedFlagState: FlagState | null = flagStates[props.selectedIndex] ?? null
 
   /** Why reusable requests cannot be added yet, when they cannot. */
   const noSets =
@@ -524,90 +510,6 @@ export default function CollectionView(props: Props) {
                   onChange={props.onStepTags}
                 />
               )}
-              {/* The step's own properties, on its own line: each a chip opening its editor. */}
-              <StepChip
-                key={`flags:${props.selectedList}:${props.selectedIndex}`}
-                className="step-flag-chip"
-                set={stepFlagNames.length > 0}
-                {...(stepFlagNames.length > 0 ? { tone: selectedFlagState?.kind ?? 'holds' } : {})}
-                label={
-                  stepFlagNames.length === 0
-                    ? '+ flag'
-                    : stepFlagNames.length === 1
-                      ? `⚑ ${stepFlagNames[0]}: ${showFlagValue(props.stepFlags[stepFlagNames[0]!]!)}`
-                      : `⚑ ${stepFlagNames.length} flags`
-                }
-                tooltip={
-                  stepFlagNames.length === 0
-                    ? 'Feature flags this step needs: without their values it is skipped, and reported so'
-                    : selectedFlagState === null
-                      ? 'Runs: the flags it needs hold'
-                      : selectedFlagState.kind === 'skip'
-                        ? `Skipped: ${selectedFlagState.reason}`
-                        : selectedFlagState.message
-                }
-                title="Step feature flags"
-              >
-                <FlagConditionsEditor
-                  owner="step"
-                  conditions={props.stepFlags}
-                  values={props.flagValues}
-                  onChange={props.onStepFlags}
-                  addLabel="+ Add a flag this step needs"
-                />
-              </StepChip>
-              {/* Why it will not run, in sight: a flag that is off, or one not known. */}
-              {selectedFlagState && (
-                <span className={`flag-state ${selectedFlagState.kind}`}>
-                  {selectedFlagState.kind === 'skip'
-                    ? `skipped: ${selectedFlagState.reason}`
-                    : 'unknown flag'}
-                </span>
-              )}
-              {/* Only setup and teardown repeat: a list of things to prepare or clean up. */}
-              {props.selectedList !== 'steps' &&
-                !isUseStep(selectedStep) &&
-                !isReadStep(selectedStep) &&
-                selectedStep.connection === undefined && (
-                  <StepChip
-                    key={`repeat:${props.selectedList}:${props.selectedIndex}`}
-                    className="step-repeat-chip"
-                    set={props.stepForEach.trim() !== ''}
-                    label={
-                      props.stepForEach.trim() === ''
-                        ? '+ for each'
-                        : `↻ for each ${props.stepForEach}`
-                    }
-                    tooltip={
-                      props.stepForEach.trim() === ''
-                        ? 'Send this request once for each item of a list'
-                        : `Sent once for each item of ${props.stepForEach}`
-                    }
-                    title="For each item of a list"
-                  >
-                    <div className="foreach-field">
-                      <VariableInput
-                        value={props.stepForEach}
-                        onChange={props.onStepForEach}
-                        previews={props.previews}
-                        onCopy={props.onCopyVariable}
-                        placeholder="{{items}}, a variable holding a JSON array, or one written here"
-                        ariaLabel="Send once for each item of"
-                      />
-                      <InfoTip
-                        about="repeating a request"
-                        text={
-                          <>
-                            The request is sent once per item, read as <code>{'{{item}}'}</code> and
-                            as <code>item</code> in code: for a list of things setup prepares or
-                            teardown cleans up, such as every order the rows made. A list that comes
-                            out empty skips the step.
-                          </>
-                        }
-                      />
-                    </div>
-                  </StepChip>
-                )}
             </div>
           )}
           {selectedStep && props.collection.params && props.selectedList === 'steps' && (

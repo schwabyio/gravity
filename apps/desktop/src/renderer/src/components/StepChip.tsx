@@ -20,7 +20,7 @@ interface Props {
 }
 
 /**
- * A property of the selected step as a chip on its line — feature flags, a
+ * A property of the selected step as a chip on its request bar — feature flags, a
  * list to repeat for — showing what is set at a glance, and opening a small
  * popover with its editor. It closes on a click anywhere else, as a menu does,
  * or on Escape; what is typed in it is kept as it is typed.
@@ -40,7 +40,7 @@ export default function StepChip(props: Props) {
 
   return (
     <span className="step-chip-wrap">
-      <Tooltip text={props.tooltip}>
+      <Tooltip text={props.tooltip} wide>
         <button
           type="button"
           className={`step-chip ${props.className}${props.set ? ' set' : ''}${props.tone ? ` ${props.tone}` : ''}`}
@@ -56,12 +56,18 @@ export default function StepChip(props: Props) {
         </button>
       </Tooltip>
       {open && (
-        // Its own clicks stay its own: a click outside it is what closes it.
+        // Its own clicks stay its own: a click outside it is what closes it. And
+        // Enter in a field of it does not submit the request bar it sits in: Send.
         <div
           className="step-chip-popover"
           role="dialog"
           aria-label={props.title}
           onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
+              event.preventDefault()
+            }
+          }}
         >
           <p className="step-chip-title">{props.title}</p>
           {props.children}

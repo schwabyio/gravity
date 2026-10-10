@@ -198,7 +198,7 @@ teardown:
 - Setup and teardown are sections above and below the steps. The **+** beside STEPS
   starts them, with **Add setup step** and **Add teardown step**. After that, each has a
   **+** of its own, and a step's ⋯ menu adds a step below it.
-- A setup or teardown step's line has a **+ for each** chip, for `forEach`.
+- A setup or teardown step has a **+ for each** chip beside Send, for `forEach`.
 - **Run all** runs them around the steps. With a tag filter on, it runs them around the
   steps the filter shows.
 - **Sending one step runs only that step**, never setup. A step that needs setup's token

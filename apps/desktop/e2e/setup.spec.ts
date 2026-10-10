@@ -294,16 +294,21 @@ test('a teardown step repeated for each item writes forEach and runs once per it
   await expect(page.locator('.collection-step')).toContainText('Step 1 of 1')
   await expect(page.locator('.step-repeat-chip')).toHaveCount(0)
 
-  // A chip on the teardown step's line, opening the list to send it for.
+  // A chip on the teardown step's request bar, opening the list to send it for.
   await rowIn('Teardown', 'remove').locator('.step-open').click()
   const repeat = page.locator('.step-repeat-chip')
   await expect(repeat).toHaveText('+ for each')
   await repeat.click()
+  received = []
   await page.getByLabel('Send once for each item of').fill('["x", "y"]')
   await expect
     .poll(() => YAML.parse(read('cleanup')).teardown[0].forEach, { timeout: 5_000 })
     .toBe('["x", "y"]')
   await expect(repeat).toHaveText('↻ for each ["x", "y"]')
+  // Enter in it is not the bar's Send, though it sits in that bar.
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(300)
+  expect(received).toEqual([])
   await page.keyboard.press('Escape')
 
   received = []

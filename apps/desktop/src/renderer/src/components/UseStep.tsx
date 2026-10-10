@@ -1,4 +1,5 @@
 import { readParam, type VarValue, type VariablePreviews } from '@schwabyio/gravity-core/model'
+import type { ReactNode } from 'react'
 import type { RequestSetView } from '@shared/ipc.js'
 import type { EditorState } from '../requestState.js'
 import { referenceFor, resolveSet } from '../reuse.js'
@@ -23,6 +24,8 @@ interface BarProps {
   onCancel: () => void
   /** Which of the set's requests the response panes show. */
   shownChild: number
+  /** The step's flags, as a chip beside Run. */
+  chips?: ReactNode
 }
 
 export function UseBar(props: BarProps) {
@@ -76,6 +79,7 @@ export function UseBar(props: BarProps) {
           Showing {props.shownChild + 1} of {set.steps.length} · {shown.label}
         </span>
       )}
+      {props.chips}
       <button type="submit" className="send" disabled={props.running || !set}>
         {props.running ? 'Running…' : 'Run'}
       </button>

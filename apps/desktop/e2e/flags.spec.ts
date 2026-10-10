@@ -205,7 +205,7 @@ test('collection and step flags are edited into the file', async () => {
   await page.keyboard.press('Escape')
   await expect(page.locator('.flag-chip')).toHaveText('region: eu')
 
-  // The step's flags are a chip on its line, opening their editor.
+  // The step's flags are a chip on its request bar, opening their editor.
   await stepRow('always').locator('.step-open').click()
   const chip = page.locator('.step-flag-chip')
   await expect(chip).toHaveText('+ flag')

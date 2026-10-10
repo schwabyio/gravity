@@ -46,6 +46,7 @@ import Resizer from './components/Resizer.js'
 import RequestView from './components/RequestView.js'
 import SaveStatus from './components/SaveStatus.js'
 import SettingsPage from './components/SettingsPage.js'
+import StepChips from './components/StepChips.js'
 import Tooltip from './components/Tooltip.js'
 import ProjectSettingsDrawer from './components/ProjectSettingsDrawer.js'
 import ChangesDrawer from './components/ChangesDrawer.js'
@@ -74,7 +75,6 @@ import { findingsOf, projectFile } from './ruleFindings.js'
 import { TestsRuleContext, type TestsRule } from './testsRule.js'
 
 const NO_TAGS: string[] = []
-const NO_FLAGS = {}
 const NO_SETS: RequestSetView[] = []
 const NO_ENDPOINTS: EndpointView[] = []
 const NO_BASES: LibraryFileView[] = []
@@ -1566,8 +1566,6 @@ export default function App() {
                   }}
                   stepTags={request?.tags ?? NO_TAGS}
                   onStepTags={(tags) => editor.patch({ tags })}
-                  stepForEach={request?.forEach ?? ''}
-                  onStepForEach={(forEach) => editor.patch({ forEach })}
                   stepUseTests={request?.useTests ?? false}
                   onStepUseTests={(useTests) => editor.patch({ useTests })}
                   onCollectionTags={editor.setCollectionTags}
@@ -1576,8 +1574,6 @@ export default function App() {
                   onCollectionExcluded={editor.setCollectionExcluded}
                   flagValues={flagValues}
                   onCollectionFlags={editor.setCollectionFlags}
-                  stepFlags={request?.flags ?? NO_FLAGS}
-                  onStepFlags={(flags) => editor.patch({ flags: flags ?? {} })}
                   onCollectionSettings={editor.setCollectionSettings}
                   onCollectionHeaders={editor.setCollectionHeaders}
                   onCollectionVars={editor.setCollectionVars}
@@ -1606,6 +1602,20 @@ export default function App() {
                     <RequestView
                       request={request}
                       collection={doc}
+                      chips={
+                        <StepChips
+                          collection={doc}
+                          list={stepList}
+                          index={stepIndex}
+                          flags={request.flags}
+                          onFlags={(flags) => editor.patch({ flags: flags ?? {} })}
+                          flagValues={flagValues}
+                          forEach={request.forEach}
+                          onForEach={(forEach) => editor.patch({ forEach })}
+                          previews={shownPreviews}
+                          onCopyVariable={copyVariable}
+                        />
+                      }
                       onEditCollectionHeaders={() => setCollectionSettingsOpen('headers')}
                       onEditCollectionScript={setCollectionSettingsOpen}
                       bases={activeProject?.bases ?? NO_BASES}

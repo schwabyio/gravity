@@ -62,6 +62,8 @@ const SCRIPTS_LEAST = 260
 
 interface Props {
   request: EditorState
+  /** The step's flags and forEach, as chips on its bar beside Send. */
+  chips?: ReactNode
   /** Which data file row the result shown came from — `Iteration 2 (Bob) - get user` — if one did. */
   resultCaption?: string | null
   onChange: (changes: Partial<EditorState>) => void
@@ -360,6 +362,7 @@ export default function RequestView(props: Props) {
           onRun={props.onSend}
           onCancel={props.onCancel}
           shownChild={props.shownChild}
+          chips={props.chips}
         />
       ) : request.reads !== null ? (
         <ReadBar
@@ -369,6 +372,7 @@ export default function RequestView(props: Props) {
           running={props.running}
           onSend={props.onSend}
           onCancel={props.onCancel}
+          chips={props.chips}
         />
       ) : (
         <form
@@ -393,6 +397,7 @@ export default function RequestView(props: Props) {
             placeholder="https://staging.example.com/sessions"
             ariaLabel="Request URL"
           />
+          {props.chips}
           <button
             type="submit"
             className="send"
