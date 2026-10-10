@@ -425,8 +425,8 @@ gta.set('adminId', res.body.id, { scope: 'run' })
   there is fresh for each.
 - A string, number, boolean or `null` is kept as it is. An object or array is saved as
   its JSON text, so `{{ids}}` writes the list into a JSON body, and `forEach: '{{ids}}'`
-  sends a request for each item. Read it back in code with `JSON.parse(gta.get('ids'))`.
-  `undefined` is saved as `null`.
+  on a setup or teardown step sends a request for each item. Read it back in code with
+  `JSON.parse(gta.get('ids'))`. `undefined` is saved as `null`.
 - **In a collection with a data file**, a value lasts the rest of its row.
   `{ scope: 'run' }` keeps it for every row after, and for teardown (SPEC.md §2.10).
   Any other `scope` is an error.

@@ -558,7 +558,7 @@ Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
 | `tests`      | string       | no       | The checks, as JavaScript: calls on `gta` (§3) and any other code (§5).         |
 | `tags`       | list of tags | no       | The step's own tags. Only with `stepTags: true` on the collection (§2.4).       |
 | `flags`      | map          | no       | Feature flags the step needs (§2.9).                                            |
-| `forEach`    | string       | no       | Send the request once for each item of a list (below).                          |
+| `forEach`    | string       | no       | In setup or teardown: send the request once for each item of a list (below).    |
 | `useTests`   | `true`       | no       | In a reusable requests file: the use step's `tests` check this response (§2.5). |
 | `connection` | string       | no       | Keep the event stream this request opens as a connection (§2.11).               |
 | `base`       | `false`      | no       | `false` leaves the step's endpoint base out (§2.6).                             |
@@ -575,17 +575,22 @@ Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
 - **Any other key is an error**, so a misspelled key such as `heders:` fails at once
   rather than being ignored. A method key in lower case (`get:`) is reported as such.
 
-**`forEach`** sends the request once for each item of a list, each reported as its own
-result, `remove grant (item 2 of 3)`:
+**`forEach`**, on a setup or teardown step (§2.10), sends the request once for each item
+of a list, each reported as its own result, `teardown › remove grant (item 2 of 3)`:
 
 ```yaml
-- name: remove grant
-  DELETE: '{{baseUrl}}/grants/{{item}}'
-  forEach: '{{grantedRoots}}' # a variable holding ["r1", "r2"], or a list written in place
+teardown:
+  - name: remove grant
+    DELETE: '{{baseUrl}}/grants/{{item}}'
+    forEach: '{{grantedRoots}}' # a variable holding ["r1", "r2"], or a list written in place
 ```
 
-- Its `{{variables}}` resolve when the step runs, so an earlier step can make the list,
-  as `gta.set('grantedRoots', ids)` does. The result must be a JSON array.
+- It is for a list of things to prepare or clean up, such as every grant the rows made.
+  A step in `steps` cannot have it: a test sends each of its requests once, and a data
+  file (§2.8) repeats the steps for each row. Nor can a reusable requests file's steps.
+- Its `{{variables}}` resolve when the step runs, so an earlier step can make the list:
+  `gta.set('grantedRoots', ids)` in setup, or with `{ scope: 'run' }` in a row (§2.10).
+  The result must be a JSON array.
 - Each item is `{{item}}` in the request and `item` in its scripts. An item that is an
   object or a list is its JSON in the request.
 - An empty list skips the step. Anything that is not a list fails it before anything
@@ -1153,8 +1158,8 @@ steps: # once per row of approved-domains.csv, as before
   nothing to clean up after. One that comes while teardown runs stops it where it is,
   and so does a second Stop in the desktop app.
 - **The collection applies to them**: its headers, settings, `before`, `tests` and
-  flags, as to any step. Their steps may be use steps and may use `forEach`, but carry
-  no `tags`: they run whenever the collection does.
+  flags, as to any step. Their steps may be use steps, and only theirs may have
+  `forEach` (§2.1). They carry no `tags`: they run whenever the collection does.
 - A reusable requests file, a base collection and an endpoints file have no setup or
   teardown.
 - Reports name their results `setup › log in` and `teardown › remove the grant`. Running
@@ -1712,7 +1717,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - `before` holds only `script`. `before.set` is not supported.
 - There is no `expect:` key; checks go in `tests`.
 - `base` is only ever `false`.
-- `forEach` is a string, and a use step has none.
+- `forEach` is a string, only on a setup or teardown step, and a use step has none.
 - `useTests` is only ever `true`, only on a reusable requests file's step, and on one
   step at most.
 - A step reading a connection has no `headers`, `body`, `base` or `forEach`. A step

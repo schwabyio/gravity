@@ -29,7 +29,7 @@ beforeAll(async () => {
   await fs.mkdir(path.join(tmp, 'collections'))
   await fs.mkdir(path.join(tmp, 'requests'))
   collectionPath = path.join(tmp, 'collections', 'seed.yml')
-  // A set that stops its row early from its first step, and one that repeats a step.
+  // A set that stops its row early from its first step.
   await fs.writeFile(
     path.join(tmp, 'requests', 'early.yml'),
     [
@@ -41,19 +41,6 @@ beforeAll(async () => {
       "    tests: gta.skipRest('done early')",
       '  - name: second',
       `    GET: "${origin}/early/second"`,
-      ''
-    ].join('\n')
-  )
-  await fs.writeFile(
-    path.join(tmp, 'requests', 'each.yml'),
-    [
-      'id: each',
-      'params:',
-      '  prefix: p',
-      'steps:',
-      '  - name: grant',
-      `    POST: "${origin}/{{params.prefix}}/{{item}}"`,
-      `    forEach: '["1", "2"]'`,
       ''
     ].join('\n')
   )
@@ -559,7 +546,7 @@ describe('forEach', () => {
 
   it('takes a list written in place, and an object item as its JSON', async () => {
     await suite({
-      steps: [{ POST: `${origin}/each?value={{item}}`, forEach: '[1, {"a": 2}]' }]
+      setup: [{ POST: `${origin}/each?value={{item}}`, forEach: '[1, {"a": 2}]' }]
     })
     expect(seen).toEqual(['POST /each?value=1', 'POST /each?value={%22a%22:2}'])
   })
@@ -567,7 +554,7 @@ describe('forEach', () => {
   it('skips a step whose list is empty, and fails one whose list is not a list', async () => {
     const { summary } = await suite({
       vars: { none: '[]', word: 'roots' },
-      steps: [
+      teardown: [
         { GET: `${origin}/a/{{item}}`, forEach: '{{none}}' },
         { GET: `${origin}/b/{{item}}`, forEach: '{{word}}' },
         { GET: `${origin}/c/{{item}}`, forEach: '{{missing}}' }
@@ -587,7 +574,7 @@ describe('forEach', () => {
 
   it('stops at gta.skipRest, skipping the items after it', async () => {
     const { summary } = await suite({
-      steps: [
+      teardown: [
         {
           GET: `${origin}/item/{{item}}`,
           forEach: '["a", "stop", "c"]',
@@ -600,23 +587,28 @@ describe('forEach', () => {
     expect(summary.results.map((r) => r.status)).toEqual(['pass', 'pass', 'skipped', 'skipped'])
   })
 
-  it('repeats a set’s step, its params in scope', async () => {
-    const { names } = await suite({ steps: [{ use: 'each', with: { prefix: 'q' } }] })
-    expect(seen).toEqual(['POST /q/1', 'POST /q/2'])
-    expect(names).toEqual(['grant (item 1 of 2)', 'grant (item 2 of 2)'])
-  })
-
   it('skips a repeated step its flags rule out, once, without reading its list', async () => {
     const { summary } = await suite(
-      { steps: [{ GET: `${origin}/x/{{item}}`, forEach: '{{missing}}', flags: { beta: true } }] },
+      {
+        teardown: [{ GET: `${origin}/x/{{item}}`, forEach: '{{missing}}', flags: { beta: true } }]
+      },
       { flags: { beta: false } }
     )
     expect(seen).toEqual([])
     expect(summary.results.map((r) => r.status)).toEqual(['skipped'])
   })
 
+  it('is refused in steps, and in a reusable requests file: a test sends each request once', () => {
+    expect(() => CollectionSchema.parse({ steps: [{ GET: 'http://x', forEach: '[1]' }] })).toThrow(
+      'forEach is only for setup and teardown steps'
+    )
+    expect(() =>
+      CollectionSchema.parse({ params: {}, steps: [{ GET: 'http://x', forEach: '[1]' }] })
+    ).toThrow("a reusable requests file's steps send each request once")
+  })
+
   it('is refused on a use step, which runs a set', () => {
-    expect(() => CollectionSchema.parse({ steps: [{ use: 'login', forEach: '[1]' }] })).toThrow(
+    expect(() => CollectionSchema.parse({ teardown: [{ use: 'login', forEach: '[1]' }] })).toThrow(
       'forEach repeats one request, so a use: step cannot have it'
     )
   })

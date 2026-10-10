@@ -248,6 +248,7 @@ export const StepSchema = z
     /**
      * Send the request once for each item of a list, read as `{{item}}` and
      * `item` in code: `'{{roots}}'`, a variable holding a JSON array (SPEC.md §2.1).
+     * Only on a setup or teardown step: the collection checks where it is.
      */
     forEach: z.string().min(1).optional(),
     /**
@@ -557,6 +558,18 @@ export const CollectionSchema = z
         }
       })
     }
+    // A test sends each of its requests once; a list of things to prepare or
+    // clean up is what setup and teardown repeat over.
+    collection.steps.forEach((step, index) => {
+      if (step.forEach === undefined) return
+      ctx.addIssue({
+        code: 'custom',
+        path: ['steps', index, 'forEach'],
+        message: collection.params
+          ? "forEach is only for setup and teardown steps, and a reusable requests file's steps send each request once; write the step that repeats in setup or teardown itself (SPEC.md §2.1)"
+          : 'forEach is only for setup and teardown steps, to prepare or clean up a list of things; a step in steps sends its request once, and a data file repeats the steps for each row (SPEC.md §2.1)'
+      })
+    })
     const marked = collection.steps.flatMap((step, index) => (step.useTests ? [index] : []))
     if (marked.length > 0 && !collection.params) {
       ctx.addIssue({

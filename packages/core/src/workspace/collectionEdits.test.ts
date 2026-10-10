@@ -134,6 +134,20 @@ describe('editSource: setup and teardown', () => {
 
 describe('editSource: new step keys', () => {
   it('writes forEach after the method and useTests after flags, where a person would', () => {
+    const teardown =
+      'id: c\nsteps: []\nteardown:\n  - name: a\n    GET: http://x\n    flags: { beta: true }\n'
+    expect(
+      editSource(teardown, [
+        {
+          type: 'editStep',
+          index: 0,
+          list: 'teardown',
+          step: { name: 'a', GET: 'http://x', flags: { beta: true }, forEach: '{{roots}}' }
+        }
+      ])
+    ).toBe(
+      'id: c\nsteps: []\nteardown:\n  - name: a\n    GET: http://x\n    forEach: "{{roots}}"\n    flags: { beta: true }\n'
+    )
     const set =
       'id: s\nparams: {}\nsteps:\n  - name: a\n    GET: http://x\n    flags: { beta: true }\n    tests: |\n      ok()\n'
     const next = editSource(set, [
@@ -145,14 +159,21 @@ describe('editSource: new step keys', () => {
           GET: 'http://x',
           flags: { beta: true },
           tests: 'ok()\n',
-          forEach: '{{roots}}',
           useTests: true
         }
       }
     ])
     expect(next).toBe(
-      'id: s\nparams: {}\nsteps:\n  - name: a\n    GET: http://x\n    forEach: "{{roots}}"\n    flags: { beta: true }\n    useTests: true\n    tests: |\n      ok()\n'
+      'id: s\nparams: {}\nsteps:\n  - name: a\n    GET: http://x\n    flags: { beta: true }\n    useTests: true\n    tests: |\n      ok()\n'
     )
+  })
+
+  it('refuses forEach on a step in steps', () => {
+    expect(() =>
+      editSource('id: c\nsteps:\n  - GET: http://x\n', [
+        { type: 'editStep', index: 0, step: { GET: 'http://x', forEach: '{{roots}}' } }
+      ])
+    ).toThrow(/edit to step 1 is invalid — .*forEach is only for setup and teardown steps/)
   })
 })
 

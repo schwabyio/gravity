@@ -564,17 +564,18 @@ export default function CollectionView(props: Props) {
                     : 'unknown flag'}
                 </span>
               )}
-              {!isUseStep(selectedStep) &&
+              {/* Only setup and teardown repeat: a list of things to prepare or clean up. */}
+              {props.selectedList !== 'steps' &&
+                !isUseStep(selectedStep) &&
                 !isReadStep(selectedStep) &&
-                selectedStep.connection === undefined &&
-                props.library === null && (
+                selectedStep.connection === undefined && (
                   <StepChip
                     key={`repeat:${props.selectedList}:${props.selectedIndex}`}
                     className="step-repeat-chip"
                     set={props.stepForEach.trim() !== ''}
                     label={
                       props.stepForEach.trim() === ''
-                        ? '+ repeat'
+                        ? '+ for each'
                         : `↻ for each ${props.stepForEach}`
                     }
                     tooltip={
@@ -582,7 +583,7 @@ export default function CollectionView(props: Props) {
                         ? 'Send this request once for each item of a list'
                         : `Sent once for each item of ${props.stepForEach}`
                     }
-                    title="Repeat for each item"
+                    title="For each item of a list"
                   >
                     <div className="foreach-field">
                       <VariableInput
@@ -591,14 +592,16 @@ export default function CollectionView(props: Props) {
                         previews={props.previews}
                         onCopy={props.onCopyVariable}
                         placeholder="{{items}}, a variable holding a JSON array, or one written here"
-                        ariaLabel="Repeat for each item of"
+                        ariaLabel="Send once for each item of"
                       />
                       <InfoTip
-                        about="repeating for each item"
+                        about="repeating a request"
                         text={
                           <>
                             The request is sent once per item, read as <code>{'{{item}}'}</code> and
-                            as <code>item</code> in code. Empty: once.
+                            as <code>item</code> in code: for a list of things setup prepares or
+                            teardown cleans up, such as every order the rows made. A list that comes
+                            out empty skips the step.
                           </>
                         }
                       />

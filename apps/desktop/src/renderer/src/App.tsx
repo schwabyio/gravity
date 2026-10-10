@@ -1020,7 +1020,7 @@ export default function App() {
           ids: { setup: open.stageIds.setup, steps: chosen, teardown: open.stageIds.teardown },
           list: 'steps'
         }
-      : { ids: { setup: [], steps: chosen, teardown: [] }, list }
+      : { ids: { setup: [], steps: [], teardown: [], [list]: chosen }, list }
     const path = collectionPath
     runPath.current = path
     runRow.current = dataRow
@@ -1051,13 +1051,12 @@ export default function App() {
     const plan = runPlan.current.ids
     setRunningId(plan.setup[0] ?? plan.steps[0] ?? plan.teardown[0] ?? '')
 
-    const steps = stepsOf(doc, list)
+    const steps = indexes.map((index) => stepsOf(doc, list)[index]!)
     const response = await window.desktop.runCollection({
       runId,
-      // Only the chosen steps, in order, sharing one scope as a full run would.
-      collection: all
-        ? { ...doc, steps: indexes.map((index) => steps[index]!) }
-        : { ...withoutStages(doc), steps: indexes.map((index) => steps[index]!) },
+      // Only the chosen steps, in order, sharing one scope as a full run would;
+      // run on their own, in their own list, as a forEach is only on setup and teardown steps.
+      collection: all ? { ...doc, steps } : { ...withoutStages(doc), steps: [], [list]: steps },
       collectionPath,
       environment: selectedEnvironment,
       environmentOverrides,

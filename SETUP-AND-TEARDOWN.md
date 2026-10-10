@@ -55,7 +55,9 @@ This page is about what they are for.
   collection does, whichever steps a tag filter picks.
 - **The collection applies to them** as to any step: its headers, settings, `before`,
   `tests` and flags. Their steps can be `use:` steps
-  ([below](#reusable-requests-in-setup-and-teardown)) and can use `forEach`.
+  ([below](#reusable-requests-in-setup-and-teardown)).
+- **Only they repeat a request for each item of a list**, with `forEach`
+  ([below](#cleaning-up-after-the-rows)).
 - **Reports name them** `setup › log in as an admin` and `teardown › remove the role`.
 
 ## When to use them
@@ -139,7 +141,8 @@ teardown:
   setup sets does.
 - The rules above hold inside it. A request in it that fails stops setup there. In
   teardown, its requests run after a failure, a cancel or a timeout.
-- A `use:` step cannot have `forEach`, though the requests in the file can. A reusable
+- A `use:` step cannot have `forEach`, and neither can the requests in a reusable
+  requests file. A request that repeats goes in setup or teardown itself. A reusable
   requests file has no setup or teardown of its own.
 - In the desktop app, the **+** beside SETUP or TEARDOWN adds one with **Use reusable
   requests**, and a step's ⋯ menu adds one below it.
@@ -174,6 +177,11 @@ teardown:
     forEach: '{{orderIds}}' # an empty list skips the step
 ```
 
+`forEach` sends the request once for each item of the list, as `{{item}}`, and reports
+each as its own result: `teardown › delete the orders (item 2 of 3)`. Only a setup or
+teardown step can have it. A test's own steps send each request once, and a data file
+repeats them for each row.
+
 Teardown runs even when setup failed partway. A teardown step that needs something setup
 made can skip itself when it isn't there ([`gta.skip`](./FUNCTIONS.md#gtaskip)):
 
@@ -190,6 +198,7 @@ teardown:
 - Setup and teardown are sections above and below the steps. The **+** beside STEPS
   starts them, with **Add setup step** and **Add teardown step**. After that, each has a
   **+** of its own, and a step's ⋯ menu adds a step below it.
+- A setup or teardown step's line has a **+ for each** chip, for `forEach`.
 - **Run all** runs them around the steps. With a tag filter on, it runs them around the
   steps the filter shows.
 - **Sending one step runs only that step**, never setup. A step that needs setup's token

@@ -13,7 +13,7 @@ import { addProject } from './addProject'
 /**
  * Setup and teardown (SPEC.md §2.10): steps run once around the others — and
  * around every row of a data file — shown and edited in lists of their own;
- * and `forEach`, one request per item of a list.
+ * and `forEach` on their steps, one request per item of a list.
  */
 
 const MAIN = path.resolve(process.cwd(), 'out/main/index.js')
@@ -129,6 +129,19 @@ test.beforeAll(async () => {
     ].join('\n')
   )
   write('collections/plain.yml', PLAIN(`${origin}/each/{{item}}`))
+  write(
+    'collections/cleanup.yml',
+    [
+      'id: cleanup',
+      'steps:',
+      '  - name: order',
+      `    POST: "${origin}/order"`,
+      'teardown:',
+      '  - name: remove',
+      `    DELETE: "${origin}/each/{{item}}"`,
+      ''
+    ].join('\n')
+  )
   write(
     'collections/stoppable.yml',
     [
@@ -274,41 +287,40 @@ test('setup and teardown steps are added, moved and deleted in their own lists',
   await expect.poll(() => read('plain'), { timeout: 5_000 }).toBe(original)
 })
 
-test('a step repeated for each item writes forEach and runs once per item', async () => {
-  // With no setup or teardown left, the steps are still named, alone.
-  await expect(section('Steps')).toHaveCount(1)
-  await expect(section('Setup')).toHaveCount(0)
-  await expect(section('Teardown')).toHaveCount(0)
-  await page.locator('.step-list > li', { hasText: 'one' }).locator('.step-open').click()
-  // A chip on the step's line, opening the list to repeat for.
+test('a teardown step repeated for each item writes forEach and runs once per item', async () => {
+  await page.locator('.collection-row', { hasText: 'Cleanup' }).click()
+  // A test's own steps send each request once: no chip for it there.
+  await rowIn('Steps', 'order').locator('.step-open').click()
+  await expect(page.locator('.collection-step')).toContainText('Step 1 of 1')
+  await expect(page.locator('.step-repeat-chip')).toHaveCount(0)
+
+  // A chip on the teardown step's line, opening the list to send it for.
+  await rowIn('Teardown', 'remove').locator('.step-open').click()
   const repeat = page.locator('.step-repeat-chip')
-  await expect(repeat).toHaveText('+ repeat')
+  await expect(repeat).toHaveText('+ for each')
   await repeat.click()
-  await page.getByLabel('Repeat for each item of').fill('["x", "y"]')
+  await page.getByLabel('Send once for each item of').fill('["x", "y"]')
   await expect
-    .poll(() => YAML.parse(read('plain')).steps[0].forEach, { timeout: 5_000 })
+    .poll(() => YAML.parse(read('cleanup')).teardown[0].forEach, { timeout: 5_000 })
     .toBe('["x", "y"]')
   await expect(repeat).toHaveText('↻ for each ["x", "y"]')
   await page.keyboard.press('Escape')
 
   received = []
   await page.getByRole('button', { name: 'Send' }).click()
-  await expect(
-    page.locator('.step-list > li', { hasText: 'one' }).locator('.step-summary')
-  ).toHaveText('2 of 2 passed', { timeout: 10_000 })
-  expect(received).toEqual(['GET /each/x', 'GET /each/y'])
+  await expect(rowIn('Teardown', 'remove').locator('.step-summary')).toHaveText('2 of 2 passed', {
+    timeout: 10_000
+  })
+  expect(received).toEqual(['DELETE /each/x', 'DELETE /each/y'])
 
   // Emptied, the step is written without it, and the chip offers it again.
   await repeat.click()
-  await page.getByLabel('Repeat for each item of').fill('')
+  await page.getByLabel('Send once for each item of').fill('')
   await expect
-    .poll(() => YAML.parse(read('plain')).steps[0], { timeout: 5_000 })
-    .toEqual({
-      name: 'one',
-      GET: `${origin}/each/{{item}}`
-    })
+    .poll(() => YAML.parse(read('cleanup')).teardown[0], { timeout: 5_000 })
+    .toEqual({ name: 'remove', DELETE: `${origin}/each/{{item}}` })
   await page.keyboard.press('Escape')
-  await expect(repeat).toHaveText('+ repeat')
+  await expect(repeat).toHaveText('+ for each')
 })
 
 test('a use step, or a setup step, sent on its own runs only that', async () => {
@@ -345,10 +357,12 @@ test('a step its script skips says why, having sent nothing', async () => {
   expect(received).toEqual([])
 })
 
-test('a use step has no forEach to edit; a request step has', async () => {
+test('only a setup or teardown request step has forEach to edit', async () => {
   await rowIn('Steps', 'ping it').locator('.step-open').click()
   await expect(page.locator('.step-repeat-chip')).toHaveCount(0)
   await rowIn('Steps', 'maybe').locator('.step-open').click()
+  await expect(page.locator('.step-repeat-chip')).toHaveCount(0)
+  await rowIn('Setup', 'prepare').locator('.step-open').click()
   await expect(page.locator('.step-repeat-chip')).toHaveCount(1)
 })
 
