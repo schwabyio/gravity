@@ -270,7 +270,10 @@ export default function CollectionView(props: Props) {
       ]
     }
     return [
-      { label: '+ Add step', onClick: () => props.onAddStep('steps') },
+      {
+        label: `+ Add ${props.library === 'endpoints' ? 'endpoint' : 'step'}`,
+        onClick: () => props.onAddStep('steps')
+      },
       {
         label: '+ Use reusable requests',
         onClick: () => props.onAddUse('steps'),
