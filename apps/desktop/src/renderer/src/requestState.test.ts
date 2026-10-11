@@ -255,9 +255,48 @@ describe('headers in the editor', () => {
     ).toEqual({
       'X-Debug': { value: '1', description: 'why' }
     })
-    // Only one of a repeated name ticked: that one.
-    expect(toHeaders([row('X-Tag', 'a', false), row('X-Tag', 'b')])).toEqual({ 'X-Tag': 'b' })
     expect(toHeaders([row('', '')])).toBeUndefined()
+  })
+
+  it('keeps a value switched off in a repeated header, in the long form, rather than dropping it', () => {
+    expect(toHeaders([row('X-Tag', 'a', false), row('X-Tag', 'b')])).toEqual({
+      'X-Tag': [{ value: 'a', enabled: false }, 'b']
+    })
+    expect(toHeaders([row('X-Tag', 'a'), row('X-Tag', 'b'), row('X-Tag', 'c', false)])).toEqual({
+      'X-Tag': ['a', 'b', { value: 'c', enabled: false }]
+    })
+    expect(toHeaders([row('X-Tag', 'a', false), row('X-Tag', 'b', false)])).toEqual({
+      'X-Tag': [
+        { value: 'a', enabled: false },
+        { value: 'b', enabled: false }
+      ]
+    })
+    // Read back as written: a row each, ticked or not.
+    const written = {
+      'X-Tag': ['a', { value: 'b', enabled: false }, { value: 'c', description: 'why' }]
+    }
+    expect(headerRows(written).map(({ name, value, enabled }) => [name, value, enabled])).toEqual([
+      ['X-Tag', 'a', true],
+      ['X-Tag', 'b', false],
+      ['X-Tag', 'c', true],
+      ['', '', true]
+    ])
+    // And written again unchanged, each value's description kept.
+    expect(toHeaders(headerRows(written), written)).toEqual(written)
+  })
+
+  it('takes names that differ only in case for one header, named as the first is written', () => {
+    expect(
+      toHeaders([row('X-Forwarded-For', '1'), row('Accept', '*/*'), row('x-forwarded-for', '2')])
+    ).toEqual({
+      'X-Forwarded-For': ['1', '2'],
+      Accept: '*/*'
+    })
+    // A file with both spellings is read as one header from then on.
+    const original = { 'X-A': '1', 'x-a': { value: '2', description: 'second' } }
+    expect(toHeaders(headerRows(original), original)).toEqual({
+      'X-A': ['1', { value: '2', description: 'second' }]
+    })
   })
 })
 

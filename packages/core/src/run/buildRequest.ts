@@ -1,5 +1,10 @@
 import type { Body, Collection, Headers, Settings, Step } from '../model/documents.js'
-import { mergeHeaders, readRequestLine, SETTINGS_DEFAULTS } from '../model/documents.js'
+import {
+  headerItems,
+  mergeHeaders,
+  readRequestLine,
+  SETTINGS_DEFAULTS
+} from '../model/documents.js'
 import type { HeaderEntry, SentRequest } from '../model/run.js'
 import { encodeMultipart, fileMarker, partsOf } from './multipart.js'
 
@@ -7,13 +12,9 @@ import { encodeMultipart, fileMarker, partsOf } from './multipart.js'
 export function toHeaderEntries(headers: Headers | undefined): HeaderEntry[] {
   const entries: HeaderEntry[] = []
   for (const [name, value] of Object.entries(headers ?? {})) {
-    if (typeof value === 'string') {
-      entries.push({ name, value })
-    } else if (Array.isArray(value)) {
-      for (const item of value) entries.push({ name, value: item })
-    } else if (value.enabled !== false) {
-      entries.push({ name, value: value.value })
-    }
+    // A repeated header goes once per value, those switched off left out.
+    for (const item of headerItems(value))
+      if (item.enabled) entries.push({ name, value: item.value })
   }
   return entries
 }

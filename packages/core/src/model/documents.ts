@@ -8,24 +8,50 @@ export const HttpMethodSchema = z.enum(HTTP_METHODS)
 
 /* ---------------------------------------------------------------- headers -- */
 
+/** A header's value in the long form: one that can be switched off, or described. */
+const HeaderLongFormSchema = z.strictObject({
+  value: z.string(),
+  enabled: z.boolean().optional(),
+  description: z.string().optional()
+})
+
 export const HeaderValueSchema = z.union([
   z.string(),
-  /** A repeated header. */
-  z.array(z.string()),
-  z.strictObject({
-    value: z.string(),
-    enabled: z.boolean().optional(),
-    description: z.string().optional()
-  })
+  /**
+   * A repeated header, sent once per value (SPEC.md §2.3). A value may take the
+   * long form, to switch it off or describe it, as a header of its own can.
+   */
+  z.array(z.union([z.string(), HeaderLongFormSchema])),
+  HeaderLongFormSchema
 ])
 export type HeaderValue = z.infer<typeof HeaderValueSchema>
+
+/** One value of a header, whichever form it was written in. */
+export interface HeaderItem {
+  value: string
+  enabled: boolean
+  description?: string
+}
+
+/** A header's values, one per line it would send, switched off or not. */
+export function headerItems(value: HeaderValue): HeaderItem[] {
+  return (Array.isArray(value) ? value : [value]).map((item) =>
+    typeof item === 'string'
+      ? { value: item, enabled: true }
+      : {
+          value: item.value,
+          enabled: item.enabled !== false,
+          ...(item.description !== undefined ? { description: item.description } : {})
+        }
+  )
+}
 
 export const HeadersSchema = z.record(z.string(), HeaderValueSchema)
 export type Headers = z.infer<typeof HeadersSchema>
 
-/** A header that is sent: anything but an object with `enabled: false`. */
+/** A header that is sent: one with any value not switched off. */
 export const isHeaderEnabled = (value: HeaderValue): boolean =>
-  typeof value === 'string' || Array.isArray(value) || value.enabled !== false
+  headerItems(value).some((item) => item.enabled)
 
 /**
  * The collection's headers with the step's over them (SPEC.md §2).

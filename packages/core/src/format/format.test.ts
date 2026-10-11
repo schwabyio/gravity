@@ -119,6 +119,28 @@ describe('collections', () => {
 })
 
 describe('validation', () => {
+  it('says a header written twice is what a list is for; any other key written twice, plainly', () => {
+    expect(() =>
+      parseCollection(
+        'id: a\nsteps:\n  - GET: http://x\n    headers:\n      X-A: "1"\n      Accept: "*"\n      X-A: "2"\n',
+        'a.yml'
+      )
+    ).toThrow(
+      /^a\.yml: Map keys must be unique at line 7, column 7; to send X-A more than once, give it a list, as X-A: \[first, second\] \(SPEC\.md §2\.3\):/
+    )
+    expect(() =>
+      parseCollection('id: a\nheaders:\n  B: "1"\n  B: "2"\nsteps: []\n', 'a.yml')
+    ).toThrow(/to send B more than once, give it a list/)
+    let message = ''
+    try {
+      parseCollection('id: a\nvars:\n  b: 1\n  b: 2\nsteps: []\n', 'a.yml')
+    } catch (cause) {
+      message = (cause as Error).message
+    }
+    expect(message).toMatch(/^a\.yml: Map keys must be unique at line 4, column 3:/)
+    expect(message).not.toContain('give it a list')
+  })
+
   it('rejects a step with no method', () => {
     expect(() => parseCollection('steps:\n  - name: x\n', 'a.yml')).toThrow(/one method key/)
   })

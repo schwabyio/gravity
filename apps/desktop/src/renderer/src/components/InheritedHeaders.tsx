@@ -1,5 +1,5 @@
 import type { Headers } from '@schwabyio/gravity-core/model'
-import { isHeaderEnabled } from '@schwabyio/gravity-core/model'
+import { headerItems } from '@schwabyio/gravity-core/model'
 import { replacedBy, type InheritedLayer } from '../inheritance.js'
 
 interface Props {
@@ -22,11 +22,7 @@ export default function InheritedHeaders({ layers, own, onOpen }: Props) {
     <>
       {layers.map((layer, index) => {
         const entries = Object.entries(layer.headers ?? {}).flatMap(([name, value]) =>
-          typeof value === 'string'
-            ? [{ name, value, on: true }]
-            : Array.isArray(value)
-              ? value.map((item) => ({ name, value: item, on: true }))
-              : [{ name, value: value.value, on: isHeaderEnabled(value) }]
+          headerItems(value).map((item) => ({ name, value: item.value, on: item.enabled }))
         )
         if (entries.length === 0) return null
         const collection = layer.kind === 'collection'

@@ -31,6 +31,12 @@ export const GTA_API: ApiEntry[] = [
     only: 'tests'
   },
   {
+    name: 'expectResponseToHaveHeaderCount',
+    signature: '(name, expectedCount)',
+    info: 'The header comes this many times, such as 2 for two Set-Cookie headers; 0 for none. Names ignore case.',
+    only: 'tests'
+  },
+  {
     name: 'expectResponseBodyToHaveProperty',
     signature: '(jsonPathToProperty, expectedValue?, specialHandling?)',
     info: 'The body property exists; with a value, it equals it (type included) or matches the RegExp.',
@@ -122,8 +128,18 @@ export const GTA_API: ApiEntry[] = [
 export const RES_API: ApiEntry[] = [
   { name: 'status', signature: '', info: 'Status code, a number.', type: 'property' },
   { name: 'statusText', signature: '', info: 'Reason phrase.', type: 'property' },
-  { name: 'headers', signature: '', info: 'Headers by lower-cased name.', type: 'property' },
+  {
+    name: 'headers',
+    signature: '',
+    info: 'Headers by lower-cased name; a repeated one as its values joined with ", ".',
+    type: 'property'
+  },
   { name: 'header', signature: '(name)', info: 'One header, any case.' },
+  {
+    name: 'headerValues',
+    signature: '(name)',
+    info: 'Every value of a header, any case, as a list: each Set-Cookie on its own.'
+  },
   {
     name: 'body',
     signature: '',

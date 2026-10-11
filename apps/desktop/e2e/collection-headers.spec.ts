@@ -4,6 +4,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { AddressInfo } from 'node:net'
+import YAML from 'yaml'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { launchApp } from './launch'
 import { sizeWindow } from './window'
@@ -21,12 +22,15 @@ let tmp: string
 let file: string
 let server: http.Server
 let received: http.IncomingHttpHeaders = {}
+/** The request's headers as they came, name and value in turn, a repeated one each time. */
+let raw: string[] = []
 let app: ElectronApplication
 let page: Page
 
 test.beforeAll(async () => {
   server = http.createServer((req, res) => {
     received = req.headers
+    raw = req.rawHeaders
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end('{"ok":true}')
   })
@@ -125,4 +129,38 @@ test('removing every collection header removes the key', async () => {
   expect(onDisk()).toMatch(/^id: shop\nsteps:/)
   await page.keyboard.press('Escape')
   await expect(inherited()).toHaveCount(0)
+})
+
+test('a header given more than once is sent once per value, a value switched off kept but not sent', async () => {
+  await openStep('browse')
+  // A response came for it before: the editor stepped aside for it.
+  const show = page.getByRole('button', { name: 'Show the request editor' })
+  if (await show.count()) await show.click()
+  await headersTab().click()
+  const rows = page.locator('.request-pane .tab-body table').first().locator('tbody tr')
+  const fill = async (index: number, name: string, value: string) => {
+    await rows.nth(index).locator('input').nth(1).fill(name)
+    await rows.nth(index).locator('input').nth(2).fill(value)
+  }
+  await fill(0, 'X-Forwarded-For', '10.0.0.1')
+  await fill(1, 'X-Forwarded-For', '10.0.0.2')
+  // Another spelling of the same name is the same header.
+  await fill(2, 'x-forwarded-for', '10.0.0.3')
+  await rows.nth(2).getByRole('checkbox').uncheck()
+  await expect
+    .poll(() => YAML.parse(onDisk()).steps[1].headers, { timeout: 5_000 })
+    .toEqual({ 'X-Forwarded-For': ['10.0.0.1', '10.0.0.2', { value: '10.0.0.3', enabled: false }] })
+
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page.locator('.status-pill')).toContainText('200')
+  const sent = raw.flatMap((name, i) =>
+    i % 2 === 0 && name.toLowerCase() === 'x-forwarded-for' ? [raw[i + 1]] : []
+  )
+  expect(sent).toEqual(['10.0.0.1', '10.0.0.2'])
+
+  // Read back as written: each value its own row, the one switched off unticked.
+  await openStep('plain')
+  await openStep('browse')
+  await expect(rows.nth(2).getByRole('checkbox')).not.toBeChecked()
+  await expect(rows.nth(0).getByRole('checkbox')).toBeChecked()
 })

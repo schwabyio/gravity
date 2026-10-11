@@ -122,6 +122,22 @@ export class CheckSession {
     })
   }
 
+  /** How many times the response has a header, its name ignoring case. */
+  headerCount(name: string, expected: number) {
+    const count = this.context.response.headers.filter(
+      (header) => header.name.toLowerCase() === name.toLowerCase()
+    ).length
+    return this.record({
+      name: `Header ${name} count is ${expected}`,
+      status: count === expected ? 'pass' : 'fail',
+      ...(count === expected ? {} : { message: `Expected ${expected}, got ${count}` }),
+      target: 'header',
+      path: name,
+      expected: String(expected),
+      actual: String(count)
+    })
+  }
+
   body(path: string, matcher: CheckMatcher) {
     const body = this.body_()
     if (body === BODY_UNAVAILABLE) return null

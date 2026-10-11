@@ -90,6 +90,8 @@ describe('what a step inherits', () => {
       'x-client': 'mine'
     })
     expect(headerCount(sentHeaders(layers, own))).toBe(4)
+    // A value switched off in a repeated header is not sent, so not counted.
+    expect(headerCount({ 'X-Tag': ['a', { value: 'b', enabled: false }, { value: 'c' }] })).toBe(2)
     expect(replacedBy(layers, 1, 'Accept', own)).toBe('the collection')
     expect(replacedBy(layers, 3, 'X-Client', own)).toBe('this step')
     expect(replacedBy(layers, 0, 'X-Request-Id', own)).toBeNull()

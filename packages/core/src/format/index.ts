@@ -52,6 +52,31 @@ const EMIT_OPTIONS: YAML.ToStringOptions = {
   blockQuote: 'literal'
 }
 
+/**
+ * What is wrong with a file that is not YAML, as the parser says it. A header
+ * written twice under one `headers:` is what a list is for, so that says so.
+ */
+function yamlProblem(error: YAML.YAMLError, source: string): string {
+  if (error.code !== 'DUPLICATE_KEY') return error.message
+  const lines = source.split(/\r?\n/)
+  const at = source.slice(0, error.pos[0]).split('\n').length - 1
+  const line = lines[at] ?? ''
+  const key = /^\s*(?:-\s+)?([^\s:#'"][^:#]*?)\s*:/.exec(line)?.[1]
+  const indent = line.search(/\S/)
+  for (let i = at - 1; i >= 0 && key; i--) {
+    const above = lines[i]!
+    if (above.trim() === '' || above.trim().startsWith('#')) continue
+    if (above.search(/\S/) >= indent) continue
+    if (!/^\s*(?:-\s+)?headers\s*:\s*(?:#.*)?$/.test(above)) break
+    const [first = '', ...rest] = error.message.split('\n')
+    return [
+      `${first.replace(/:$/, '')}; to send ${key} more than once, give it a list, as ${key}: [first, second] (SPEC.md §2.3):`,
+      ...rest
+    ].join('\n')
+  }
+  return error.message
+}
+
 function parseWith<S extends z.ZodType>(
   schema: S,
   source: string,
@@ -60,9 +85,8 @@ function parseWith<S extends z.ZodType>(
   retired?: (raw: unknown) => string | null
 ): ParsedFile<z.infer<S>> {
   const document = YAML.parseDocument(source, { keepSourceTokens: true })
-  if (document.errors.length > 0) {
-    throw new FormatError(document.errors[0]?.message ?? 'invalid YAML', file)
-  }
+  const yamlError = document.errors[0]
+  if (yamlError) throw new FormatError(yamlProblem(yamlError, source), file)
   const raw = document.toJS() ?? {}
   const retiredKey = retired?.(raw)
   if (retiredKey) throw new FormatError(retiredKey, file)

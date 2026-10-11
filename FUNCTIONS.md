@@ -28,6 +28,7 @@ goes, the order it runs in, and the other globals: `res`, `req`, `assert`, `para
 | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- | :-----: | :-------------: |
 | [`expectResponseStatusCodeToBe`](#gtaexpectresponsestatuscodetobe)                                           | Check the status code                              |    ✓    |                 |
 | [`expectResponseToHaveHeader`](#gtaexpectresponsetohaveheader)                                               | Check a header                                     |    ✓    |                 |
+| [`expectResponseToHaveHeaderCount`](#gtaexpectresponsetohaveheadercount)                                     | Check how many times a header comes                |    ✓    |                 |
 | [`expectResponseBodyToHaveProperty`](#gtaexpectresponsebodytohaveproperty)                                   | Check a property of the body                       |    ✓    |                 |
 | [`expectResponseBodyToHaveUnorderedArray`](#gtaexpectresponsebodytohaveunorderedarray)                       | Check an array holds items, in any order           |    ✓    |                 |
 | [`expectResponseBodyToHaveUnorderedArrayNotThisItem`](#gtaexpectresponsebodytohaveunorderedarraynotthisitem) | Check an array holds none of some items            |    ✓    |                 |
@@ -163,7 +164,37 @@ gta.expectResponseToHaveHeader('X-Request-Id', 'requestId', 'setAsCollectionVari
 ```
 
 - The name matches in any case.
-- A header sent more than once is its values joined with `, `, as in `a=1, b=2`.
+- A header sent more than once is its values joined with `, `, as in `a=1, b=2`. To
+  check how many times it came, use
+  [`expectResponseToHaveHeaderCount`](#gtaexpectresponsetohaveheadercount). To check one
+  value among several, read them as a list with `res.headerValues(name)`:
+
+```js
+gta.test('a session cookie', () =>
+  assert.ok(res.headerValues('Set-Cookie').some((cookie) => cookie.startsWith('session=')))
+)
+```
+
+### `gta.expectResponseToHaveHeaderCount`
+
+```js
+gta.expectResponseToHaveHeaderCount(name, expectedCount)
+```
+
+The response has the header exactly `expectedCount` times.
+
+```js
+gta.expectResponseToHaveHeaderCount('Set-Cookie', 2) // a session cookie and a CSRF cookie
+gta.expectResponseToHaveHeaderCount('X-Request-Id', 1) // exactly one, never repeated
+gta.expectResponseToHaveHeaderCount('X-Debug', 0) // not there at all
+```
+
+- The name matches in any case, so `set-cookie` and `Set-Cookie` count together.
+- `expectedCount` is a whole number, 0 or more. Anything else fails the check and says
+  why, and the checks after it still run.
+- In the response's Headers tab, each header of that name is marked with the result.
+- As with any header check, a step's check of a header replaces an endpoint base's check
+  of the same header ([SPEC.md §2.6](./SPEC.md#26-endpoint-bases)).
 
 ### `gta.expectResponseBodyToHaveProperty`
 

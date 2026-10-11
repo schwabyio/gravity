@@ -794,12 +794,19 @@ headers:
   Accept: application/json # a value
   X-Forwarded-For: [10.0.0.1, 10.0.0.2] # a list: sent once per value
   X-Debug: { value: '1', enabled: false, description: turn on to trace } # the long form
+  X-Route: [blue, { value: green, enabled: false }] # a list's values can take the long form
 ```
 
+- **A header sent more than once is a list**, sent once per value in order. A YAML map
+  cannot hold the same key twice, so writing the header twice is an error that says to
+  use a list. Names are compared ignoring case, so the desktop app saves rows named
+  `X-Tag` and `x-tag` as one list, under the spelling written first.
 - A collection's headers are sent with every step. A step header of the same name,
   compared case-insensitively as HTTP does, replaces the collection's for that step.
 - A header with `enabled: false` is not sent. On a step it replaces nothing, so
-  switching it off brings back the collection's header.
+  switching it off brings back the collection's header. In a list, a value with
+  `enabled: false` is left out and the others are sent. A list with every value
+  switched off is not sent, and on a step it replaces nothing.
 
 ### 2.4 `tags`, `stepTags` and `exclude`
 
@@ -1522,6 +1529,7 @@ function, with examples.
 | ------------------------------------------------------------------------------------------------ | :----------------: |
 | `gta.expectResponseStatusCodeToBe(expected, specialHandling?)`                                   |                    |
 | `gta.expectResponseToHaveHeader(name, expected?, specialHandling?)`                              |                    |
+| `gta.expectResponseToHaveHeaderCount(name, expectedCount)`                                       |                    |
 | `gta.expectResponseBodyToHaveProperty(path, expected?, specialHandling?)`                        |                    |
 | `gta.expectResponseBodyToHaveUnorderedArray(path, list)`                                         |                    |
 | `gta.expectResponseBodyToHaveUnorderedArrayNotThisItem(path, list)`                              |                    |
@@ -1557,15 +1565,15 @@ military zone letter (`U` is -08:00, not UTC).
 
 ### Other globals
 
-| Global     | What it is                                                                                                                                                                                                                                  |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `res`      | `tests` only: `status`, `statusText`, `headers` (lower-cased names), `header(name)`, `body` (parsed JSON, converted XML, an event stream's events, or text), `text`, `time` (ms), `size` (bytes), and for an event stream `stream` (below). |
-| `req`      | `method`, `url`, `headers`, `body`: as sent in `tests`, as written in `before.script`, where a script may change `headers` and `body` (below).                                                                                              |
-| `assert`   | Node's strict `assert`, for use inside `gta.test`.                                                                                                                                                                                          |
-| `console`  | Captured into the step's result.                                                                                                                                                                                                            |
-| `params`   | A reusable requests file's params (§2.5), in its own scripts and in the tests of the use step running it.                                                                                                                                   |
-| `endpoint` | An endpoint base's `{name}` values (§2.6), in its scripts and in every script of a step under it.                                                                                                                                           |
-| `checks`   | The project's check files (below).                                                                                                                                                                                                          |
+| Global     | What it is                                                                                                                                                                                                                                                                                                                              |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `res`      | `tests` only: `status`, `statusText`, `headers` (lower-cased names, a repeated header's values joined with `, `), `header(name)`, `headerValues(name)` (every value, as a list), `body` (parsed JSON, converted XML, an event stream's events, or text), `text`, `time` (ms), `size` (bytes), and for an event stream `stream` (below). |
+| `req`      | `method`, `url`, `headers`, `body`: as sent in `tests`, as written in `before.script`, where a script may change `headers` and `body` (below).                                                                                                                                                                                          |
+| `assert`   | Node's strict `assert`, for use inside `gta.test`.                                                                                                                                                                                                                                                                                      |
+| `console`  | Captured into the step's result.                                                                                                                                                                                                                                                                                                        |
+| `params`   | A reusable requests file's params (§2.5), in its own scripts and in the tests of the use step running it.                                                                                                                                                                                                                               |
+| `endpoint` | An endpoint base's `{name}` values (§2.6), in its scripts and in every script of a step under it.                                                                                                                                                                                                                                       |
+| `checks`   | The project's check files (below).                                                                                                                                                                                                                                                                                                      |
 
 **`res` for an event stream** (§2.3): `res.body` is its list of events, as checks see it
 (§3), `res.text` the stream as received, and `res.time` runs until the reading stopped.
@@ -1752,7 +1760,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 **Values**
 
 - A variable value, in `vars`, `with` or a param, is a string, number, boolean or null.
-- A header is a string, a list of strings, or `{ value, enabled?, description? }`.
+- A header is a string, `{ value, enabled?, description? }`, or a list of either.
 - A tag matches `^[A-Za-z0-9._:-]+$`.
 - A flag name matches `^[A-Za-z0-9_][A-Za-z0-9_.-]*$`, and a flag value is a string,
   number or boolean.

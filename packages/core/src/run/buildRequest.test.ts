@@ -27,6 +27,48 @@ describe('toHeaderEntries', () => {
     expect(toHeaderEntries({ C: { value: '3', enabled: false } })).toEqual([])
   })
 
+  it('sends each value of a repeated header that is not switched off', () => {
+    expect(
+      toHeaderEntries({
+        'X-Forwarded-For': [
+          '10.0.0.1',
+          { value: '10.0.0.2', enabled: false },
+          { value: '10.0.0.3', description: 'proxy' }
+        ]
+      })
+    ).toEqual([
+      { name: 'X-Forwarded-For', value: '10.0.0.1' },
+      { name: 'X-Forwarded-For', value: '10.0.0.3' }
+    ])
+  })
+
+  it('reads a list whose values take the long form, and refuses a value that is neither', () => {
+    expect(step({ headers: { A: ['1', { value: '2', enabled: false }] } }).headers).toEqual({
+      A: ['1', { value: '2', enabled: false }]
+    })
+    expect(() => step({ headers: { A: ['1', 2] } })).toThrow()
+    expect(() => step({ headers: { A: [{ value: '1', on: true }] } })).toThrow()
+  })
+
+  it('lets a step list with a value switched on replace the collection’s, and one all off replace nothing', () => {
+    const collection = { steps: [], headers: { 'X-A': 'collection' } }
+    const sent = (headers: Record<string, unknown>) =>
+      toSentRequest(step({ headers }), collection).headers.filter(
+        (h) => h.name.toLowerCase() === 'x-a'
+      )
+    expect(sent({ 'x-a': ['one', { value: 'two', enabled: false }] })).toEqual([
+      { name: 'x-a', value: 'one' }
+    ])
+    expect(
+      sent({
+        'x-a': [
+          { value: 'one', enabled: false },
+          { value: 'two', enabled: false }
+        ]
+      })
+    ).toEqual([{ name: 'X-A', value: 'collection' }])
+  })
+
   it('handles no headers at all', () => {
     expect(toHeaderEntries(undefined)).toEqual([])
   })

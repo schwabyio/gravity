@@ -1,6 +1,7 @@
 import {
   findEndpoint,
   foldLayers,
+  headerItems,
   isHeaderEnabled,
   mergeHeaders,
   requestLayers,
@@ -120,8 +121,7 @@ export function sentHeaders(layers: InheritedLayer[], own: Headers | undefined):
 /** How many headers go out: a repeated one once for each value, one that is off not at all. */
 export function headerCount(headers: Headers): number {
   return Object.values(headers).reduce(
-    (count, value) =>
-      count + (Array.isArray(value) ? value.length : isHeaderEnabled(value) ? 1 : 0),
+    (count, value) => count + headerItems(value).filter((item) => item.enabled).length,
     0
   )
 }

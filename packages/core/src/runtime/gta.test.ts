@@ -365,6 +365,90 @@ describe('checks that fail, and say why', () => {
     expect(statuses(result)).toEqual(['pass', 'pass', 'pass'])
   })
 
+  it('counts a header, its name in any case: twice, once, or not at all', async () => {
+    const result = await run(`
+      gta.expectResponseToHaveHeaderCount('X-Tag', 2)
+      gta.expectResponseToHaveHeaderCount('x-request-ID', 1)
+      gta.expectResponseToHaveHeaderCount('Set-Cookie', 0)
+      gta.expectResponseToHaveHeaderCount('X-Tag', 1)
+      gta.expectResponseToHaveHeaderCount('Set-Cookie', 1)
+    `)
+    expect(result.error).toBeNull()
+    expect(
+      result.assertions.map((a) => [
+        a.name,
+        a.status,
+        a.message,
+        a.target,
+        a.path,
+        a.expected,
+        a.actual
+      ])
+    ).toEqual([
+      ['Header X-Tag count is 2', 'pass', undefined, 'header', 'X-Tag', '2', '2'],
+      ['Header x-request-ID count is 1', 'pass', undefined, 'header', 'x-request-ID', '1', '1'],
+      ['Header Set-Cookie count is 0', 'pass', undefined, 'header', 'Set-Cookie', '0', '0'],
+      ['Header X-Tag count is 1', 'fail', 'Expected 1, got 2', 'header', 'X-Tag', '1', '2'],
+      [
+        'Header Set-Cookie count is 1',
+        'fail',
+        'Expected 1, got 0',
+        'header',
+        'Set-Cookie',
+        '1',
+        '0'
+      ]
+    ])
+  })
+
+  it('says how a header count was asked for wrongly, and goes on to the next check', async () => {
+    const result = await run(`
+      gta.expectResponseToHaveHeaderCount('X-Tag', '2')
+      gta.expectResponseToHaveHeaderCount('X-Tag', -1)
+      gta.expectResponseToHaveHeaderCount('X-Tag', 1.5)
+      gta.expectResponseToHaveHeaderCount('', 1)
+      gta.expectResponseToHaveHeaderCount('X-Tag')
+      gta.expectResponseToHaveHeaderCount('X-Tag', 2)
+    `)
+    expect(result.assertions.map((a) => [a.status, a.message])).toEqual([
+      [
+        'fail',
+        'expectedCount is how many times the header is expected, a whole number of 0 or more; got "2"'
+      ],
+      [
+        'fail',
+        'expectedCount is how many times the header is expected, a whole number of 0 or more; got -1'
+      ],
+      [
+        'fail',
+        'expectedCount is how many times the header is expected, a whole number of 0 or more; got 1.5'
+      ],
+      ['fail', 'The header name must be a non-empty string, got ""'],
+      [
+        'fail',
+        'expectedCount is how many times the header is expected, a whole number of 0 or more; got undefined'
+      ],
+      ['pass', undefined]
+    ])
+  })
+
+  it('gives every value of a repeated header as a list, with res.headerValues', async () => {
+    const result = await run(`
+      gta.test('each value', () => assert.deepEqual(res.headerValues('x-TAG'), ['a=1', 'b=2']))
+      gta.test('one value', () => assert.deepEqual(res.headerValues('X-Request-Id'), ['abc-123']))
+      gta.test('none', () => assert.deepEqual(res.headerValues('Set-Cookie'), []))
+      gta.test('a list', () => assert.ok(Array.isArray(res.headerValues('X-Tag'))))
+      gta.test('still joined', () => assert.equal(res.headers['x-tag'], 'a=1, b=2'))
+    `)
+    expect(result.assertions.map((a) => [a.name, a.status, a.message])).toEqual([
+      ['each value', 'pass', undefined],
+      ['one value', 'pass', undefined],
+      ['none', 'pass', undefined],
+      ['a list', 'pass', undefined],
+      ['still joined', 'pass', undefined]
+    ])
+  })
+
   it('fails a body property for every specialHandling it does not meet', async () => {
     const result = await run(`
       gta.expectResponseBodyToHaveProperty('string.missing')
@@ -1072,6 +1156,7 @@ describe('before.script', () => {
       'expectResponseBodyToHaveUnorderedArrayNotThisItem',
       'expectResponseStatusCodeToBe',
       'expectResponseToHaveHeader',
+      'expectResponseToHaveHeaderCount',
       'ignoreResponseBodyArrayObjectProperty',
       'ignoreResponseBodyProperty',
       'sortResponseBodyArrays',

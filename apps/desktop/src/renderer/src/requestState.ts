@@ -2,11 +2,13 @@
 // into the sandboxed renderer bundle.
 import {
   HTTP_METHODS as CORE_METHODS,
+  headerItems,
   isReadStep,
   isUseStep,
   readRequestLine,
   type Body,
   type FlagConditions,
+  type HeaderValue,
   type Headers,
   type HttpMethod,
   type MultipartField,
@@ -169,46 +171,56 @@ export function writeQueryParams(url: string, params: QueryParam[]): string {
   return `${base}?${search}`
 }
 
+/** A header value in the long form: `{ value, enabled?, description? }`. */
+type HeaderLongForm = Extract<HeaderValue, { value: string }>
+
 /**
- * Header rows back to the authored map. Rows sharing a name become a repeated
- * header (a list); a header written in the long form — with a `description` —
- * keeps that form and its description, given the map it was read from.
+ * Header rows back to the authored map. Rows whose names match, ignoring case as
+ * HTTP does, are one repeated header (a list), named as the first is written; a
+ * row switched off in one is kept, in the long form, rather than dropped. A value
+ * written in the long form — with a `description` — keeps that form and its
+ * description, given the map it was read from.
  */
 export function toHeaders(rows: HeaderRow[], original?: Headers): Headers | undefined {
   const named = rows.filter((row) => row.name.trim() !== '')
   if (named.length === 0) return undefined
+  const groups = new Map<string, HeaderRow[]>()
+  for (const row of named) {
+    const key = row.name.toLowerCase()
+    groups.set(key, [...(groups.get(key) ?? []), row])
+  }
   const headers: Headers = {}
-  for (const name of new Set(named.map((row) => row.name))) {
-    const all = named.filter((row) => row.name === name)
-    const on = all.filter((row) => row.enabled)
-    if (on.length > 1) {
-      headers[name] = on.map((row) => row.value)
-      continue
-    }
-    const row = on[0] ?? all[0]!
-    const before = original?.[name]
-    if (before !== undefined && typeof before === 'object' && !Array.isArray(before)) {
-      const { enabled: _enabled, ...rest } = before
-      headers[name] = {
-        ...rest,
-        value: row.value,
-        ...(row.enabled ? ('enabled' in before ? { enabled: true } : {}) : { enabled: false })
-      }
-    } else {
-      headers[name] = row.enabled ? row.value : { value: row.value, enabled: false }
-    }
+  for (const [key, group] of groups) {
+    // What each row was written as: the values of every key of this name, in order.
+    const before = Object.entries(original ?? {})
+      .filter(([name]) => name.toLowerCase() === key)
+      .flatMap(([, value]) => (Array.isArray(value) ? value : [value]))
+    const written = group.map((row, i) => headerItemOf(row, before[i]))
+    headers[group[0]!.name] = written.length === 1 ? written[0]! : written
   }
   return headers
+}
+
+/** One row as a value: plain when it is on with nothing else to keep, the long form otherwise. */
+function headerItemOf(row: HeaderRow, before: string | HeaderLongForm | undefined) {
+  if (before !== undefined && typeof before === 'object') {
+    const { enabled: _enabled, ...rest } = before
+    return {
+      ...rest,
+      value: row.value,
+      ...(row.enabled ? ('enabled' in before ? { enabled: true } : {}) : { enabled: false })
+    }
+  }
+  return row.enabled ? row.value : { value: row.value, enabled: false }
 }
 
 /** The authored map as editor rows, one per value, with a blank row to type in. */
 export function headerRows(headers: Headers | undefined): HeaderRow[] {
   const rows: HeaderRow[] = []
   for (const [name, value] of Object.entries(headers ?? {})) {
-    if (typeof value === 'string') rows.push({ ...newRow(), name, value, enabled: true })
-    else if (Array.isArray(value))
-      for (const item of value) rows.push({ ...newRow(), name, value: item, enabled: true })
-    else rows.push({ ...newRow(), name, value: value.value, enabled: value.enabled !== false })
+    for (const item of headerItems(value)) {
+      rows.push({ ...newRow(), name, value: item.value, enabled: item.enabled })
+    }
   }
   rows.push(newRow())
   return rows

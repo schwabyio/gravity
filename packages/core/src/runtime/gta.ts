@@ -281,6 +281,28 @@ export function testsGta({
       }
     ),
 
+    /** The response has the header this many times, its name ignoring case; 0 for none. */
+    expectResponseToHaveHeaderCount: guarded(
+      session,
+      'expectResponseToHaveHeaderCount',
+      (...args: [name: string, expectedCount: number]) => {
+        const [name, expectedCount] = args
+        if (typeof name !== 'string' || name.trim() === '') {
+          throw new GtaUsageError(`The header name must be a non-empty string, got ${show(name)}`)
+        }
+        if (
+          typeof expectedCount !== 'number' ||
+          !Number.isInteger(expectedCount) ||
+          expectedCount < 0
+        ) {
+          throw new GtaUsageError(
+            `expectedCount is how many times the header is expected, a whole number of 0 or more; got ${show(expectedCount)}`
+          )
+        }
+        session.headerCount(name, expectedCount)
+      }
+    ),
+
     expectResponseBodyToHaveProperty: guarded(
       session,
       'expectResponseBodyToHaveProperty',
@@ -421,6 +443,7 @@ export function preRequestGta(scope: VariableScope, control: StepControl = newSt
     },
     expectResponseStatusCodeToBe: notHere('expectResponseStatusCodeToBe'),
     expectResponseToHaveHeader: notHere('expectResponseToHaveHeader'),
+    expectResponseToHaveHeaderCount: notHere('expectResponseToHaveHeaderCount'),
     expectResponseBodyToHaveProperty: notHere('expectResponseBodyToHaveProperty'),
     expectResponseBodyToHaveUnorderedArray: notHere('expectResponseBodyToHaveUnorderedArray'),
     expectResponseBodyToHaveUnorderedArrayNotThisItem: notHere(
@@ -601,6 +624,13 @@ export function responseView(response: ReceivedResponse, adopt: Adopt) {
     statusText: response.statusText,
     headers: adopt(headers),
     header: (name: string): string | undefined => headers[String(name).toLowerCase()],
+    /** Every value of a header, in the order it came: each `Set-Cookie` on its own. */
+    headerValues: (name: string): string[] =>
+      adopt(
+        response.headers
+          .filter((header) => header.name.toLowerCase() === String(name).toLowerCase())
+          .map((header) => header.value)
+      ),
     body:
       response.bodyKind === 'text' || response.bodyKind === 'html'
         ? response.body
