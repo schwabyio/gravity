@@ -1,16 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { javascriptLanguage, typescriptLanguage } from '@codemirror/lang-javascript'
 import { markdown } from '@codemirror/lang-markdown'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
-import { EditorState, Prec } from '@codemirror/state'
+import { xmlLanguage } from '@codemirror/lang-xml'
+import { HighlightStyle, syntaxHighlighting, syntaxTree, type Language } from '@codemirror/language'
+import { EditorState, Prec, RangeSetBuilder } from '@codemirror/state'
 import {
+  Decoration,
   drawSelection,
   EditorView,
   keymap,
   placeholder as placeholderText,
-  type Command
+  ViewPlugin,
+  type Command,
+  type DecorationSet,
+  type ViewUpdate
 } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
+import { jsonLanguage } from '../bodyLanguage.js'
 import { formatMarkdown, type MarkdownFormat } from '../markdownFormat.js'
 import Markdown from './Markdown.js'
 import Tooltip from './Tooltip.js'
@@ -113,8 +120,9 @@ export default function DocsEditor(props: Props) {
           history(),
           drawSelection(),
           EditorView.lineWrapping,
-          markdown({ completeHTMLTags: false }),
+          markdown({ completeHTMLTags: false, codeLanguages: fenceLanguage }),
           syntaxHighlighting(highlight),
+          fencedLines,
           theme,
           // Over the default keys: ⌘I there selects the syntax around the cursor.
           Prec.high(
@@ -275,11 +283,69 @@ const theme = EditorView.theme({
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
     backgroundColor: 'color-mix(in srgb, var(--accent) 30%, transparent)'
   },
-  '.cm-placeholder': { color: 'var(--text-dim)', fontStyle: 'italic' }
+  '.cm-placeholder': { color: 'var(--text-dim)', fontStyle: 'italic' },
+  '.cm-fenced': { fontFamily: 'var(--mono)', fontSize: '12px' }
 })
 
+const fencedLine = Decoration.line({ class: 'cm-fenced' })
+
+/**
+ * Fenced code's lines, fences included, in the code font: its language's tokens
+ * take their colours from it, but no longer the font the fence's text had.
+ */
+const fencedLines = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet
+    constructor(view: EditorView) {
+      this.decorations = this.build(view)
+    }
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        syntaxTree(update.startState) !== syntaxTree(update.state)
+      ) {
+        this.decorations = this.build(update.view)
+      }
+    }
+    build(view: EditorView): DecorationSet {
+      const starts = new Set<number>()
+      for (const { from, to } of view.visibleRanges) {
+        syntaxTree(view.state).iterate({
+          from,
+          to,
+          enter: (node) => {
+            if (node.name !== 'FencedCode') return
+            for (let at = node.from; at <= node.to;) {
+              const line = view.state.doc.lineAt(at)
+              starts.add(line.from)
+              at = line.to + 1
+            }
+            return false
+          }
+        })
+      }
+      const builder = new RangeSetBuilder<Decoration>()
+      for (const start of [...starts].sort((a, b) => a - b)) builder.add(start, start, fencedLine)
+      return builder.finish()
+    }
+  },
+  { decorations: (plugin) => plugin.decorations }
+)
+
+/** The language a fence names, coloured in the text as it is in the docs shown. */
+function fenceLanguage(info: string): Language | null {
+  const name = info.trim().toLowerCase()
+  if (name === 'json') return jsonLanguage
+  if (name === 'xml') return xmlLanguage
+  if (['js', 'javascript', 'mjs', 'cjs'].includes(name)) return javascriptLanguage
+  if (name === 'ts' || name === 'typescript') return typescriptLanguage
+  return null
+}
+
 // The markup as it will read: bold bold, headings strong, code in the code font, and the
-// marks themselves quiet beside what they mark.
+// marks themselves quiet beside what they mark. Fenced code in the colours the docs show
+// it in.
 const highlight = HighlightStyle.define([
   { tag: tags.heading, fontWeight: '700' },
   { tag: tags.strong, fontWeight: '700' },
@@ -289,6 +355,18 @@ const highlight = HighlightStyle.define([
   { tag: tags.quote, color: 'var(--text-dim)' },
   {
     tag: [tags.processingInstruction, tags.contentSeparator, tags.labelName],
+    color: 'var(--text-dim)'
+  },
+  {
+    tag: [tags.propertyName, tags.tagName, tags.function(tags.variableName)],
+    color: 'var(--server)'
+  },
+  { tag: [tags.string, tags.attributeValue], color: 'var(--ok)' },
+  { tag: [tags.number, tags.bool, tags.null, tags.attributeName], color: 'var(--redirect)' },
+  { tag: tags.keyword, color: 'var(--accent)' },
+  { tag: tags.comment, color: 'var(--text-dim)', fontStyle: 'italic' },
+  {
+    tag: [tags.brace, tags.squareBracket, tags.separator, tags.angleBracket, tags.operator],
     color: 'var(--text-dim)'
   }
 ])

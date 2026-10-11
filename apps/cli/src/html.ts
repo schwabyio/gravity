@@ -1,4 +1,5 @@
 import {
+  CALLOUTS,
   MARK_GLYPH,
   bodyAsObject,
   buildChecks,
@@ -6,8 +7,12 @@ import {
   checkedDiffersFromRaw,
   formatPath,
   markHeaders,
+  codeTokens,
+  markCode,
+  markInlineCode,
   markLines,
   markStatus,
+  markText,
   parseMarkdown,
   parsePath,
   resolvePath,
@@ -24,6 +29,7 @@ import {
   type MdBlock,
   type MdInline,
   type ReceivedResponse,
+  type TextMark,
   type RunResult,
   type ScriptSource,
   type SentRequest
@@ -1014,6 +1020,9 @@ function escape(value: string): string {
 /**
  * A collection's docs as HTML: core's `parseMarkdown` — the reading the desktop
  * app renders too — with every string escaped, and links only to http(s).
+ * Coloured as core's `markdownMarks` marks it, as the app colours it: fenced
+ * JSON and XML token by token (JavaScript stays plain here), `{{variables}}`,
+ * a method or status code in inline code, and callouts.
  */
 function markdown(source: string): string {
   return `<div class="md">${parseMarkdown(source).map(mdBlock).join('')}</div>`
@@ -1022,7 +1031,18 @@ function markdown(source: string): string {
 function mdBlock(block: MdBlock): string {
   switch (block.type) {
     case 'code':
-      return `<pre class="md-code">${escape(block.text)}</pre>`
+      return `<pre class="md-code">${markCode(
+        codeTokens(block.text, block.language) ?? [{ text: block.text, kind: null }]
+      )
+        .map((piece) => {
+          const classes = [piece.kind && `tok-${piece.kind}`, piece.variable && 'md-var']
+            .filter(Boolean)
+            .join(' ')
+          return classes
+            ? `<span class="${classes}">${escape(piece.text)}</span>`
+            : escape(piece.text)
+        })
+        .join('')}</pre>`
     case 'heading': {
       const level = Math.min(block.level + 3, 6)
       return `<h${level} class="md-h">${mdInline(block.content)}</h${level}>`
@@ -1037,6 +1057,10 @@ function mdBlock(block: MdBlock): string {
         .join('')}</tbody></table>`
     case 'quote':
       return `<blockquote class="md-quote">${block.blocks.map(mdBlock).join('')}</blockquote>`
+    case 'callout': {
+      const { label, icon } = CALLOUTS[block.kind]
+      return `<div class="md-callout md-callout-${block.kind}" role="note"><p class="md-callout-title"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${icon}"/></svg>${label}</p>${block.blocks.map(mdBlock).join('')}</div>`
+    }
     case 'list': {
       const tag = block.ordered ? 'ol' : 'ul'
       return `<${tag} class="md-list">${block.items
@@ -1056,9 +1080,9 @@ function mdInline(nodes: MdInline[]): string {
     .map((node) => {
       switch (node.type) {
         case 'text':
-          return escape(node.text)
+          return markText(node.text).map(mdMark).join('')
         case 'code':
-          return `<code class="md-inline-code">${escape(node.text)}</code>`
+          return `<code class="md-inline-code">${markInlineCode(node.text).map(mdMark).join('')}</code>`
         case 'strong':
           return `<strong>${mdInline(node.children)}</strong>`
         case 'em':
@@ -1068,6 +1092,20 @@ function mdInline(nodes: MdInline[]): string {
       }
     })
     .join('')
+}
+
+function mdMark(piece: TextMark): string {
+  const text = escape(piece.text)
+  switch (piece.mark) {
+    case null:
+      return text
+    case 'variable':
+      return `<span class="md-var">${text}</span>`
+    case 'method':
+      return `<span class="md-method m-${piece.method.toLowerCase()}">${text}</span>`
+    case 'status':
+      return `<span class="md-status md-status-${piece.status}">${text}</span>`
+  }
 }
 
 /* --------------------------------------------------------- style, script -- */
@@ -1253,6 +1291,12 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word}
 .md-table{border-collapse:collapse;margin:0 0 8px}
 .md-table th,.md-table td{border:1px solid var(--border);padding:4px 8px;text-align:left}
 .md-table th{background:var(--surface-alt)}
+.md-code .tok-name,.md-code .tok-tag,.md-code .tok-function{color:var(--j-key)}.md-code .tok-string{color:var(--j-str)}.md-code .tok-number,.md-code .tok-attribute{color:var(--j-num)}.md-code .tok-literal{color:var(--j-lit)}.md-code .tok-keyword{color:var(--accent)}.md-code .tok-comment{color:var(--dim);font-style:italic}.md-code .tok-punctuation,.md-code .tok-meta{color:var(--dim)}
+.md .md-var{color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:3px}
+.md-method{font-weight:700}.md-status{font-weight:600}.md-status-1xx{color:var(--dim)}.md-status-2xx{color:var(--ok)}.md-status-3xx{color:var(--redirect)}.md-status-4xx{color:var(--client)}.md-status-5xx{color:var(--server)}
+.md-callout{margin:0 0 8px;padding:8px 12px;border-left:3px solid var(--callout);border-radius:0 6px 6px 0;background:color-mix(in srgb,var(--callout) 8%,transparent)}.md-callout>:last-child{margin-bottom:0}
+.md-callout-title{display:flex;align-items:center;gap:6px;margin:0 0 4px;color:var(--callout);font-weight:600}
+.md-callout-note{--callout:var(--accent)}.md-callout-tip{--callout:var(--ok)}.md-callout-important{--callout:var(--m-head)}.md-callout-warning{--callout:var(--redirect)}.md-callout-caution{--callout:var(--server)}
 .foot{margin-top:28px;padding-top:16px;border-top:1px solid var(--border-soft);display:flex;justify-content:center;align-items:center;gap:8px;color:var(--dim);font-size:12.5px}
 .foot a{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-weight:600}
 .foot a:hover{border-color:var(--faint);text-decoration:none}

@@ -6,8 +6,10 @@
  *
  * The supported subset is what documentation in this format actually uses:
  * headings, paragraphs, bullet and ordered lists, fenced code, tables, block
- * quotes, rules, and inline code, emphasis and links. Anything else is the
- * literal text it was written as, which is the honest failure mode.
+ * quotes and GitHub's callouts (`> [!NOTE]`), rules, and inline code, emphasis
+ * and links. Anything else is the literal text it was written as, which is the
+ * honest failure mode. What a renderer colours in the text — variables, methods,
+ * status codes, code — is `markdownMarks.ts`.
  *
  * Text stays text: nothing here is HTML, so a renderer escapes every string
  * and there is no injection surface — docs come from files in someone's
@@ -35,8 +37,38 @@ export type MdBlock =
   | { type: 'rule' }
   | { type: 'table'; header: MdInline[][]; rows: MdInline[][][] }
   | { type: 'quote'; blocks: MdBlock[] }
+  /** A block quote whose first line is `[!NOTE]`, `[!TIP]` and so on, as GitHub has them. */
+  | { type: 'callout'; kind: CalloutKind; blocks: MdBlock[] }
   | { type: 'list'; ordered: boolean; items: MdListItem[] }
   | { type: 'paragraph'; content: MdInline[] }
+
+/** GitHub's callouts, in its order. */
+export const CALLOUT_KINDS = ['note', 'tip', 'important', 'warning', 'caution'] as const
+export type CalloutKind = (typeof CALLOUT_KINDS)[number]
+
+/**
+ * Each callout's title, and its icon as SVG path data — 16 by 16, stroked,
+ * with round caps — so the app and a report draw the same one.
+ */
+export const CALLOUTS: Record<CalloutKind, { label: string; icon: string }> = {
+  note: {
+    label: 'Note',
+    icon: 'M14.25 8a6.25 6.25 0 1 1-12.5 0 6.25 6.25 0 0 1 12.5 0zM8 7.25v4M8 4.75v.01'
+  },
+  tip: {
+    label: 'Tip',
+    icon: 'M6 13.75h4M6.5 11.5h3M8 2.25a4 4 0 0 0-2.4 7.2c.5.4.9.9.9 1.55h3c0-.65.4-1.15.9-1.55A4 4 0 0 0 8 2.25z'
+  },
+  important: {
+    label: 'Important',
+    icon: 'M2.75 3.25h10.5v7.5H8.5l-3 2.5v-2.5H2.75zM8 5.25v2.5M8 9.5v.01'
+  },
+  warning: { label: 'Warning', icon: 'M8 2.25l6.25 11H1.75zM8 6.5v3M8 11.5v.01' },
+  caution: {
+    label: 'Caution',
+    icon: 'M5.5 2.25h5l3.25 3.25v5l-3.25 3.25h-5L2.25 10.5v-5zM8 5.25v3.25M8 10.75v.01'
+  }
+}
 
 export function parseMarkdown(source: string): MdBlock[] {
   return parseBlocks(source.split(/\r?\n/))
@@ -113,7 +145,14 @@ function parseBlocks(lines: string[]): MdBlock[] {
         quoted.push((lines[index] ?? '').replace(/^\s*>\s?/, ''))
         index++
       }
-      blocks.push({ type: 'quote', blocks: parseBlocks(quoted) })
+      // `[!WARNING]` alone on the first line makes a callout, as on GitHub.
+      const callout = /^\s*\[!([A-Za-z]+)\]\s*$/.exec(quoted[0] ?? '')
+      const kind = callout?.[1]?.toLowerCase() as CalloutKind | undefined
+      blocks.push(
+        kind && CALLOUT_KINDS.includes(kind)
+          ? { type: 'callout', kind, blocks: parseBlocks(quoted.slice(1)) }
+          : { type: 'quote', blocks: parseBlocks(quoted) }
+      )
       continue
     }
 

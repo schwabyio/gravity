@@ -50,6 +50,24 @@ const DOCS = [
   'A `javascript:alert(1)` link is [not one](javascript:alert(1)).'
 ].join('\n')
 
+const COLOURED = [
+  'Calls `GET /orders/{{orderId}}` as {{adminUser}}, expecting `201`.',
+  '',
+  '> [!WARNING]',
+  '> Needs the `orders:write` scope.',
+  '',
+  '> [!TIP]',
+  '> Pick **staging** first.',
+  '',
+  '```json',
+  '{"sku": "{{sku}}", "qty": 2}',
+  '```',
+  '',
+  '```js',
+  "const id = gta.get('orderId')",
+  '```'
+].join('\n')
+
 test.beforeAll(async () => {
   tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'api-docs-')))
   const repo = path.join(tmp, 'r')
@@ -69,6 +87,19 @@ test.beforeAll(async () => {
       '    GET: "http://example.test/one"',
       '    docs: |-',
       '      Step docs with **bold** and `code`.',
+      ''
+    ].join('\n')
+  )
+  // Docs that use what is coloured: callouts, fenced JSON and JS, variables, a method, a status.
+  fs.writeFileSync(
+    path.join(repo, 'collections', 'colours.yml'),
+    [
+      'id: colours',
+      'docs: |-',
+      ...COLOURED.split('\n').map((line) => `  ${line}`.trimEnd()),
+      'steps:',
+      '  - name: three',
+      '    GET: "http://example.test/three"',
       ''
     ].join('\n')
   )
@@ -312,4 +343,72 @@ test('docs are formatted from the toolbar or the keys, and previewed as they wil
   await editor.getByRole('button', { name: 'Write' }).click()
   await expect(box).toBeFocused()
   await expect(preview).toHaveCount(0)
+})
+
+/** As much of the page's DOM as these run there, typed: specs are checked without the DOM's types. */
+interface PageDom {
+  document: {
+    createElement: (tag: string) => { style: { color: string }; remove: () => void }
+    body: { append: (node: unknown) => void }
+  }
+  getComputedStyle: (element: unknown) => { color: string }
+}
+/** The colour a CSS colour token comes to, as a computed style gives one. */
+const token = (name: string) =>
+  page.evaluate((name) => {
+    // Run in the page, where `globalThis` is its window.
+    const { document, getComputedStyle } = globalThis as unknown as PageDom
+    const probe = document.createElement('span')
+    probe.style.color = `var(${name})`
+    document.body.append(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  }, name)
+const colorOf = (locator: ReturnType<Page['locator']>) =>
+  locator.evaluate((element) => (globalThis as unknown as PageDom).getComputedStyle(element).color)
+
+test('docs are coloured: callouts, fenced code, variables, a method and a status code', async () => {
+  await openCollection('colours')
+  await expect(page.getByRole('heading', { name: 'colours', level: 1 })).toBeVisible()
+  if ((await docsToggle().getAttribute('aria-expanded')) !== 'true') await docsToggle().click()
+  await expect(docsToggle()).toHaveAttribute('aria-expanded', 'true')
+
+  // Callouts as GitHub has them: a title and icon in the callout's colour.
+  const warning = docs().locator('.md-callout-warning')
+  await expect(warning).toHaveAttribute('role', 'note')
+  await expect(warning.locator('.md-callout-title')).toHaveText('Warning')
+  await expect(warning).toContainText('Needs the orders:write scope.')
+  expect(await colorOf(warning.locator('.md-callout-title'))).toBe(await token('--redirect'))
+  expect(await colorOf(docs().locator('.md-callout-tip .md-callout-title'))).toBe(
+    await token('--ok')
+  )
+
+  // A method and a status code in inline code, and variables in or out of code.
+  const method = docs().locator('.md-method')
+  await expect(method).toHaveText('GET')
+  expect(await colorOf(method)).toBe(await token('--m-get'))
+  const status = docs().locator('.md-status')
+  await expect(status).toHaveText('201')
+  expect(await colorOf(status)).toBe(await token('--ok'))
+  await expect(docs().locator('.md-var')).toHaveText(['{{orderId}}', '{{adminUser}}', '{{sku}}'])
+  expect(await colorOf(docs().locator('.md-var').first())).toBe(await token('--accent'))
+
+  // Fenced JSON and JavaScript, token by token in the editors' colours.
+  const json = docs().locator('.md-code[data-language="json"]')
+  await expect(json).toHaveText('{"sku": "{{sku}}", "qty": 2}')
+  expect(await colorOf(json.locator('.tok-name').first())).toBe(await token('--server'))
+  expect(await colorOf(json.locator('.tok-number'))).toBe(await token('--redirect'))
+  // A variable in a string is marked over the string's green.
+  expect(await colorOf(json.locator('.md-var'))).toBe(await token('--accent'))
+  const js = docs().locator('.md-code[data-language="js"]')
+  expect(await colorOf(js.locator('.tok-keyword'))).toBe(await token('--accent'))
+  expect(await colorOf(js.locator('.tok-string'))).toBe(await token('--ok'))
+
+  // Written, fenced JSON is coloured in the text as it is shown.
+  await page.getByRole('button', { name: 'Edit the collection’s docs' }).click()
+  const box = page.getByRole('textbox', { name: 'Collection docs' })
+  const key = box.locator('span').filter({ hasText: /^"qty"$/ })
+  expect(await colorOf(key)).toBe(await token('--server'))
+  await page.keyboard.press('Escape')
 })

@@ -222,6 +222,54 @@ describe('htmlReport', () => {
     expect(summary).toContain('title="4,000,000 ms">1&nbsp;hour 6&nbsp;minutes 40.00&nbsp;seconds')
   })
 
+  it('colours docs as the app does: code, variables, methods, status codes and callouts', () => {
+    const page = pages(
+      run({
+        ...collection('smoke', [result('list')]),
+        docs: [
+          'Calls `GET /orders/{{orderId}}` as {{adminUser}}, expecting `201` or `404 Not Found`.',
+          '',
+          '> [!WARNING]',
+          '> Needs the `orders:write` scope.',
+          '',
+          '```json',
+          '{"sku": "{{sku}}", "qty": {{qty}}, "gift": true, "<x>": 1}',
+          '```',
+          '',
+          '```xml',
+          '<order id="{{id}}"><!-- n --></order>',
+          '```',
+          '',
+          '```js',
+          "const a = '<b>'",
+          '```'
+        ].join('\n')
+      })
+    ).get('smoke.html')!
+    expect(page).toContain(
+      '<p class="md-p">Calls <code class="md-inline-code"><span class="md-method m-get">GET</span> /orders/<span class="md-var">{{orderId}}</span></code> as <span class="md-var">{{adminUser}}</span>, expecting <code class="md-inline-code"><span class="md-status md-status-2xx">201</span></code> or <code class="md-inline-code"><span class="md-status md-status-4xx">404 Not Found</span></code>.</p>'
+    )
+    expect(page).toContain(
+      '<div class="md-callout md-callout-warning" role="note"><p class="md-callout-title"><svg viewBox="0 0 16 16"'
+    )
+    expect(page).toContain(
+      'Warning</p><p class="md-p">Needs the <code class="md-inline-code">orders:write</code> scope.</p></div>'
+    )
+    // Fenced JSON and XML token by token, everything still escaped; JavaScript plain.
+    expect(page).toContain(
+      '<pre class="md-code"><span class="tok-punctuation">{</span><span class="tok-name">&quot;sku&quot;</span><span class="tok-punctuation">:</span> <span class="tok-string">&quot;</span><span class="tok-string md-var">{{sku}}</span><span class="tok-string">&quot;</span>'
+    )
+    expect(page).toContain('<span class="md-var">{{qty}}</span>')
+    expect(page).toContain('<span class="tok-literal">true</span>')
+    expect(page).toContain('<span class="tok-name">&quot;&lt;x&gt;&quot;</span>')
+    expect(page).toContain(
+      '<span class="tok-punctuation">&lt;</span><span class="tok-tag">order</span> <span class="tok-attribute">id</span>'
+    )
+    expect(page).toContain('<span class="tok-comment">&lt;!-- n --&gt;</span>')
+    expect(page).toContain('<pre class="md-code">const a = &#39;&lt;b&gt;&#39;</pre>')
+    expect(page).not.toContain("'<b>'")
+  })
+
   it('gives each collection page its docs, file, stats and a way back', () => {
     const page = pages(
       run({

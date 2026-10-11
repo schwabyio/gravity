@@ -502,7 +502,7 @@ Any key not listed here is an error.
 | `steps`    | list of steps       | no       | `[]`    | The requests, in run order (§2.1).                                                        |
 | `setup`    | list of steps       | no       |         | Run once before `steps`; what it sets lasts the run (§2.10).                              |
 | `teardown` | list of steps       | no       |         | Run once after the rest, even when a step failed (§2.10).                                 |
-| `docs`     | string              | no       |         | Markdown.                                                                                 |
+| `docs`     | string              | no       |         | Markdown (below).                                                                         |
 | `tags`     | list of tags        | no       |         | Tags that select the whole collection (§2.4).                                             |
 | `stepTags` | boolean             | no       | `false` | `true` lets steps carry their own tags (§2.4).                                            |
 | `exclude`  | boolean             | no       | `false` | `true` leaves it out of group runs (§2.4).                                                |
@@ -535,6 +535,32 @@ exactly. `collections/checkout/sessions.yml` starts `id: sessions`.
 Because an id is unique, it names the collection everywhere on its own: in the app, on
 `gta`'s command line and in reports.
 
+### `docs`
+
+A collection's or a step's `docs` is Markdown, shown in the desktop app and in `gta`'s
+HTML report: headings, paragraphs, lists, tables, fenced code, block quotes, rules, and
+inline code, emphasis and links (http and https only). HTML is shown as the text it is,
+never rendered. Anything else stays the text it was written as.
+
+GitHub's callouts are a block quote whose first line is the callout's name, and are shown
+with its colour, icon and title:
+
+```markdown
+> [!WARNING]
+> The cancel step needs the `orders:write` scope.
+```
+
+The names are `NOTE`, `TIP`, `IMPORTANT`, `WARNING` and `CAUTION`, in any case.
+
+Some text is coloured:
+
+- `{{variables}}` are marked, in code or not, as the app's URL bar marks them.
+- Inline code that starts with a method, such as `` `GET /orders` ``, shows the method in
+  its colour. Inline code that is a status code, such as `` `201` `` or
+  `` `404 Not Found` `` or `` `5xx` ``, is shown in its class's colour.
+- Fenced code is coloured when its fence names `json` or `xml`. The app also colours
+  `js` and `ts`.
+
 ### 2.1 Steps
 
 **List order is run order.** A step is a request: it carries **exactly one HTTP method
@@ -562,7 +588,7 @@ Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
 | `useTests`   | `true`       | no       | In a reusable requests file: the use step's `tests` check this response (§2.5). |
 | `connection` | string       | no       | Keep the event stream this request opens as a connection (§2.11).               |
 | `base`       | `false`      | no       | `false` leaves the step's endpoint base out (§2.6).                             |
-| `docs`       | string       | no       | Markdown.                                                                       |
+| `docs`       | string       | no       | Markdown (§2, `docs`).                                                          |
 
 - A step with two method keys is an error, and so is a step with none, unless it is a
   use step or reads a connection.

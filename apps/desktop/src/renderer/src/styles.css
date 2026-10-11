@@ -2264,6 +2264,99 @@ button:disabled {
   max-width: 88ch;
 }
 
+/* Fenced code coloured as the editors colour it: names (JSON's keys, XML's tags) red,
+   strings green, numbers and true/false/null amber, keywords blue, the rest quiet. */
+.md-code .tok-name,
+.md-code .tok-tag,
+.md-code .tok-function {
+  color: var(--server);
+}
+.md-code .tok-string {
+  color: var(--ok);
+}
+.md-code .tok-number,
+.md-code .tok-literal,
+.md-code .tok-attribute {
+  color: var(--redirect);
+}
+.md-code .tok-keyword {
+  color: var(--accent);
+}
+.md-code .tok-comment {
+  color: var(--text-dim);
+  font-style: italic;
+}
+.md-code .tok-punctuation,
+.md-code .tok-meta {
+  color: var(--text-dim);
+}
+
+/* A {{variable}} as the URL bar marks one, in code or out, whatever is around it. */
+.md .md-var {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+/* In inline code: a method in its colour, as the step list has it; a status code in its
+   class's, as a response's status line has it. */
+.md-method {
+  font-weight: 700;
+}
+.md-status {
+  font-weight: 600;
+}
+.md-status-1xx {
+  color: var(--text-dim);
+}
+.md-status-2xx {
+  color: var(--ok);
+}
+.md-status-3xx {
+  color: var(--redirect);
+}
+.md-status-4xx {
+  color: var(--client);
+}
+.md-status-5xx {
+  color: var(--server);
+}
+
+/* GitHub's callouts: a bar, a tint and a title in the callout's colour. */
+.md-callout {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--callout);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--callout) 8%, transparent);
+}
+.md-callout > :last-child {
+  margin-bottom: 0;
+}
+.md-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  color: var(--callout);
+  font-weight: 600;
+}
+.md-callout-note {
+  --callout: var(--accent);
+}
+.md-callout-tip {
+  --callout: var(--ok);
+}
+.md-callout-important {
+  --callout: var(--m-head);
+}
+.md-callout-warning {
+  --callout: var(--redirect);
+}
+.md-callout-caution {
+  --callout: var(--server);
+}
+
 /* ---------- resizable dividers ---------- */
 
 .resizer {

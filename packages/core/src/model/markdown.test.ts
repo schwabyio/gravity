@@ -58,6 +58,42 @@ describe('parseMarkdown', () => {
     ])
   })
 
+  it('reads GitHub callouts: a quote whose first line is [!KIND], in any case', () => {
+    expect(
+      parseMarkdown('> [!warning]\n> Needs the **orders:write** scope.\n> - one\n\n> [!TIP]')
+    ).toEqual([
+      {
+        type: 'callout',
+        kind: 'warning',
+        blocks: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'Needs the ' },
+              { type: 'strong', children: [{ type: 'text', text: 'orders:write' }] },
+              { type: 'text', text: ' scope.' }
+            ]
+          },
+          {
+            type: 'list',
+            ordered: false,
+            items: [{ content: [{ type: 'text', text: 'one' }], children: null }]
+          }
+        ]
+      },
+      { type: 'callout', kind: 'tip', blocks: [] }
+    ])
+    for (const kind of ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION']) {
+      expect(parseMarkdown(`> [!${kind}]\n> x`)[0]).toMatchObject({ kind: kind.toLowerCase() })
+    }
+  })
+
+  it('leaves a quote a quote when its marker is unknown, or not alone on its line', () => {
+    for (const source of ['> [!DANGER]\n> x', '> [!NOTE] inline\n> x', '> x\n> [!NOTE]']) {
+      expect(parseMarkdown(source)[0]).toMatchObject({ type: 'quote' })
+    }
+  })
+
   it('keeps markup as text: a renderer escapes it', () => {
     expect(parseMarkdown('<script>alert(1)</script>')).toEqual([
       { type: 'paragraph', content: [{ type: 'text', text: '<script>alert(1)</script>' }] }
