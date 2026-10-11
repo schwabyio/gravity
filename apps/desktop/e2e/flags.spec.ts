@@ -151,6 +151,24 @@ test('a step its flags skip is marked, and Run all does not send it', async () =
     'feature flag newCheckout is on — nothing was sent'
   )
   expect(seen).toEqual([])
+
+  // The flag chip on its bar is dimmed as a skip, and says why on hover.
+  const chip = page.locator('.url-bar .step-flag-chip')
+  await expect(chip).toHaveText('⚑ newCheckout: false')
+  await expect(chip).toHaveClass(/\bskip\b/)
+  await page.mouse.move(0, 0)
+  await chip.hover()
+  await expect(page.getByRole('tooltip')).toHaveText(
+    'Needs newCheckout: false. Skipped: feature flag newCheckout is on'
+  )
+  // A step whose flags hold says it runs.
+  await page.mouse.move(0, 0)
+  await stepRow('new checkout').locator('.step-open').click()
+  await expect(chip).toHaveText('⚑ newCheckout: true')
+  await expect(chip).toHaveClass(/\bholds\b/)
+  await chip.hover()
+  await expect(page.getByRole('tooltip')).toHaveText('Needs newCheckout: true, and runs: they hold')
+  await page.mouse.move(0, 0)
 })
 
 test('an override flips which step runs, and clearing it flips back', async () => {

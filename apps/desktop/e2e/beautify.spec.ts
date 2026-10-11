@@ -47,6 +47,10 @@ test.beforeAll(async () => {
       ''
     ].join('\n')
   )
+  // An environment that holds one of the body's variables, and one that holds none.
+  fs.mkdirSync(path.join(shop, 'environments'))
+  fs.writeFileSync(path.join(shop, 'environments', 'dev.yml'), 'vars:\n  sku: ACME-1\n')
+  fs.writeFileSync(path.join(shop, 'environments', 'qa.yml'), 'vars: {}\n')
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: shop, stdio: 'pipe' })
 
   app = await launchApp({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
@@ -104,6 +108,15 @@ test('a JSON body is coloured: names, strings, numbers, and its variables as the
   expect(await colorOf('"price"')).toBe(await token('--server'))
   expect(await colorOf('1.0')).toBe(await token('--redirect'))
   // No environment holds them: shown as resolving to nothing.
+  const environment = page.getByLabel('Environment', { exact: true })
+  await environment.selectOption('qa')
+  await expect(body().locator('.cm-var.unresolved')).toHaveText(['{{sku}}', '{{qty}}'])
+  await expect(body().locator('.cm-var.resolved')).toHaveCount(0)
+  // One that holds {{sku}}: marked as resolving, as the URL marks it, as soon as it is picked.
+  await environment.selectOption('dev')
+  await expect(body().locator('.cm-var.resolved')).toHaveText(['{{sku}}'])
+  await expect(body().locator('.cm-var.unresolved')).toHaveText(['{{qty}}'])
+  await environment.selectOption('qa')
   await expect(body().locator('.cm-var.unresolved')).toHaveText(['{{sku}}', '{{qty}}'])
 })
 

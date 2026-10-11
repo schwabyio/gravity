@@ -7,7 +7,7 @@ import type { AddressInfo } from 'node:net'
 import YAML from 'yaml'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { launchApp } from './launch'
-import { sizeWindow } from './window'
+import { SMALLEST_WINDOW, sizeWindow } from './window'
 import { addProject } from './addProject'
 
 /**
@@ -129,6 +129,46 @@ test.beforeAll(async () => {
     ].join('\n')
   )
   write('collections/plain.yml', PLAIN(`${origin}/each/{{item}}`))
+  write(
+    'requests/twice.yml',
+    [
+      'id: twice',
+      'params: {}',
+      'steps:',
+      '  - name: first',
+      `    GET: "${origin}/twice/first"`,
+      '    tests: gta.expectResponseStatusCodeToBe(201)',
+      '  - name: second',
+      `    GET: "${origin}/twice/second"`,
+      ''
+    ].join('\n')
+  )
+  write(
+    'collections/staged.yml',
+    [
+      'id: staged',
+      'setup:',
+      '  - use: twice',
+      '    name: prepare twice',
+      'steps:',
+      '  - use: twice',
+      '    name: run twice',
+      ''
+    ].join('\n')
+  )
+  write(
+    'collections/narrow.yml',
+    [
+      'id: narrow',
+      'steps: []',
+      'teardown:',
+      '  - name: clean up everything',
+      `    DELETE: "${origin}/things/{{item}}"`,
+      '    forEach: "{{everythingTheRowsMadeToCleanUp}}"',
+      '    flags: { newCheckoutExperience: true }',
+      ''
+    ].join('\n')
+  )
   write(
     'collections/cleanup.yml',
     [
@@ -362,6 +402,27 @@ test('a step its script skips says why, having sent nothing', async () => {
   expect(received).toEqual([])
 })
 
+test('a use step has the flag chip on its bar, and its flags are written to it', async () => {
+  await rowIn('Steps', 'ping it').locator('.step-open').click()
+  const chip = page.locator('.use-bar .step-flag-chip')
+  await expect(chip).toHaveText('+ flag')
+  await chip.click()
+  const flags = page.getByRole('dialog', { name: 'Step feature flags' })
+  await flags.getByRole('button', { name: '+ Add a flag this step needs' }).click()
+  await flags.getByLabel('step flag name').fill('beta')
+  await flags.getByLabel('step flag beta value').fill('on')
+  await expect
+    .poll(() => YAML.parse(read('mixed')).steps[0], { timeout: 5_000 })
+    .toEqual({ use: 'ping', name: 'ping it', flags: { beta: 'on' } })
+  await expect(chip).toHaveText('⚑ beta: on')
+  await flags.getByRole('button', { name: 'Remove step flag beta' }).click()
+  await expect
+    .poll(() => YAML.parse(read('mixed')).steps[0], { timeout: 5_000 })
+    .toEqual({ use: 'ping', name: 'ping it' })
+  await page.keyboard.press('Escape')
+  await expect(chip).toHaveText('+ flag')
+})
+
 test('only a setup or teardown request step has forEach to edit', async () => {
   await rowIn('Steps', 'ping it').locator('.step-open').click()
   await expect(page.locator('.step-repeat-chip')).toHaveCount(0)
@@ -461,4 +522,54 @@ test('Stop still runs teardown, and a second Stop stops that too', async () => {
   await stopTeardown.click()
   await expect(page.getByRole('button', { name: 'Run all' })).toBeVisible()
   expect(received).not.toContain('DELETE /after')
+})
+
+test('a use step sent on its own keeps its list’s rules: in setup, the first failure stops it', async () => {
+  await page.locator('.collection-row', { hasText: 'Staged' }).click()
+  received = []
+  await rowIn('Setup', 'prepare twice').locator('.step-open').click()
+  await page.getByRole('button', { name: 'Run', exact: true }).click()
+  await expect(rowIn('Setup', 'prepare twice').locator('.step-head .step-summary')).toHaveText(
+    '0 of 2 passed',
+    { timeout: 10_000 }
+  )
+  expect(received).toEqual(['GET /twice/first'])
+
+  // In the steps, the same requests go on past a failure, as a run without bail does.
+  received = []
+  await rowIn('Steps', 'run twice').locator('.step-open').click()
+  await page.getByRole('button', { name: 'Run', exact: true }).click()
+  await expect(rowIn('Steps', 'run twice').locator('.step-head .step-summary')).toHaveText(
+    '1 of 2 passed',
+    { timeout: 10_000 }
+  )
+  expect(received).toEqual(['GET /twice/first', 'GET /twice/second'])
+})
+
+test('in the smallest window the URL keeps its room, and the chips give way', async () => {
+  await sizeWindow(app, page, SMALLEST_WINDOW)
+  await page.locator('.collection-row', { hasText: 'Narrow' }).click()
+  await rowIn('Teardown', 'clean up everything').locator('.step-open').click()
+  const bar = page.locator('.url-bar')
+  const flag = bar.locator('.step-flag-chip')
+  const repeat = bar.locator('.step-repeat-chip')
+  await expect(repeat).toBeVisible()
+  expect((await bar.locator('.var-input.url').boundingBox())!.width).toBeGreaterThanOrEqual(160)
+  // Each chip is cut short, its whole text on hover.
+  for (const chip of [flag, repeat]) {
+    const { shown, whole } = await chip.evaluate((element) => ({
+      shown: element.clientWidth,
+      whole: element.scrollWidth
+    }))
+    expect(whole).toBeGreaterThan(shown)
+  }
+  const send = (await bar.getByRole('button', { name: 'Send' }).boundingBox())!
+  expect(send.x + send.width).toBeLessThanOrEqual(SMALLEST_WINDOW.width)
+  await page.mouse.move(0, 0)
+  await repeat.hover()
+  await expect(page.getByRole('tooltip')).toHaveText(
+    'Sent once for each item of {{everythingTheRowsMadeToCleanUp}}'
+  )
+  await page.mouse.move(0, 0)
+  await sizeWindow(app, page, { width: 1500, height: 900 })
 })

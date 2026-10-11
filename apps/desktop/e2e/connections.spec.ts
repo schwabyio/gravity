@@ -112,6 +112,27 @@ test('a request keeps its stream open as a connection, set in its Settings tab',
     .toContain(
       '  - connection: orders\n    settings:\n      streamTimeout: 5000\n      untilEvent: order.created\n'
     )
+
+  // Its bar has the flag chip any step's has, and the flag is written to the reading step.
+  const chip = page.locator('.read-bar .step-flag-chip')
+  await expect(chip).toHaveText('+ flag')
+  await chip.click()
+  const flags = page.getByRole('dialog', { name: 'Step feature flags' })
+  await flags.getByRole('button', { name: '+ Add a flag this step needs' }).click()
+  await flags.getByLabel('step flag name').fill('live')
+  await flags.getByLabel('step flag live value').fill('true')
+  await expect
+    .poll(onDisk, { timeout: 5_000 })
+    .toMatch(/- connection: orders\n {4}flags:(\n {6}| \{ )live: true/)
+  await expect(chip).toHaveText('⚑ live: true')
+  await flags.getByRole('button', { name: 'Remove step flag live' }).click()
+  await expect
+    .poll(onDisk, { timeout: 5_000 })
+    .toContain(
+      '  - connection: orders\n    settings:\n      streamTimeout: 5000\n      untilEvent: order.created\n'
+    )
+  await page.keyboard.press('Escape')
+  await expect(chip).toHaveText('+ flag')
 })
 
 test('a connection a Send opens stays open for the steps sent after it', async () => {
