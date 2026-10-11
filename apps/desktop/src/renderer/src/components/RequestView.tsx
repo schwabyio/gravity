@@ -26,6 +26,7 @@ import {
 import { usePaneShare, usePaneWidth } from '../hooks/usePaneWidth.js'
 import Resizer from './Resizer.js'
 import { useStoredFlag } from '../hooks/useStoredFlag.js'
+import { BEAUTIFY_KEYS, useBeautify } from '../hooks/useBeautify.js'
 import { buildChecks, tabFor } from '../testLinks.js'
 import { NO_FIND, findKey, searchable, type FindState } from '../bodyFind.js'
 import SettingsTab from './SettingsTab.js'
@@ -38,6 +39,8 @@ import ResponsePane, { type LiveView, type ResponseTab } from './ResponsePane.js
 import { ConnectionField, ReadBar } from './ConnectionStep.js'
 import ScriptsPane, { ScriptsStrip, type ScriptKind, type ScriptTab } from './ScriptsPane.js'
 import { UseBar, UseStepEditor } from './UseStep.js'
+import BodyEditor from './BodyEditor.js'
+import Tooltip from './Tooltip.js'
 import VariableInput from './VariableInput.js'
 import {
   BODY_MODES,
@@ -121,6 +124,7 @@ interface Props {
 /** One request: where it sits, what it sends, and what came back. */
 export default function RequestView(props: Props) {
   const [tab, setTab] = useState<RequestTab>('params')
+  const body = useBeautify(props.request.bodyMode, props.request.bodyText)
   const [scriptTab, setScriptTab] = useState<ScriptTab>('tests')
   const [responseTab, setResponseTab] = useState<ResponseTab>('body')
 
@@ -523,19 +527,40 @@ export default function RequestView(props: Props) {
               )}
               {shownTab === 'body' && (
                 <div className="body-editor">
-                  <select
-                    value={request.bodyMode}
-                    onChange={(e) =>
-                      props.onChange({ bodyMode: e.target.value as EditorState['bodyMode'] })
-                    }
-                    aria-label="Body type"
-                  >
-                    {BODY_MODES.map((mode) => (
-                      <option key={mode.value} value={mode.value}>
-                        {mode.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="body-toolbar">
+                    <select
+                      value={request.bodyMode}
+                      onChange={(e) =>
+                        props.onChange({ bodyMode: e.target.value as EditorState['bodyMode'] })
+                      }
+                      aria-label="Body type"
+                    >
+                      {BODY_MODES.map((mode) => (
+                        <option key={mode.value} value={mode.value}>
+                          {mode.label}
+                        </option>
+                      ))}
+                    </select>
+                    {body.beautify && (
+                      <Tooltip
+                        text={`Indent it two spaces a level, every value kept as written (${BEAUTIFY_KEYS})`}
+                      >
+                        <button
+                          type="button"
+                          className="beautify"
+                          disabled={request.bodyText.trim() === ''}
+                          onClick={body.beautify}
+                        >
+                          Beautify
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
+                  {body.problem && (
+                    <p className="body-problem" role="alert">
+                      {body.problem}
+                    </p>
+                  )}
                   {request.bodyMode === 'none' ? (
                     <div className="placeholder">This request has no body.</div>
                   ) : request.bodyMode === 'multipart' ? (
@@ -553,16 +578,19 @@ export default function RequestView(props: Props) {
                       onPickFile={props.onPickFile}
                     />
                   ) : (
-                    <textarea
+                    <BodyEditor
+                      mode={request.bodyMode}
                       value={request.bodyText}
-                      spellCheck={false}
+                      onChange={(bodyText) => props.onChange({ bodyText })}
+                      previews={props.previews}
                       placeholder={
                         request.bodyMode === 'form'
                           ? 'one name=value pair per line'
                           : 'Request body'
                       }
-                      onChange={(e) => props.onChange({ bodyText: e.target.value })}
-                      aria-label="Request body"
+                      ariaLabel="Request body"
+                      view={body.view}
+                      onBeautify={body.beautify}
                     />
                   )}
                 </div>

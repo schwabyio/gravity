@@ -530,9 +530,22 @@ button:disabled {
   height: 100%;
 }
 
-.body-editor > select {
-  align-self: flex-start;
+/* The body's type, and beside it Beautify for a type that has one. */
+.body-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.body-toolbar select {
   width: 200px;
+}
+
+/* Why a body could not be beautified, until it is edited. */
+.body-problem {
+  margin: 0;
+  color: var(--client);
+  font-size: 12px;
 }
 
 /* A multipart body: name, type, value, content type; the value gets the room. Never so
@@ -581,14 +594,6 @@ button:disabled {
 
 .body-file .hint {
   margin: 6px 0 0;
-}
-
-.body-editor textarea {
-  flex: 1;
-  min-height: 220px;
-  resize: vertical;
-  font-family: var(--mono);
-  font-size: 12px;
 }
 
 /* ---------- response ---------- */

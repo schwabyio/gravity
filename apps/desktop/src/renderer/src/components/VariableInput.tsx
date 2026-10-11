@@ -36,7 +36,8 @@ export function tokenize(value: string): Segment[] {
   return segments
 }
 
-const stateOf = (preview: VariablePreview | undefined): string =>
+/** How a `{{name}}` stands, as its class: `resolved`, `secret`, or `unresolved`. */
+export const variableState = (preview: VariablePreview | undefined): string =>
   preview === undefined ? 'unresolved' : preview.kind === 'secret' ? 'secret' : 'resolved'
 
 /**
@@ -123,7 +124,7 @@ export default function VariableInput({
           ) : (
             <span
               key={index}
-              className={`var-token ${stateOf(previews[segment.name])}`}
+              className={`var-token ${variableState(previews[segment.name])}`}
               onMouseEnter={(event) => openTooltip(segment.name as string, event.currentTarget)}
             >
               {segment.text}

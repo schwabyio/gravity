@@ -31,6 +31,7 @@
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-javascript": "6.2.5",
     "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/lang-xml": "6.1.0",
     "@codemirror/language": "6.12.4",
     "@codemirror/lint": "6.9.7",
     "@codemirror/state": "6.7.6",

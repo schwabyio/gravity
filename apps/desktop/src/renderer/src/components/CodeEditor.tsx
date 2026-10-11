@@ -120,7 +120,7 @@ export default function CodeEditor({
           // Mounted on the body so a diagnostic or completion is never clipped by the pane.
           tooltips({ parent: document.body }),
           syntaxHighlighting(highlight),
-          theme,
+          codeTheme,
           errorLineField,
           ...(checks !== undefined ? [checkField, checkGutter] : []),
           ...(onPickMark
@@ -542,8 +542,9 @@ const checkGutter = gutter({
 
 /* ----------------------------------------------------------------- theme -- */
 
-// Colours come from the app's tokens, so the editor follows light and dark mode.
-const theme = EditorView.theme({
+// Colours come from the app's tokens, so the editor follows light and dark mode. The
+// request body's editor wears it too.
+export const codeTheme = EditorView.theme({
   // The editor itself, not `&` alone: the tooltips' holder on the body carries the theme's
   // class too, and given the editor's full height it ran a window's height past the app,
   // which then scrolled into empty space.
