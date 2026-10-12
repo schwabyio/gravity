@@ -7,10 +7,13 @@ import { DirectoryWatcher } from './watcher.js'
 let tmp: string
 let watcher: DirectoryWatcher
 let rescans: string[]
+/** The paths each rescan was told of, all together. */
+let told: string[]
 
 beforeEach(async () => {
   tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gta-watcher-')))
   rescans = []
+  told = []
 })
 
 afterEach(async () => {
@@ -36,7 +39,21 @@ describe.each([
   ['each folder by itself, as on Linux', true]
 ])('watching a project, %s', (_, eachFolder) => {
   beforeEach(() => {
-    watcher = new DirectoryWatcher((key) => rescans.push(key), 20, eachFolder)
+    watcher = new DirectoryWatcher(
+      (key, paths) => {
+        rescans.push(key)
+        told.push(...paths)
+      },
+      20,
+      eachFolder
+    )
+  })
+
+  it('names the file it was told of, for the load log', async () => {
+    watcher.watch('shop', [{ path: tmp, recursive: false }])
+    await fs.writeFile(path.join(tmp, 'rules.yml'), 'ids: {}\n')
+    await rescanned()
+    expect(told).toContain(path.join(tmp, 'rules.yml'))
   })
 
   it('still rescans for a change noted before what is watched is replaced', async () => {

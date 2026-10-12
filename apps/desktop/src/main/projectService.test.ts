@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectView } from '../shared/ipc.js'
 import type { GitSetup } from './bundledGit.js'
 import { ProjectService } from './projectService.js'
@@ -97,6 +97,31 @@ describe('reading a project again for a change', () => {
     Object.assign(service, { readRepo: () => Promise.reject(new Error('git went away')) })
     internals.rescan(id)
     await expect.poll(() => logged).toEqual(['shop: Could not be read again: git went away'])
+  })
+
+  it('logs quick reads that find nothing new only when they come in a run, and what was told', async () => {
+    const id = await addShop()
+    const logged: string[] = []
+    ;(
+      service as unknown as { options: { log?: (subject: string, text: string) => void } }
+    ).options.log = (subject, text) => logged.push(`${subject}: ${text}`)
+    const index = path.join(tmp, '.git', 'index')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      // Someone saving now and then: unsaid.
+      for (let i = 0; i < 4; i++) await service.refresh(id, undefined, 'files changed', [index])
+      vi.advanceTimersByTime(10_000)
+      expect(logged).toEqual([])
+
+      // Something touching the files over and over.
+      for (let i = 0; i < 6; i++) await service.refresh(id, undefined, 'files changed', [index])
+      vi.advanceTimersByTime(10_000)
+      expect(logged).toEqual([
+        'shop: Read again 6 times in 10 s (files changed), finding nothing new each time; told of ../.git/index'
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

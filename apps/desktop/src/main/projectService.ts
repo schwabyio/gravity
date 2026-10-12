@@ -132,6 +132,27 @@ const REASON_WORDS: Record<RefreshReason, string> = {
 const SLOW_LISTING_MS = 1000
 /** And git answering this late. */
 const SLOW_GIT_MS = 3000
+/** Quick reads again that found nothing new: this many within the window are logged. */
+const QUIET_RUN = 5
+const QUIET_WINDOW_MS = 10_000
+/** The most paths a line names of what the watchers were told of, and the most a run keeps. */
+const MAX_TOLD_SHOWN = 3
+const MAX_TOLD_KEPT = 20
+
+/** A project's run of quick reads again that found nothing new. */
+interface QuietReads {
+  count: number
+  told: Set<string>
+  timer: NodeJS.Timeout
+}
+
+/** What the watchers were told of, from the project's folder: `; told of environments/dev.yml, ../.git/index`. */
+function toldWords(projectPath: string, told: readonly string[]): string {
+  if (told.length === 0) return ''
+  const shown = told.slice(0, MAX_TOLD_SHOWN).map((file) => relativePosix(projectPath, file) || '.')
+  const more = told.length - shown.length
+  return `; told of ${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+}
 
 /**
  * Owns every workspace and project: reading them, their git state and watching
@@ -165,7 +186,9 @@ export class ProjectService {
   /** When each repository was last fetched in the background. */
   private readonly lastFetched = new Map<string, number>()
   private readonly autoFetchTimers = new Map<string, NodeJS.Timeout>()
-  private readonly watcher = new DirectoryWatcher((id) => this.rescan(id))
+  private readonly watcher = new DirectoryWatcher((id, told) => this.rescan(id, told))
+  /** Each project's run of quick reads again that found nothing new, for the load log. */
+  private readonly quietReads = new Map<string, QuietReads>()
   /** How often each project has been forgotten: a refresh begun before the last time is stale. */
   private readonly generations = new Map<string, number>()
   /** How many refreshes of each project have begun: each is numbered by its place. */
@@ -787,8 +810,8 @@ export class ProjectService {
    * a failure is written to the load log: left unhandled, Electron would show it
    * in a dialog that holds up the main process, every project with it, until closed.
    */
-  private rescan(id: string): void {
-    this.refresh(id, undefined, 'files changed').catch((cause: unknown) => {
+  private rescan(id: string, told: string[] = []): void {
+    this.refresh(id, undefined, 'files changed', told).catch((cause: unknown) => {
       const why = cause instanceof Error ? cause.message : String(cause)
       this.options.log?.(this.views.get(id)?.name ?? id, `Could not be read again: ${why}`, true)
     })
@@ -816,7 +839,9 @@ export class ProjectService {
     /** Called with the project's first view: from its files, if git is slow to answer. */
     listed?: (view: ProjectView) => void,
     /** Why it is read, for the load log. */
-    reason: RefreshReason = 'action'
+    reason: RefreshReason = 'action',
+    /** For a change on disk, what the watchers named, for the load log. */
+    told: string[] = []
   ): Promise<ProjectView | null> {
     const generation = this.generations.get(id) ?? 0
     const stale = () => (this.generations.get(id) ?? 0) !== generation
@@ -986,7 +1011,7 @@ export class ProjectService {
       findings: rules.findings
     }
     const chosen = () => ({ selectedEnvironment: entry.selectedEnvironment })
-    this.logListing(files, previous, reason, performance.now() - started, unreadable)
+    this.logListing(files, previous, reason, performance.now() - started, unreadable, told)
 
     // While git is still being set up, at startup, the files do not wait for it at all.
     const answered =
@@ -1040,15 +1065,16 @@ export class ProjectService {
 
   /**
    * What a read of a project found, for the load log: every time it is first
-   * listed; after that, only what it found different, a read that was slow, and
-   * what could not be read.
+   * listed; after that, only what it found different, a read that was slow,
+   * quick ones that found nothing new coming in a run, and what could not be read.
    */
   private logListing(
     view: Omit<ProjectView, RepoFields>,
     previous: ProjectView | undefined,
     reason: RefreshReason,
     ms: number,
-    unreadable: LoadProblem[]
+    unreadable: LoadProblem[],
+    told: string[]
   ): void {
     const log = this.options.log
     if (!log) return
@@ -1058,17 +1084,52 @@ export class ProjectService {
       previous !== undefined &&
       (previous.collections.length !== view.collections.length ||
         previous.environments.length !== view.environments.length)
+    const toldOf = toldWords(view.path, told)
     if (reason === 'startup' || reason === 'added') {
       log(view.name, `Listed ${counts(view)} in ${duration(ms)} (${REASON_WORDS[reason]})`)
     } else if (changed) {
       log(
         view.name,
-        `Read again (${REASON_WORDS[reason]}): ${counts(view)}, where it had ${counts(previous)}`
+        `Read again (${REASON_WORDS[reason]}): ${counts(view)}, where it had ${counts(previous)}${toldOf}`
       )
     } else if (ms >= SLOW_LISTING_MS) {
-      log(view.name, `Read again (${REASON_WORDS[reason]}) in ${duration(ms)}: ${counts(view)}`)
+      log(
+        view.name,
+        `Read again (${REASON_WORDS[reason]}) in ${duration(ms)}: ${counts(view)}${toldOf}`
+      )
+    } else if (reason === 'files changed') {
+      this.countQuietRead(view, told)
     }
     for (const problem of unreadable) log(view.name, problem.message, true)
+  }
+
+  /**
+   * Count a quick read again, for a change on disk, that found nothing new. One
+   * now and then is someone saving a file and goes unsaid; QUIET_RUN of them
+   * within QUIET_WINDOW_MS is something touching the project's files over and
+   * over, and each sends the window the whole project again: it is logged.
+   */
+  private countQuietRead(view: Pick<ProjectView, 'id' | 'name' | 'path'>, told: string[]): void {
+    let run = this.quietReads.get(view.id)
+    if (!run) {
+      const begun: QuietReads = {
+        count: 0,
+        told: new Set(),
+        timer: setTimeout(() => {
+          this.quietReads.delete(view.id)
+          if (begun.count < QUIET_RUN) return
+          this.options.log?.(
+            view.name,
+            `Read again ${plural(begun.count, 'time')} in ${QUIET_WINDOW_MS / 1000} s (files changed), finding nothing new each time${toldWords(view.path, [...begun.told])}`
+          )
+        }, QUIET_WINDOW_MS)
+      }
+      begun.timer.unref()
+      this.quietReads.set(view.id, begun)
+      run = begun
+    }
+    run.count++
+    for (const file of told) if (run.told.size < MAX_TOLD_KEPT) run.told.add(file)
   }
 
   /** When git answered a read of a project: the first time, and any time it was slow. */
@@ -1488,6 +1549,8 @@ export class ProjectService {
 
   dispose(): void {
     this.watcher.dispose()
+    for (const { timer } of this.quietReads.values()) clearTimeout(timer)
+    this.quietReads.clear()
     for (const id of [...this.autoFetchTimers.keys()]) this.stopAutoFetch(id)
     this.projectListeners.clear()
     this.stateListeners.clear()

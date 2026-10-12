@@ -44,12 +44,21 @@ interface Watched {
   folders: Map<string, Watching>
 }
 
+/** The most paths kept of what was told before one rescan. */
+const MAX_TOLD = 20
+
 export class DirectoryWatcher {
   private readonly watched = new Map<string, Watched>()
   private readonly timers = new Map<string, NodeJS.Timeout>()
+  /** What each key's watchers were told of since its last rescan. */
+  private readonly told = new Map<string, Set<string>>()
 
   constructor(
-    private readonly onChange: (key: string) => void,
+    /**
+     * A rescan is due, with the paths the watchers named, for the load log only:
+     * they are what the platform says, not always the file that changed (above).
+     */
+    private readonly onChange: (key: string, told: string[]) => void,
     private readonly debounceMs = 200,
     /**
      * Watch a folder in depth as each folder in it, rather than as Node does. On Linux
@@ -115,14 +124,16 @@ export class DirectoryWatcher {
   private open(key: string, path: string, recursive: boolean, folder: string): Watching | null {
     try {
       const watching: Watching = {
-        watcher: fs.watch(path, { recursive, persistent: false }, () => this.schedule(key)),
+        watcher: fs.watch(path, { recursive, persistent: false }, (_event, name) =>
+          this.schedule(key, name ? join(path, name) : path)
+        ),
         folder,
         failed: false
       }
       // A watched directory being deleted surfaces here rather than crashing.
       watching.watcher.on('error', () => {
         watching.failed = true
-        this.schedule(key)
+        this.schedule(key, path)
       })
       return watching
     } catch {
@@ -131,13 +142,20 @@ export class DirectoryWatcher {
     }
   }
 
-  private schedule(key: string): void {
+  private schedule(key: string, path?: string): void {
+    if (path !== undefined) {
+      const told = this.told.get(key) ?? new Set<string>()
+      if (told.size < MAX_TOLD) told.add(path)
+      this.told.set(key, told)
+    }
     clearTimeout(this.timers.get(key))
     this.timers.set(
       key,
       setTimeout(() => {
         this.timers.delete(key)
-        this.onChange(key)
+        const told = [...(this.told.get(key) ?? [])]
+        this.told.delete(key)
+        this.onChange(key, told)
       }, this.debounceMs)
     )
   }
@@ -147,6 +165,7 @@ export class DirectoryWatcher {
     this.close(key)
     clearTimeout(this.timers.get(key))
     this.timers.delete(key)
+    this.told.delete(key)
   }
 
   private close(key: string): void {
