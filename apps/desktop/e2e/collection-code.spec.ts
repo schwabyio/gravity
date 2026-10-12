@@ -167,4 +167,7 @@ test('with auto save off, a send uses the variables as edited, before they are s
 
   await page.keyboard.press('ControlOrMeta+s')
   await expect.poll(onDisk, { timeout: 5_000 }).toContain("apiVersion: '3' # the current API")
+  // Saved as the app sees it too: with auto save off, anything it held unsaved would be
+  // asked about on closing, and nobody answers.
+  await expect(page.locator('.save-status')).toHaveText('Saved')
 })
