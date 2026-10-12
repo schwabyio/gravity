@@ -149,6 +149,16 @@ export const SettingsSchema = z.strictObject({
   followRedirects: z.boolean().optional(),
   maxRedirects: z.number().int().nonnegative().optional(),
   encodeUrl: z.boolean().optional(),
+  /**
+   * `auto`: HTTP/2 when an https server picks it, else HTTP/1.1. `1.1`: never
+   * HTTP/2. `2`: HTTP/2 or an error, and to an http:// URL in the clear (h2c).
+   * YAML reads `2` and `1.1` as numbers, so either form is taken.
+   */
+  httpVersion: z
+    .union([z.literal('auto'), z.literal(1.1), z.literal(2), z.literal('1.1'), z.literal('2')], {
+      error: 'an HTTP version is auto, 1.1 or 2 (SPEC.md §2.3)'
+    })
+    .optional(),
   /** Stop reading an event stream after this many events; 0 means no limit. */
   maxEvents: z.number().int().nonnegative().optional(),
   /** Stop reading an event stream this many milliseconds after its headers; 0 means no limit. */
@@ -158,11 +168,18 @@ export const SettingsSchema = z.strictObject({
 })
 export type Settings = z.infer<typeof SettingsSchema>
 
+/** `settings.httpVersion` however it was written: `auto`, `1.1` or `2`. */
+export type HttpVersion = 'auto' | '1.1' | '2'
+
+export const httpVersionOf = (value: Settings['httpVersion']): HttpVersion =>
+  value === undefined || value === 'auto' ? 'auto' : value === 2 || value === '2' ? '2' : '1.1'
+
 export const SETTINGS_DEFAULTS = {
   timeout: 0,
   followRedirects: true,
   maxRedirects: 5,
   encodeUrl: true,
+  httpVersion: 'auto',
   maxEvents: 0,
   streamTimeout: 0,
   /** None: a name is never empty. */

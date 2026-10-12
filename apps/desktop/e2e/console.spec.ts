@@ -139,8 +139,9 @@ test('a request opens to its raw text, and its copy icons put it on the clipboar
   await expect(raw.locator('pre')).toHaveText(
     `GET ${origin}/users/7\nAuthorization: Bearer [secret: shopToken]`
   )
+  // Its status line starts with the HTTP version it came over.
   await expect(panel().getByRole('region', { name: 'Raw response' }).locator('pre')).toContainText(
-    '200 OK\ncontent-type: application/json'
+    'HTTP/1.1 200 OK\ncontent-type: application/json'
   )
 
   await raw.getByRole('button', { name: 'Copy the request' }).click()
@@ -152,12 +153,12 @@ test('a request opens to its raw text, and its copy icons put it on the clipboar
     .getByRole('button', { name: 'Copy the response' })
     .click()
   const response = await clipboard()
-  expect(response).toMatch(/^200 OK\n/)
+  expect(response).toMatch(/^HTTP\/1\.1 200 OK\n/)
   expect(response).toMatch(/\n\n\{"id":7,"name":"Ada"\}$/)
 
   await panel().getByRole('button', { name: 'Copy the request and response' }).click()
   expect(await clipboard()).toMatch(
-    new RegExp(`^GET ${origin.replace(/\./g, '\\.')}/users/7\\n[\\s\\S]*\\n\\n200 OK\\n`)
+    new RegExp(`^GET ${origin.replace(/\./g, '\\.')}/users/7\\n[\\s\\S]*\\n\\nHTTP/1\\.1 200 OK\\n`)
   )
 
   await request('get user').locator('button.console-line').click()

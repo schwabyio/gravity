@@ -67,6 +67,24 @@ describe('collections', () => {
     expect(data.steps[1]?.settings?.maxRedirects).toBe(5)
   })
 
+  it('takes httpVersion as auto, 1.1 or 2, quoted or not', () => {
+    const versionOf = (value: string) =>
+      parseCollection(`settings:\n  httpVersion: ${value}\nsteps:\n  - GET: "http://x"\n`, 'a.yml')
+        .data.settings?.httpVersion
+    expect(['auto', '1.1', "'1.1'", '2', "'2'"].map(versionOf)).toEqual([
+      'auto',
+      1.1,
+      '1.1',
+      2,
+      '2'
+    ])
+    for (const wrong of ['3', '1.0', 'http2']) {
+      expect(() => versionOf(wrong)).toThrow(
+        'a.yml: settings.httpVersion: an HTTP version is auto, 1.1 or 2 (SPEC.md §2.3)'
+      )
+    }
+  })
+
   it('reads all three header forms on a step', () => {
     const { data } = parseCollection(read(path.join('collections', 'checkout', 'sessions.yml')))
     const headers = data.steps[0]?.headers ?? {}

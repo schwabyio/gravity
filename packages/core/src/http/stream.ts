@@ -240,7 +240,7 @@ export async function readStream(
 /** What a stream's response was, without its body: a connection keeps it for the steps that read it. */
 export type StreamHead = Pick<
   ReceivedResponse,
-  'status' | 'statusText' | 'url' | 'headers' | 'redirectCount'
+  'status' | 'statusText' | 'httpVersion' | 'connectionReused' | 'url' | 'headers' | 'redirectCount'
 >
 
 /** An event stream kept open after the step that opened it: a connection (SPEC.md §2.11). */

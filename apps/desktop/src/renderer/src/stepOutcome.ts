@@ -1,4 +1,4 @@
-import type { RunResult } from '@schwabyio/gravity-core/model'
+import { wireNote, type RunResult } from '@schwabyio/gravity-core/model'
 import { formatMs } from './format.js'
 
 /**
@@ -19,7 +19,7 @@ export interface StepHover {
 export interface StepOutcome {
   /** Null before it has run, with no tests to pass, or while only some of its requests have. */
   mark: StepMark | null
-  /** Beside the mark: the status and time, an error's code, or how many passed. */
+  /** Beside the mark: the status and time, an unanswered request's time, or how many passed. */
   summary: string | null
   /** The line under the name, for what the summary cannot hold; null with nothing to say. */
   detail: string | null
@@ -132,13 +132,16 @@ function single(result: RunResult): StepOutcome {
     default: {
       // Under the name, where it has room: in a word for a request never answered.
       const code = result.error?.phase === 'http' ? result.error.code : undefined
+      // A request sent and never answered: how long it went before it failed, and on what.
+      const after = result.response ? undefined : result.error?.elapsedMs
+      const wire = result.response || !result.error ? null : wireNote(result.error)
       return {
         mark: 'error',
-        summary,
+        summary: summary ?? (after !== undefined ? `no response · ${formatMs(after)}` : null),
         detail: code ?? message ?? 'error',
         hover: {
-          title: summary ? 'Error after the response' : 'No response',
-          lines: message ? [message] : []
+          title: result.response ? 'Error after the response' : 'No response',
+          lines: [...(message ? [message] : []), ...(wire ? [`Sent over ${wire}`] : [])]
         }
       }
     }

@@ -9,6 +9,8 @@ export async function startServer(): Promise<{ origin: string; close: () => Prom
   const server = http.createServer((req, res) => {
     // Held open until close() drops every connection.
     if (req.url?.startsWith('/slow')) return
+    // Closes the connection with no answer.
+    if (req.url?.startsWith('/hangup')) return void req.socket.destroy()
     const status = req.url?.startsWith('/fail') ? 500 : 200
     res.writeHead(status, { 'content-type': 'application/json' })
     res.end(JSON.stringify({ url: req.url, ok: status === 200 }))

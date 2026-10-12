@@ -31,7 +31,7 @@ import type {
   PlaywrightWorkerOptions,
   TestType
 } from '@playwright/test'
-import { resultName } from '@schwabyio/gravity-core'
+import { resultName, wireNote } from '@schwabyio/gravity-core'
 import { iterationName } from '../job.js'
 import { openProject } from './project.js'
 import type {
@@ -264,15 +264,19 @@ function exchangeOf(result: RunResult): string {
   if (request.body) lines.push('', clip(request.body))
   lines.push('')
   if (response) {
+    const wire = wireNote(response)
     lines.push(
-      `${response.status} ${response.statusText} · ${Math.round(response.timings.totalMs)} ms · ${response.sizeBytes} bytes`
+      `${response.status} ${response.statusText} · ${Math.round(response.timings.totalMs)} ms · ${response.sizeBytes} bytes${wire ? ` · ${wire}` : ''}`
     )
     for (const header of response.headers) lines.push(`${header.name}: ${header.value}`)
     if (response.bodyEncoding === 'base64')
       lines.push('', `[binary body, ${response.sizeBytes} bytes]`)
     else if (response.body) lines.push('', clip(response.body))
   } else {
-    lines.push(result.error ? `No response: ${result.error.message}` : 'No response')
+    const elapsed = result.error?.elapsedMs
+    const wire = result.error ? wireNote(result.error) : null
+    const after = `${elapsed !== undefined ? ` after ${Math.round(elapsed)} ms` : ''}${wire ? `, sent over ${wire}` : ''}`
+    lines.push(result.error ? `No response${after}: ${result.error.message}` : 'No response')
   }
   if (result.assertions.length > 0) {
     lines.push('', 'Checks:')

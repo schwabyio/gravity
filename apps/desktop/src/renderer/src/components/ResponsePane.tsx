@@ -4,8 +4,10 @@ import {
   pathMatches,
   type EventStreamRead,
   type ReceivedResponse,
+  type RunError,
   type RunResult,
-  type StreamEvent
+  type StreamEvent,
+  wireNote
 } from '@schwabyio/gravity-core/model'
 import {
   MARK_GLYPH,
@@ -110,6 +112,13 @@ const connectionNote = (stream: EventStreamRead): string | null =>
     ? `connection ${stream.connection.name} ${stream.connection.open ? 'open' : 'closed'}`
     : null
 
+/** For a request sent and never answered: how long it went, and what it went on. */
+function sentNote(error: RunError): string | null {
+  const wire = wireNote(error)
+  if (error.elapsedMs === undefined) return wire && `Sent over ${wire}.`
+  return `No response after ${formatMs(error.elapsedMs)}${wire ? `, sent over ${wire}` : ''}.`
+}
+
 /** Pretty-print JSON so a response is readable without leaving the panel. */
 function presentBody(body: string, kind: string): string {
   if (kind !== 'json') return body
@@ -163,6 +172,7 @@ export default function ResponsePane(props: Props) {
         )}
         <strong>{error?.message ?? 'Request failed'}</strong>
         {error?.code && error.phase !== 'pre-request' && <div className="hint">{error.code}</div>}
+        {error && sentNote(error) && <div className="hint">{sentNote(error)}</div>}
         {result.logs && result.logs.length > 0 && (
           <ol className="console-lines">
             {result.logs.map((entry, i) => (
@@ -193,6 +203,7 @@ export default function ResponsePane(props: Props) {
           {status.mark && <span className="pill-mark">{MARK_GLYPH[status.mark]}</span>}
           {response.status} {response.statusText}
         </button>
+        {response.httpVersion && <span className="metric">{response.httpVersion}</span>}
         <span className="metric">{formatMs(response.timings.totalMs)}</span>
         <span className="metric">{formatSize(response.sizeBytes)}</span>
         {response.redirectCount > 0 && (
@@ -247,6 +258,17 @@ export default function ResponsePane(props: Props) {
                 <td className="header-name">Total</td>
                 <td>{formatMs(response.timings.totalMs)}</td>
               </tr>
+              {response.connectionReused !== undefined && (
+                <tr>
+                  <td className="header-name">Connection</td>
+                  <td>
+                    {response.connectionReused
+                      ? 'Reused, kept open from an earlier request'
+                      : 'New, opened for this request'}
+                    {response.httpVersion && ` · ${response.httpVersion}`}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         )}

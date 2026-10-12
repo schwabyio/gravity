@@ -1,4 +1,4 @@
-import { resultName, type RunResult } from '@schwabyio/gravity-core'
+import { resultName, wireNote, type RunResult } from '@schwabyio/gravity-core'
 import { allSkipped, iterationName, type JobOutcome } from './job.js'
 import type { RunTarget } from './select.js'
 import { stepCountOf } from './select.js'
@@ -177,7 +177,13 @@ export function failureDetails(tallies: readonly CollectionTally[], p: Paint): s
       const where = result.use
         ? ` ${p.dim(`(${result.use.set} ${result.use.child + 1}/${result.use.of})`)}`
         : ''
-      const status = result.response ? ` ${p.dim(String(result.response.status))}` : ''
+      const elapsed = result.error?.elapsedMs
+      const wire = result.error ? wireNote(result.error) : null
+      const status = result.response
+        ? ` ${p.dim(String(result.response.status))}`
+        : elapsed !== undefined
+          ? ` ${p.dim(`no response after ${seconds(elapsed)}${wire ? `, sent over ${wire}` : ''}`)}`
+          : ''
       lines.push(`  ${p.red('✗')} ${result.item.name}${where}${status}`)
       if (result.error) {
         const { phase, script, line, message } = result.error

@@ -458,10 +458,14 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
 
   if (!('ok' in outcome)) return outcome
   if (!outcome.ok) {
+    const { message, code, elapsedMs, httpVersion, connectionReused } = outcome.error
     const error: RunError = {
       phase: 'http',
-      message: outcome.error.message,
-      ...(outcome.error.code ? { code: outcome.error.code } : {})
+      message,
+      ...(code ? { code } : {}),
+      elapsedMs,
+      ...(httpVersion ? { httpVersion } : {}),
+      ...(connectionReused !== undefined ? { connectionReused } : {})
     }
     return {
       item,

@@ -20,6 +20,7 @@ import {
   sortArraysBy,
   toJsonLines,
   waitText,
+  wireNote,
   type AssertionResult,
   type BodyLine,
   type Check,
@@ -342,7 +343,9 @@ function testSection(r: RunResult, index: number, ref: StepRef | undefined): str
           : '<span class="c-failed">did not wait</span>'
       : res
         ? `${statusCode(res)}<span class="dim">${duration(res.timings.totalMs)}</span>`
-        : '<span class="c-failed">no response</span>'
+        : r.error?.elapsedMs !== undefined
+          ? `<span class="c-failed">no response after ${duration(r.error.elapsedMs)}</span>`
+          : '<span class="c-failed">no response</span>'
   const id = `t${index + 1}`
   // A skipped step sent nothing: the reason — a feature flag, gta.skip — is all there is to show.
   const body = r.skipped
@@ -393,10 +396,10 @@ function rawRequest(request: SentRequest): string {
   return request.body ? `${head}\n\n${request.body}` : head
 }
 
-/** As the app's Console shows it: status, headers, a blank line, then the body. */
+/** As the app's Console shows it: status line, headers, a blank line, then the body. */
 function rawResponse(response: ReceivedResponse): string {
   const head = [
-    `${response.status} ${response.statusText}`.trim(),
+    [response.httpVersion, response.status, response.statusText].filter(Boolean).join(' '),
     ...response.headers.map(headerLine)
   ].join('\n')
   // Bytes kept as base64 are not text to show: say what there was instead.
@@ -486,10 +489,18 @@ const connectionNote = (stream: EventStreamRead): string =>
     ? `, connection ${stream.connection.name} ${stream.connection.open ? 'open' : 'closed'}`
     : ''
 
+/** Why a test has no response: for a request sent, how long it went and what it went on. */
+function noResponse(r: RunResult): string {
+  const e = r.error
+  if (e?.elapsedMs === undefined) return 'No response was received.'
+  const wire = wireNote(e)
+  return `No response was received: the request failed after ${duration(e.elapsedMs)}${wire ? `, sent over ${wire}` : ''}.`
+}
+
 function responseSection(r: RunResult, id: string): string {
   const res = r.response
   if (!res) {
-    return `<section class="sub"><h3>Response</h3><p class="c-failed none">No response was received.</p></section>`
+    return `<section class="sub"><h3>Response</h3><p class="c-failed none">${escape(noResponse(r))}</p></section>`
   }
   const checks = buildChecks(r.assertions)
   const status = markStatus(checks).mark
@@ -499,7 +510,8 @@ function responseSection(r: RunResult, id: string): string {
     res.redirectCount > 0 ? plural(res.redirectCount, 'redirect') : '',
     res.stream
       ? `${plural(res.stream.at.length, 'event')}, ${ENDED_BY[res.stream.endedBy]}${connectionNote(res.stream)}`
-      : ''
+      : '',
+    wireNote(res) ?? ''
   ].filter(Boolean)
   const formatted = [
     `<div class="line">${statusCode(res)}${status ? `<span class="mk-inline mk-${status}" title="${status === 'fail' ? 'A status check failed' : 'Status checked'}">${MARK_GLYPH[status]}</span>` : ''}<span class="dim small">${duration(res.timings.totalMs)} · ${escape(extra.join(' · '))}</span></div>`,

@@ -71,6 +71,9 @@ describe('runCollection', () => {
     expect(summary.errored).toBe(1)
     expect(summary.passed).toBe(2)
     expect(summary.skipped).toBe(0)
+    // A request sent and not answered says how long it went before it failed.
+    expect(summary.results[1]?.error).toMatchObject({ phase: 'http', code: 'ECONNREFUSED' })
+    expect(summary.results[1]?.error?.elapsedMs).toBeGreaterThanOrEqual(0)
   })
 
   it('stops at the first failure when told to bail', async () => {

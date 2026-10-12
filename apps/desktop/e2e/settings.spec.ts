@@ -126,3 +126,31 @@ test('an invalid number is shown as such and never written', async () => {
   await expect.poll(onDisk, { timeout: 5_000 }).not.toContain('settings')
   await page.keyboard.press('Escape')
 })
+
+test('an HTTP version is picked from a list, written as YAML reads it, and sent with', async () => {
+  // Opened by hand in an earlier test, the editor stays beside the response; this is in case not.
+  const showEditor = async () => {
+    const strip = page.getByRole('button', { name: 'Show the request editor' })
+    if (await strip.isVisible()) await strip.click()
+  }
+  await expect(used('HTTP version')).toHaveText('Autodefault')
+  // HTTP/2 to an http:// URL is spoken in the clear, which this HTTP/1.1 server cannot follow.
+  await page.getByLabel('HTTP version for this step').selectOption('HTTP/2')
+  await expect.poll(onDisk, { timeout: 5_000 }).toContain('    settings:\n      httpVersion: 2')
+  await expect(used('HTTP version')).toHaveText('HTTP/2step')
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page.locator('.placeholder.error')).toContainText(
+    'sent over HTTP/2 on a new connection'
+  )
+
+  await showEditor()
+  await page.getByLabel('HTTP version for this step').selectOption('HTTP/1.1')
+  await expect.poll(onDisk, { timeout: 5_000 }).toContain('      httpVersion: 1.1')
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page.locator('.status-pill')).toContainText('200')
+  await expect(page.locator('.response-summary')).toContainText('HTTP/1.1')
+
+  await showEditor()
+  await page.getByLabel('HTTP version for this step').selectOption('')
+  await expect.poll(onDisk, { timeout: 5_000 }).not.toContain('settings')
+})

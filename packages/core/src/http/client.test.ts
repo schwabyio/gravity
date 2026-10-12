@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import http from 'node:http'
+import http2 from 'node:http2'
 import https from 'node:https'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
@@ -52,6 +53,10 @@ beforeAll(async () => {
       case '/redirect':
         res.writeHead(302, { location: '/json' })
         res.end()
+        return
+      case '/hangup':
+        // Closes the connection with no answer, as a server that crashed or timed out would.
+        setTimeout(() => req.socket.destroy(), 200)
         return
       case '/echo': {
         let body = ''
@@ -156,6 +161,8 @@ describe('sendHttpRequest', () => {
     expect(outcome.ok).toBe(false)
     if (outcome.ok) return
     expect(outcome.error.message).toContain('timed out')
+    expect(outcome.error.code).toBe('ETIMEDOUT')
+    expect(outcome.error.elapsedMs).toBeGreaterThanOrEqual(45)
   })
 
   it('treats settings.timeout of 0 as no limit', async () => {
@@ -186,6 +193,66 @@ describe('sendHttpRequest', () => {
     if (outcome.ok) return
     expect(outcome.request.url).toBe('http://127.0.0.1:1/nothing')
     expect(outcome.error.message).toBeTruthy()
+    // Nothing was sent, so there is no connection to describe.
+    expect(outcome.error.httpVersion).toBeUndefined()
+    expect(outcome.error.connectionReused).toBeUndefined()
+  })
+
+  it('says how long a connection went before it closed with no answer', async () => {
+    const outcome = await sendHttpRequest(get('/hangup'))
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.error).toMatchObject({
+      message: 'other side closed',
+      code: 'UND_ERR_SOCKET',
+      httpVersion: 'HTTP/1.1'
+    })
+    expect(outcome.error.elapsedMs).toBeGreaterThanOrEqual(190)
+    expect(outcome.error.elapsedMs).toBeLessThan(2000)
+  })
+
+  it('says whether a request went on a new connection or a reused one', async () => {
+    // Its own server, so no earlier test's connections are in the pool.
+    const fresh = http.createServer((req, res) => {
+      if (req.url === '/hangup') req.socket.destroy()
+      else res.end('ok')
+    })
+    await new Promise<void>((resolve) => fresh.listen(0, '127.0.0.1', resolve))
+    const at = (path: string) => ({
+      ...get(path),
+      url: `http://127.0.0.1:${(fresh.address() as AddressInfo).port}${path}`
+    })
+    // undici frees a connection for the next request once the last one's response is done with.
+    const settle = () => new Promise((resolve) => setImmediate(resolve))
+    try {
+      const first = await sendHttpRequest(at('/'))
+      await settle()
+      const second = await sendHttpRequest(at('/'))
+      expect(first.ok && first.response).toMatchObject({
+        httpVersion: 'HTTP/1.1',
+        connectionReused: false
+      })
+      expect(second.ok && second.response).toMatchObject({ connectionReused: true })
+      // Dropped on a connection kept from before: where an idle connection the server closed shows.
+      await settle()
+      const dropped = await sendHttpRequest(at('/hangup'))
+      expect(!dropped.ok && dropped.error).toMatchObject({
+        code: 'UND_ERR_SOCKET',
+        connectionReused: true
+      })
+      // That connection is gone, so the next drop is on a new one.
+      const again = await sendHttpRequest(at('/hangup'))
+      expect(!again.ok && again.error).toMatchObject({ connectionReused: false })
+    } finally {
+      fresh.closeAllConnections()
+      await new Promise<void>((resolve) => fresh.close(() => resolve()))
+    }
+  })
+
+  it('traces only its own requests, not those of Node’s fetch on the same channels', async () => {
+    await fetch(`${origin}/json`).then((res) => res.text())
+    const outcome = await sendHttpRequest(get('/json'))
+    expect(outcome.ok && outcome.response.httpVersion).toBe('HTTP/1.1')
   })
 
   it('sends a body', async () => {
@@ -552,5 +619,102 @@ describe('sendHttpRequest with an event stream', () => {
     if (!outcome.ok) return
     expect(outcome.response.bodyKind).toBe('empty')
     expect(outcome.response.stream).toBeUndefined()
+  })
+})
+
+describe('sendHttpRequest and HTTP versions', () => {
+  const TLS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../test-fixtures/tls')
+  const ca = [fs.readFileSync(path.join(TLS, 'ca.pem'), 'utf8')]
+  const cert = {
+    cert: fs.readFileSync(path.join(TLS, 'server.pem')),
+    key: fs.readFileSync(path.join(TLS, 'server-key.pem'))
+  }
+  const servers: Array<http.Server | http2.Http2Server> = []
+  /** Answers with the version the server saw, and for /redirect, points at /. */
+  const answer = (
+    req: { url?: string; httpVersion: string },
+    res: {
+      writeHead(status: number, headers: Record<string, string>): unknown
+      end(body: string): unknown
+    }
+  ) => {
+    if (req.url === '/redirect') {
+      res.writeHead(302, { location: '/' })
+      res.end('')
+      return
+    }
+    res.writeHead(200, { 'content-type': 'text/plain' })
+    res.end(req.httpVersion)
+  }
+  const listen = async (server: http.Server | http2.Http2Server, scheme: string) => {
+    servers.push(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    return `${scheme}://localhost:${(server.address() as AddressInfo).port}`
+  }
+  /** Speaks HTTP/2 or HTTP/1.1 over TLS, as most servers do: HTTP/2 when the client offers it. */
+  let both: string
+  /** HTTP/1.1 over TLS only. */
+  let older: string
+  /** HTTP/2 in the clear, from the start: h2c. */
+  let cleartext: string
+
+  beforeAll(async () => {
+    both = await listen(http2.createSecureServer({ ...cert, allowHTTP1: true }, answer), 'https')
+    older = await listen(https.createServer(cert, answer), 'https')
+    cleartext = await listen(http2.createServer(answer), 'http')
+  })
+
+  afterAll(async () => {
+    for (const server of servers) {
+      if ('closeAllConnections' in server) server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
+
+  const send = (url: string, httpVersion?: 'auto' | 1.1 | 2) =>
+    sendHttpRequest(
+      { method: 'GET', url, headers: [], body: null },
+      { ca, ...(httpVersion !== undefined ? { settings: { httpVersion } } : {}) }
+    )
+
+  it('uses HTTP/2 when an https server picks it, by default, and says so', async () => {
+    const outcome = await send(`${both}/`)
+    expect(outcome.ok && outcome.response).toMatchObject({ body: '2.0', httpVersion: 'HTTP/2' })
+    const older1 = await send(`${older}/`)
+    expect(older1.ok && older1.response).toMatchObject({ body: '1.1', httpVersion: 'HTTP/1.1' })
+  })
+
+  it('never offers HTTP/2 with httpVersion 1.1', async () => {
+    const outcome = await send(`${both}/`, 1.1)
+    expect(outcome.ok && outcome.response).toMatchObject({ body: '1.1', httpVersion: 'HTTP/1.1' })
+  })
+
+  it('insists on HTTP/2 with httpVersion 2, failing on a server that will not', async () => {
+    const outcome = await send(`${both}/`, 2)
+    expect(outcome.ok && outcome.response).toMatchObject({ body: '2.0', httpVersion: 'HTTP/2' })
+
+    const refused = await send(`${older}/`, 2)
+    expect(refused.ok).toBe(false)
+    if (refused.ok) return
+    expect(refused.error.code).toBe('NO_HTTP2')
+    expect(refused.error.message).toBe(
+      'localhost answered with HTTP/1.1, not HTTP/2, and httpVersion is 2'
+    )
+  })
+
+  it('speaks HTTP/2 in the clear to an http:// URL only with httpVersion 2', async () => {
+    const h2c = await send(`${cleartext}/`, 2)
+    expect(h2c.ok && h2c.response).toMatchObject({ body: '2.0', httpVersion: 'HTTP/2' })
+    const auto = await send(`${cleartext}/`)
+    expect(auto.ok).toBe(false)
+  })
+
+  it('traces the last request of a redirect, sent on the connection the first opened', async () => {
+    const outcome = await send(`${both}/redirect`, 2)
+    expect(outcome.ok && outcome.response).toMatchObject({
+      redirectCount: 1,
+      httpVersion: 'HTTP/2',
+      connectionReused: true
+    })
   })
 })

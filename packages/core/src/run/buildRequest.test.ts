@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { StepSchema, SETTINGS_DEFAULTS } from '../model/documents.js'
+import { httpVersionOf, StepSchema, SETTINGS_DEFAULTS } from '../model/documents.js'
 import { resolveSettings, toBody, toHeaderEntries, toSentRequest } from './buildRequest.js'
 
 const step = (extra: Record<string, unknown>) =>
@@ -115,6 +115,18 @@ describe('resolveSettings', () => {
 
   it('ignores keys a layer leaves undefined', () => {
     expect(resolveSettings({ timeout: 100 }, { timeout: undefined }).timeout).toBe(100)
+  })
+
+  it('reads httpVersion however it was written, and lets a step put it back to auto', () => {
+    expect([undefined, 'auto', 1.1, '1.1', 2, '2'].map((v) => httpVersionOf(v as never))).toEqual([
+      'auto',
+      'auto',
+      '1.1',
+      '1.1',
+      '2',
+      '2'
+    ])
+    expect(resolveSettings({ httpVersion: 2 }, { httpVersion: 'auto' }).httpVersion).toBe('auto')
   })
 })
 

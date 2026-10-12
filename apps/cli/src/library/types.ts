@@ -38,6 +38,10 @@ export interface EventStreamRead {
 export interface ReceivedResponse {
   status: number
   statusText: string
+  /** The HTTP version it came over. */
+  httpVersion?: 'HTTP/1.1' | 'HTTP/2'
+  /** Whether it came on a connection kept open from an earlier request; with redirects, the last. */
+  connectionReused?: boolean
   /** Where the response came from, after any redirects. */
   url: string
   headers: HeaderEntry[]
@@ -99,6 +103,11 @@ export interface RunError {
     | 'tests'
   message: string
   code?: string
+  /** For an `http` error once the request was sent: milliseconds from sending it until it failed. */
+  elapsedMs?: number
+  /** For an `http` error once its headers were sent: the HTTP version, and whether the connection was reused. */
+  httpVersion?: 'HTTP/1.1' | 'HTTP/2'
+  connectionReused?: boolean
   stack?: string
   /** For a script error: its line in that script, from 1. */
   line?: number

@@ -120,6 +120,17 @@ describe('gta', () => {
     expect(out).toContain('FAILED')
   })
 
+  it('says how long a request went when the server closed it with no answer', async () => {
+    const root = await project({
+      'collections/a.yml': collection('a', ['/ok', '/hangup'])
+    })
+    const { code, out } = await gta(root, 'a')
+    expect(code).toBe(EXIT.failed)
+    expect(out).toMatch(
+      /✗ get \/hangup no response after \d+\.\d{3}s, sent over HTTP\/1\.1 on a (new|reused) connection\n\s+http error: other side closed/
+    )
+  })
+
   it('reports a collection that will not parse instead of skipping it', async () => {
     const root = await project({
       'collections/good.yml': collection('good', ['/ok']),

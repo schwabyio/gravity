@@ -377,12 +377,11 @@ function rowText(row: ConsoleRow): string {
       return `${clockTime(row.at)}  ${row.text}`
     case 'request': {
       const { result } = row.entry
-      const ms = result.response?.timings.totalMs ?? result.durationMs
       return [
         clockTime(sentAt(row.entry)),
         `${result.request.method} ${result.request.url}`,
         outcomeOf(result),
-        formatMs(ms),
+        formatMs(requestMs(result)),
         row.source
       ].join('  ')
     }
@@ -411,10 +410,10 @@ export function rawRequest(request: SentRequest): string {
   return request.body ? `${head}\n\n${request.body}` : head
 }
 
-/** A response as text, as received: its status, its headers, a blank line and its body. */
+/** A response as text, as received: its status line, its headers, a blank line and its body. */
 export function rawResponse(response: ReceivedResponse): string {
   const head = [
-    `${response.status} ${response.statusText}`.trim(),
+    [response.httpVersion, response.status, response.statusText].filter(Boolean).join(' '),
     ...response.headers.map(headerLine)
   ].join('\n')
   // Bytes kept as base64 are not text to show: say what there was instead.
@@ -439,8 +438,14 @@ export function outcomeOf(result: RunResult): string {
 }
 
 /** When a request was sent, or for one never sent, when its step began. */
-export const sentAt = (entry: ResultEntry): number =>
-  entry.result.response?.timings.startedAt ?? entry.at - entry.result.durationMs
+export function sentAt(entry: ResultEntry): number {
+  const { response, error, durationMs } = entry.result
+  return response?.timings.startedAt ?? entry.at - (error?.elapsedMs ?? durationMs)
+}
+
+/** A request's time: until its response was read or it failed; for one never sent, its step's. */
+export const requestMs = (result: RunResult): number =>
+  result.response?.timings.totalMs ?? result.error?.elapsedMs ?? result.durationMs
 
 const two = (value: number) => String(value).padStart(2, '0')
 

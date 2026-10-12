@@ -786,15 +786,32 @@ body:
 **`settings`** on a collection apply to every step; a step's own settings merge over
 them. Any other key is an error.
 
-| Key               | Type        | Default | Meaning                                                                                                |
-| ----------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------ |
-| `timeout`         | number ≥ 0  | `0`     | Milliseconds for the whole request; `0` means no limit. For an event stream, until its headers arrive. |
-| `followRedirects` | boolean     | `true`  | Follow 3xx responses.                                                                                  |
-| `maxRedirects`    | integer ≥ 0 | `5`     | The most redirects followed.                                                                           |
-| `encodeUrl`       | boolean     | `true`  | Percent-encode what a hand-typed URL left raw, before sending.                                         |
-| `maxEvents`       | integer ≥ 0 | `0`     | Stop reading an event stream after this many events; `0` means no limit.                               |
-| `streamTimeout`   | number ≥ 0  | `0`     | Stop reading an event stream this many milliseconds after its headers; `0` means no limit.             |
-| `untilEvent`      | string      | none    | Stop reading an event stream after the first event of this name, its `event:` line.                    |
+| Key               | Type                 | Default | Meaning                                                                                                |
+| ----------------- | -------------------- | ------- | ------------------------------------------------------------------------------------------------------ |
+| `timeout`         | number ≥ 0           | `0`     | Milliseconds for the whole request; `0` means no limit. For an event stream, until its headers arrive. |
+| `followRedirects` | boolean              | `true`  | Follow 3xx responses.                                                                                  |
+| `maxRedirects`    | integer ≥ 0          | `5`     | The most redirects followed.                                                                           |
+| `encodeUrl`       | boolean              | `true`  | Percent-encode what a hand-typed URL left raw, before sending.                                         |
+| `httpVersion`     | `auto`, `1.1` or `2` | `auto`  | Which HTTP version to send with; see below.                                                            |
+| `maxEvents`       | integer ≥ 0          | `0`     | Stop reading an event stream after this many events; `0` means no limit.                               |
+| `streamTimeout`   | number ≥ 0           | `0`     | Stop reading an event stream this many milliseconds after its headers; `0` means no limit.             |
+| `untilEvent`      | string               | none    | Stop reading an event stream after the first event of this name, its `event:` line.                    |
+
+**HTTP versions.** `httpVersion` takes `2` and `1.1` written plain or quoted.
+
+- `auto` uses HTTP/2 when an https server picks it, as most do, and HTTP/1.1 otherwise.
+  An http:// URL gets HTTP/1.1.
+- `1.1` never offers HTTP/2.
+- `2` is HTTP/2 or an error. An https server that answers with HTTP/1.1 fails the step
+  with `NO_HTTP2`. To an http:// URL, HTTP/2 is spoken in the clear from the start (h2c),
+  which a server without it cannot follow.
+- HTTP/3 is not supported.
+
+Every result says which HTTP version the request went out on, and whether it went on a
+new connection or on one kept open from an earlier request. The same holds for a request
+that fails once its headers are sent, along with how long it ran before it failed. A
+request dropped on a reused connection points at a server or proxy that closes idle
+connections sooner than the client expects.
 
 **Event streams.** A response whose `Content-Type` is `text/event-stream` (Server-Sent
 Events) is read as it arrives, whatever the method, and checked as a list of events

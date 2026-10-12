@@ -1,7 +1,19 @@
 import { Buffer, isUtf8 } from 'node:buffer'
-import { Agent, interceptors, request as undiciRequest, type Dispatcher } from 'undici'
+import type { SecureContext, TLSSocket } from 'node:tls'
+import {
+  Agent,
+  buildConnector,
+  interceptors,
+  request as undiciRequest,
+  type Dispatcher
+} from 'undici'
 import type { BodyKind, HeaderEntry, ReceivedResponse, SentRequest } from '../model/run.js'
-import { SETTINGS_DEFAULTS, type Settings } from '../model/documents.js'
+import {
+  httpVersionOf,
+  SETTINGS_DEFAULTS,
+  type HttpVersion,
+  type Settings
+} from '../model/documents.js'
 import { isEventStream } from '../model/eventStream.js'
 import {
   EventStreamPump,
@@ -18,6 +30,7 @@ import {
   trustKey,
   UNTRUSTED_HINT
 } from './trust.js'
+import { traced, track, type Trace } from './trace.js'
 
 /** Statuses without a body, per RFC 9110. */
 const BODYLESS_STATUSES = new Set([204, 304])
@@ -52,6 +65,14 @@ export interface SendOptions {
 export interface SendFailure {
   message: string
   code?: string
+  /**
+   * Milliseconds from handing the request to the HTTP client until it failed,
+   * however it did: refused, timed out, cancelled, or closed with no answer.
+   */
+  elapsedMs: number
+  /** Once its headers were sent: the HTTP version, and whether the connection was reused. */
+  httpVersion?: Trace['httpVersion']
+  connectionReused?: boolean
 }
 
 export type SendOutcome =
@@ -64,20 +85,65 @@ export type SendOutcome =
  * (./trust.ts). undici 8 dropped `maxRedirections` from `request()`, so
  * following redirects means composing the redirect interceptor onto the
  * dispatcher. Dispatchers own connection pools, so they are cached per
- * redirect limit and set of certificates, not built per request.
+ * redirect limit, HTTP version and set of certificates, not built per request.
  */
 const dispatchers = new Map<string, Dispatcher>()
 
-function dispatcherFor(maxRedirections: number, ca: readonly string[]): Dispatcher {
-  const key = `${maxRedirections}:${trustKey(ca)}`
+function dispatcherFor(
+  maxRedirections: number,
+  version: HttpVersion,
+  ca: readonly string[]
+): Dispatcher {
+  const key = `${maxRedirections}:${version}:${trustKey(ca)}`
   let dispatcher = dispatchers.get(key)
   if (!dispatcher) {
-    const agent = new Agent({ connect: { secureContext: secureContextFor(ca) } })
+    const agent = agentFor(version, secureContextFor(ca))
+    // `track` inside the redirect interceptor, so each request a redirect sends is traced.
     dispatcher =
-      maxRedirections > 0 ? agent.compose(interceptors.redirect({ maxRedirections })) : agent
+      maxRedirections > 0
+        ? agent.compose(track, interceptors.redirect({ maxRedirections }))
+        : agent.compose(track)
     dispatchers.set(key, dispatcher)
   }
   return dispatcher
+}
+
+/**
+ * `settings.httpVersion` (SPEC.md §2.3). `auto` is undici's own way: HTTP/2
+ * when an https server picks it, HTTP/1.1 otherwise. `1.1` never offers
+ * HTTP/2. `2` is HTTP/2 or nothing: an https server must pick it, and to an
+ * http:// URL it is spoken in the clear from the start (h2c).
+ */
+function agentFor(version: HttpVersion, secureContext: SecureContext): Agent {
+  if (version === '1.1') return new Agent({ allowH2: false, connect: { secureContext } })
+  if (version === 'auto') return new Agent({ connect: { secureContext } })
+  const connect = buildConnector({
+    secureContext,
+    allowH2: true,
+    preferH2: true,
+    // undici reads it, but its connector's types leave it out.
+    ...{ useH2c: true }
+  })
+  return new Agent({
+    connect: (options, callback) =>
+      connect(options, (...args) => {
+        const [error, socket] = args
+        if (error || options.protocol !== 'https:' || (socket as TLSSocket).alpnProtocol === 'h2') {
+          callback(...args)
+          return
+        }
+        socket.destroy()
+        callback(
+          Object.assign(
+            new Error(
+              `${options.hostname} answered with HTTP/1.1, not HTTP/2, and httpVersion is 2`
+            ),
+            { code: 'NO_HTTP2' }
+          ),
+          null
+        )
+      })
+  })
 }
 
 /** Release the pooled connections. Call on app quit or at the end of a CLI run. */
@@ -177,12 +243,15 @@ export async function sendHttpRequest(
 
   const dispatcher = dispatcherFor(
     settings.followRedirects ? settings.maxRedirects : 0,
+    httpVersionOf(settings.httpVersion),
     options.ca ?? []
   )
+  const trace: Trace = {}
 
   try {
     const method = sent.method.toUpperCase() as Dispatcher.HttpMethod
     const response = await undiciRequest(url, {
+      ...traced(trace),
       method,
       headers: headerRecord(sent.headers),
       body: options.payload ?? sent.body ?? undefined,
@@ -200,6 +269,7 @@ export async function sendHttpRequest(
     const received = {
       status: response.statusCode,
       statusText: statusTextFor(response.statusCode),
+      ...traceFields(trace),
       url: history.length > 0 ? String(history[history.length - 1]) : url,
       headers,
       redirectCount: Math.max(0, history.length - 1)
@@ -256,7 +326,14 @@ export async function sendHttpRequest(
       }
     }
   } catch (cause) {
-    return { ok: false, request: sent, error: describeFailure(cause, timeoutMs) }
+    return {
+      ok: false,
+      request: sent,
+      error: {
+        ...describeFailure(cause, timeoutMs, performance.now() - startedHr),
+        ...traceFields(trace)
+      }
+    }
   } finally {
     clearTimeout(timer)
   }
@@ -265,6 +342,12 @@ export async function sendHttpRequest(
 interface ContextWithHistory {
   history?: Array<URL | string>
 }
+
+/** What a trace learned, leaving out what it did not. */
+const traceFields = (trace: Trace): Trace => ({
+  ...(trace.httpVersion ? { httpVersion: trace.httpVersion } : {}),
+  ...(trace.connectionReused !== undefined ? { connectionReused: trace.connectionReused } : {})
+})
 
 /** The watch's part in one step's reading: its events, and the signal its Stop fires. */
 function streamWatching(
@@ -320,22 +403,38 @@ export async function readConnection(
       }
     }
   } catch (cause) {
-    return { ok: false, request: stream.request, error: describeFailure(cause, undefined) }
+    return {
+      ok: false,
+      request: stream.request,
+      error: {
+        ...describeFailure(cause, undefined, performance.now() - startedHr),
+        ...traceFields(stream.head)
+      }
+    }
   }
 }
 
-function describeFailure(cause: unknown, timeoutMs: number | undefined): SendFailure {
-  const error = cause as { name?: string; code?: string; message?: string }
-  const code = error?.code
+function describeFailure(
+  cause: unknown,
+  timeoutMs: number | undefined,
+  elapsedMs: number
+): SendFailure {
+  const error = cause as { name?: string; code?: unknown; message?: string }
+  // A DOMException's code is a number, 23 for our own timer's: not one to show.
+  const code = typeof error?.code === 'string' ? error.code : undefined
   if (
     error?.name === 'TimeoutError' ||
     code === 'UND_ERR_HEADERS_TIMEOUT' ||
     code === 'UND_ERR_BODY_TIMEOUT'
   ) {
-    return { message: `Request timed out after ${timeoutMs}ms`, code: code ?? 'ETIMEDOUT' }
+    return {
+      message: `Request timed out after ${timeoutMs}ms`,
+      code: code ?? 'ETIMEDOUT',
+      elapsedMs
+    }
   }
   if (error?.name === 'AbortError' || code === 'ABORT_ERR') {
-    return { message: 'Request cancelled', code: 'ABORTED' }
+    return { message: 'Request cancelled', code: 'ABORTED', elapsedMs }
   }
   if (isUntrustedCertificate(code)) {
     // Node's own advice, --use-system-ca, is already taken: the system's CAs are trusted.
@@ -343,11 +442,12 @@ function describeFailure(cause: unknown, timeoutMs: number | undefined): SendFai
       /;\s*if the root CA is installed.*$/s,
       ''
     )
-    return { message: `${reason}. ${UNTRUSTED_HINT}`, code }
+    return { message: `${reason}. ${UNTRUSTED_HINT}`, code, elapsedMs }
   }
   return {
     message: error?.message ?? String(cause),
-    ...(code !== undefined ? { code } : {})
+    ...(code !== undefined ? { code } : {}),
+    elapsedMs
   }
 }
 

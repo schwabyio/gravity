@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { wireNote } from '@schwabyio/gravity-core/model'
 import {
   clockTime,
   MAX_RESULTS,
@@ -7,6 +8,7 @@ import {
   rawExchange,
   rawRequest,
   rawResponse,
+  requestMs,
   rowsText,
   sentAt,
   SHOW_LABELS,
@@ -258,7 +260,7 @@ function RequestRow(props: {
           <span className={`console-status ${response ? statusClass(response.status) : 'server'}`}>
             {outcomeOf(result)}
           </span>
-          <span>{formatMs(response?.timings.totalMs ?? result.durationMs)}</span>
+          <span>{formatMs(requestMs(result))}</span>
           {response && <span>{formatSize(response.sizeBytes)}</span>}
           {result.assertions.length > 0 && (
             <span className={`console-checks${failed > 0 ? ' fail' : ''}`}>
@@ -283,7 +285,11 @@ function RequestDetail({ entry }: { entry: ResultEntry }) {
     run?.environment ? `environment ${run.environment}` : null,
     response ? `TTFB ${formatMs(response.timings.ttfbMs)}` : null,
     response ? `total ${formatMs(response.timings.totalMs)}` : null,
+    !response && result.error?.elapsedMs !== undefined
+      ? `no response after ${formatMs(result.error.elapsedMs)}`
+      : null,
     `step ${formatMs(result.durationMs)}`,
+    wireNote(response ?? result.error ?? {}),
     response && response.redirectCount > 0
       ? `${response.redirectCount} redirect${response.redirectCount === 1 ? '' : 's'} to ${response.url}`
       : null

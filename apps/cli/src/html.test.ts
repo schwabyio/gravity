@@ -467,6 +467,47 @@ describe('htmlReport', () => {
     expect(page.indexOf('Tests Error')).toBeLessThan(page.indexOf('<h3>Request</h3>'))
   })
 
+  it('says how long a request went before it failed with no response', () => {
+    const page = pageFor(
+      result('closed', {
+        response: null,
+        assertions: [],
+        status: 'error',
+        error: {
+          phase: 'http',
+          message: 'other side closed',
+          code: 'UND_ERR_SOCKET',
+          elapsedMs: 30_012,
+          httpVersion: 'HTTP/1.1',
+          connectionReused: true
+        }
+      }),
+      result('unsent', {
+        response: null,
+        assertions: [],
+        status: 'error',
+        error: { phase: 'http', message: 'A certificate in tls.ca cannot be used' }
+      })
+    )
+    expect(page).toContain('<span class="c-failed">no response after 30.01 s</span>')
+    expect(page).toContain(
+      '<p class="c-failed none">No response was received: the request failed after 30.01 s, sent over HTTP/1.1 on a reused connection.</p>'
+    )
+    // Nothing was sent, so there is no time to tell.
+    expect(page).toContain('<span class="c-failed">no response</span>')
+    expect(page).toContain('<p class="c-failed none">No response was received.</p>')
+  })
+
+  it('says what a response came over: its HTTP version, and a new or reused connection', () => {
+    const page = pageFor(
+      result('list', {
+        response: { ...response(), httpVersion: 'HTTP/2', connectionReused: false }
+      })
+    )
+    expect(page).toContain(' · HTTP/2 on a new connection</span>')
+    expect(page).toMatch(/<pre class="raw" data-raw id="t1-raw">HTTP\/2 200 OK\n/)
+  })
+
   it('shows request and response formatted, and raw as the app’s Console does', () => {
     const page = pageFor(
       result('create', {

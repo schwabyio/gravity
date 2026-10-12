@@ -454,7 +454,9 @@ describe('the library in dist/', () => {
       const [attachment] = login!.steps[0]!.attachments
       expect(attachment!.name).toBe('request and response')
       expect(attachment!.body).toContain(`GET ${server.origin}/ok/ann\n`)
-      expect(attachment!.body).toMatch(/\n200 OK · \d+ ms · \d+ bytes\n/)
+      expect(attachment!.body).toMatch(
+        /\n200 OK · \d+ ms · \d+ bytes · HTTP\/1\.1 on a (new|reused) connection\n/
+      )
       expect(attachment!.body).toContain('{"url":"/ok/ann","ok":true}')
       expect(attachment!.body).toContain('Checks:\n✓ Status is 200\n')
 

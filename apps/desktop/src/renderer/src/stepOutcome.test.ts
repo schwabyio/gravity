@@ -96,7 +96,7 @@ describe('stepOutcome', () => {
     expect(one(many).hover?.lines).toEqual(['✕ c0', '✕ c1', '✕ c2', '✕ c3', '✕ c4', 'and 2 more'])
   })
 
-  it('names an unanswered request by its code, under the name', () => {
+  it('names an unanswered request by its code, under the name, and says how long it went', () => {
     expect(
       one(
         result({
@@ -104,17 +104,45 @@ describe('stepOutcome', () => {
           response: null,
           error: {
             phase: 'http',
-            code: 'ECONNREFUSED',
-            message: 'connect ECONNREFUSED 127.0.0.1:9'
+            code: 'UND_ERR_SOCKET',
+            message: 'other side closed',
+            elapsedMs: 30_012
           }
         })
       )
     ).toEqual({
       mark: 'error',
-      summary: null,
-      detail: 'ECONNREFUSED',
-      hover: { title: 'No response', lines: ['connect ECONNREFUSED 127.0.0.1:9'] }
+      summary: 'no response · 30.01 s',
+      detail: 'UND_ERR_SOCKET',
+      hover: { title: 'No response', lines: ['other side closed'] }
     })
+    // What it went out on, when its headers got that far: a dropped reused connection is a clue.
+    expect(
+      one(
+        result({
+          status: 'error',
+          response: null,
+          error: {
+            phase: 'http',
+            code: 'UND_ERR_SOCKET',
+            message: 'other side closed',
+            elapsedMs: 4,
+            httpVersion: 'HTTP/1.1',
+            connectionReused: true
+          }
+        })
+      ).hover?.lines
+    ).toEqual(['other side closed', 'Sent over HTTP/1.1 on a reused connection'])
+    // Never sent, as with a tls.ca that cannot be read: no time to tell.
+    expect(
+      one(
+        result({
+          status: 'error',
+          response: null,
+          error: { phase: 'http', message: 'A certificate in tls.ca cannot be used' }
+        })
+      )
+    ).toMatchObject({ summary: null, hover: { title: 'No response' } })
   })
 
   it('says an error with no code in full', () => {

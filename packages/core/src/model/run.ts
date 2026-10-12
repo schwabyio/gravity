@@ -68,9 +68,19 @@ export const SentRequestSchema = z.object({
 })
 export type SentRequest = z.infer<typeof SentRequestSchema>
 
+/** The HTTP version a request went out on (SPEC.md §2.3 `httpVersion`). */
+export const WireVersionSchema = z.enum(['HTTP/1.1', 'HTTP/2'])
+
 export const ReceivedResponseSchema = z.object({
   status: z.number(),
   statusText: z.string(),
+  /** The HTTP version it came over. */
+  httpVersion: WireVersionSchema.optional(),
+  /**
+   * Whether it came on a connection kept open from an earlier request, rather
+   * than a new one. With redirects, of the last request.
+   */
+  connectionReused: z.boolean().optional(),
   /** URL the response actually came from, after any redirects. */
   url: z.string(),
   headers: z.array(HeaderEntrySchema),
@@ -199,6 +209,19 @@ export const RunErrorSchema = z.object({
   ]),
   message: z.string(),
   code: z.string().optional(),
+  /**
+   * For an `http` error once the request was sent: milliseconds from handing it
+   * to the HTTP client until it failed, so a connection closed with no answer
+   * says how long it lasted.
+   */
+  elapsedMs: z.number().optional(),
+  /**
+   * For an `http` error once the request's headers were sent: the HTTP version,
+   * and whether it went on a connection kept open from an earlier request. A
+   * request dropped on a reused connection points at one the server closed.
+   */
+  httpVersion: WireVersionSchema.optional(),
+  connectionReused: z.boolean().optional(),
   stack: z.string().optional(),
   /** For a script error: the line in that script, 1-based. */
   line: z.number().optional(),
@@ -269,6 +292,21 @@ export function resultName(result: RunResult): string {
       : `${use.name} › ${result.item.name}`
   const each = result.forEach ? ` (item ${result.forEach.index + 1} of ${result.forEach.of})` : ''
   return `${result.stage ? `${result.stage} › ` : ''}${name}${each}`
+}
+
+/**
+ * What a request went out on, as far as is known: `HTTP/2 on a new connection`,
+ * `HTTP/1.1 on a reused connection`. Null for one that never got that far.
+ */
+export function wireNote(
+  sent: Pick<ReceivedResponse, 'httpVersion' | 'connectionReused'>
+): string | null {
+  const connection =
+    sent.connectionReused === undefined
+      ? null
+      : `on a ${sent.connectionReused ? 'reused' : 'new'} connection`
+  const note = [sent.httpVersion, connection].filter(Boolean).join(' ')
+  return note === '' ? null : note
 }
 
 /** Totals for a whole-collection run. */

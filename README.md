@@ -59,8 +59,10 @@ Both run on macOS, Windows and Linux.
 - `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` and `OPTIONS`.
 - JSON, XML, text, URL-encoded form, multipart with file uploads, GraphQL, or a file
   sent byte for byte.
-- Headers and settings (timeout, redirects, URL encoding) are set once on a collection
-  and can be overridden on any step.
+- Headers and settings (timeout, redirects, URL encoding, HTTP version) are set once on
+  a collection and can be overridden on any step.
+- HTTP/1.1 and HTTP/2, including HTTP/2 in the clear (h2c). Every result says which
+  version it went out on and whether its connection was new or reused.
 - Server-Sent Events: an event stream is read as it arrives and checked as a list of
   events. Reading stops at a number of events, a time limit or a named event.
 - A stream can stay open as a connection, so a later step checks the events that the

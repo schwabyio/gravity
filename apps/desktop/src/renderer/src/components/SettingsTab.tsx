@@ -22,10 +22,12 @@ const ROWS: Array<{
   key: Key
   label: string
   help: string
-  kind: 'number' | 'boolean' | 'text'
+  kind: 'number' | 'boolean' | 'text' | 'choice'
   /** Whole numbers only. */
   integer?: boolean
   unit?: string
+  /** For a choice: each value, as written to the file, and its name. */
+  choices?: Array<{ value: string | number; label: string }>
 }> = [
   {
     key: 'timeout',
@@ -54,6 +56,17 @@ const ROWS: Array<{
     kind: 'boolean'
   },
   {
+    key: 'httpVersion',
+    label: 'HTTP version',
+    help: 'Auto uses HTTP/2 when an https server offers it, else HTTP/1.1. HTTP/2 fails on a server without it, and speaks it in the clear to an http:// URL.',
+    kind: 'choice',
+    choices: [
+      { value: 'auto', label: 'Auto' },
+      { value: 1.1, label: 'HTTP/1.1' },
+      { value: 2, label: 'HTTP/2' }
+    ]
+  },
+  {
     key: 'maxEvents',
     label: 'Max events',
     help: 'For an event stream: stop reading after this many events. 0 reads until it ends, up to 1,000.',
@@ -75,8 +88,18 @@ const ROWS: Array<{
   }
 ]
 
-const show = (value: unknown): string =>
-  typeof value === 'boolean' ? (value ? 'On' : 'Off') : value === '' ? 'none' : String(value)
+const show = (value: unknown, row?: (typeof ROWS)[number]): string =>
+  typeof value === 'boolean'
+    ? value
+      ? 'On'
+      : 'Off'
+    : value === ''
+      ? 'none'
+      : (choiceOf(row, value)?.label ?? String(value))
+
+/** A choice's value, matched however it was written: YAML's `2` and `'2'` are one. */
+const choiceOf = (row: (typeof ROWS)[number] | undefined, value: unknown) =>
+  row?.choices?.find((choice) => String(choice.value) === String(value))
 
 /** Settings in their documented order, dropping any left to inherit. */
 function tidy(settings: Settings): Settings {
@@ -109,7 +132,7 @@ export default function SettingsTab({ level, own, inherited = {}, onChange }: Pr
                 <span className="setting-name">{row.label}</span>
                 <span className="setting-used" title="What a run will use">
                   <strong>
-                    {show(used)}
+                    {show(used, row)}
                     {row.unit && typeof used === 'number' ? ` ${row.unit}` : ''}
                   </strong>
                   <span
@@ -159,6 +182,31 @@ function SettingField(props: {
           }
         />
       </span>
+    )
+  }
+
+  if (row.kind === 'choice') {
+    const chosen = value === undefined ? undefined : choiceOf(row, value)
+    return (
+      <select
+        aria-label={label}
+        className={value === undefined ? 'inherits' : ''}
+        value={chosen ? String(chosen.value) : ''}
+        onChange={(e) =>
+          props.onChange(
+            e.target.value === ''
+              ? undefined
+              : row.choices?.find((choice) => String(choice.value) === e.target.value)?.value
+          )
+        }
+      >
+        <option value="">Inherit ({show(inherited, row)})</option>
+        {row.choices?.map((choice) => (
+          <option key={choice.label} value={String(choice.value)}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
     )
   }
 

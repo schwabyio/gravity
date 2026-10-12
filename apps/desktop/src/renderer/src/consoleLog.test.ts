@@ -13,6 +13,7 @@ import {
   rawExchange,
   rawRequest,
   rawResponse,
+  requestMs,
   rowsOf,
   rowsText,
   sentAt,
@@ -265,6 +266,10 @@ describe('raw text', () => {
     const response = result().response!
     expect(rawResponse(response)).toBe('200 OK\ncontent-type: application/json\n\n{"id":7}')
     expect(rawResponse({ ...response, body: '', headers: [] })).toBe('200 OK')
+    // Its status line starts with the HTTP version it came over, when that is known.
+    expect(rawResponse({ ...response, body: '', headers: [], httpVersion: 'HTTP/2' })).toBe(
+      'HTTP/2 200 OK'
+    )
     expect(
       rawResponse({
         ...response,
@@ -315,6 +320,15 @@ describe('raw text', () => {
     // Sent: when the response says. Never sent: when its step began.
     expect(sentAt(entry(result()))).toBe(1_000)
     expect(sentAt(entry(result({ response: null, durationMs: 40 })))).toBe(4_960)
+    // Sent and never answered: as long before it failed as it went.
+    const unanswered = result({
+      response: null,
+      error: { phase: 'http', message: 'other side closed', elapsedMs: 30 },
+      durationMs: 40
+    })
+    expect(sentAt(entry(unanswered))).toBe(4_970)
+    expect(requestMs(unanswered)).toBe(30)
+    expect(requestMs(result({ response: null, durationMs: 40 }))).toBe(40)
   })
 
   it('tells the time of day to the millisecond', () => {
