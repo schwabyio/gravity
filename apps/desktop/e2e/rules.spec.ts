@@ -491,8 +491,10 @@ test('rules that cannot be read are a problem of the project’s, and none apply
       /Rules are not valid \(SPEC\.md §1\.4\):\n {2}ids\.colections \(rules\.yml\): not a rule/,
       { timeout: 10_000 }
     )
-    // Fails now and then on Windows only, after the test before deletes bases/ and checks/:
-    // what the app read and when, and whether main has the problem, say why.
+    // Failed now and then on Windows only, after the test before deletes bases/ and checks/:
+    // Windows told of each, deleted, over and over, and the rescan waited for it to stop
+    // (watcher.ts). Should it fail again, what the app read and when, and whether main
+    // has the problem, say why.
     .catch(async (cause: Error) => {
       throw new Error(
         `${cause.message}\n\n${await loadLog(page, { since: wrote, project: 'shop' })}`

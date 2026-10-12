@@ -1,5 +1,5 @@
 import fs, { type FSWatcher } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 
 /**
  * Filesystem watching, on `node:fs.watch` with no dependencies.
@@ -48,9 +48,18 @@ interface Watched {
 /** The most paths kept of what was told before one rescan. */
 const MAX_TOLD = 20
 
+/**
+ * The longest a rescan waits for changes to stop being told. A watcher that
+ * never stops — one Windows keeps telling of its own folder, deleted (below) —
+ * must not put the rescan off for good.
+ */
+const MAX_WAIT_MS = 1000
+
 export class DirectoryWatcher {
   private readonly watched = new Map<string, Watched>()
   private readonly timers = new Map<string, NodeJS.Timeout>()
+  /** When each key's first change since its last rescan was told. */
+  private readonly since = new Map<string, number>()
   /** What each key's watchers were told of since its last rescan. */
   private readonly told = new Map<string, Set<string>>()
 
@@ -129,9 +138,20 @@ export class DirectoryWatcher {
   private open(key: string, path: string, recursive: boolean, folder: string): Watching | null {
     try {
       const watching: Watching = {
-        watcher: fs.watch(path, { recursive, persistent: false }, (_event, name) =>
+        watcher: fs.watch(path, { recursive, persistent: false }, (_event, name) => {
+          if (watching.failed) return
+          // On Windows a folder deleted for good while watched is told of as itself, by its
+          // full path, over and over for as long as it is watched (libuv before 1.53,
+          // nodejs/node#61398). Let go of, its handle no longer keeps it, and it is rescanned.
+          if (name && isAbsolute(name)) {
+            watching.failed = true
+            watching.watcher.close()
+            this.note(key, 'Deleted while watched:', path)
+            this.schedule(key, path)
+            return
+          }
           this.schedule(key, name ? join(path, name) : path)
-        ),
+        }),
         path,
         folder,
         failed: false
@@ -156,15 +176,22 @@ export class DirectoryWatcher {
       if (told.size < MAX_TOLD) told.add(path)
       this.told.set(key, told)
     }
+    const now = Date.now()
+    const since = this.since.get(key) ?? now
+    this.since.set(key, since)
     clearTimeout(this.timers.get(key))
     this.timers.set(
       key,
-      setTimeout(() => {
-        this.timers.delete(key)
-        const told = [...(this.told.get(key) ?? [])]
-        this.told.delete(key)
-        this.onChange(key, told)
-      }, this.debounceMs)
+      setTimeout(
+        () => {
+          this.timers.delete(key)
+          this.since.delete(key)
+          const told = [...(this.told.get(key) ?? [])]
+          this.told.delete(key)
+          this.onChange(key, told)
+        },
+        Math.max(0, Math.min(this.debounceMs, since + MAX_WAIT_MS - now))
+      )
     )
   }
 
@@ -173,6 +200,7 @@ export class DirectoryWatcher {
     this.close(key)
     clearTimeout(this.timers.get(key))
     this.timers.delete(key)
+    this.since.delete(key)
     this.told.delete(key)
   }
 

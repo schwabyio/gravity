@@ -1,7 +1,9 @@
+import { EventEmitter } from 'node:events'
+import fsSync, { type FSWatcher } from 'node:fs'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DirectoryWatcher } from './watcher.js'
 
 let tmp: string
@@ -172,5 +174,59 @@ describe.each([
     watcher.unwatch('shop')
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(rescans).toEqual([])
+  })
+})
+
+describe('a watcher that never stops telling', () => {
+  beforeEach(() => {
+    watcher = new DirectoryWatcher(
+      (key, paths) => {
+        rescans.push(key)
+        told.push(...paths)
+      },
+      20,
+      false,
+      (key, what, folder) => notes.push(`${key}: ${what} ${folder}`)
+    )
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('lets go of a folder told of as itself, as Windows tells of one deleted, and rescans', async () => {
+    const bases = path.join(tmp, 'bases')
+    await fs.mkdir(bases)
+    // What Node's watcher on Windows says, again and again, of a folder deleted for good.
+    let tell: (event: string, name: string | null) => void = () => undefined
+    const closed: string[] = []
+    vi.spyOn(fsSync, 'watch').mockImplementation(((
+      target: string,
+      _options: unknown,
+      listener: typeof tell
+    ) => {
+      tell = listener
+      const fake = new EventEmitter() as FSWatcher
+      fake.close = () => void closed.push(target)
+      return fake
+    }) as unknown as typeof fsSync.watch)
+
+    watcher.watch('shop', [bases])
+    for (let i = 0; i < 50; i++) tell('rename', bases)
+    expect(closed).toEqual([bases])
+    expect(notes).toEqual([`shop: Deleted while watched: ${bases}`])
+    await rescanned()
+    expect(told).toEqual([bases])
+  })
+
+  it('rescans within a second, however long changes go on being told', () => {
+    vi.useFakeTimers()
+    watcher.watch('shop', [])
+    // A change every 10 ms for 3 s: the debounce alone would wait for them to stop.
+    for (let ms = 0; ms < 3000; ms += 10) {
+      noteChange('shop')
+      vi.advanceTimersByTime(10)
+    }
+    expect(rescans).toEqual(['shop', 'shop', 'shop'])
   })
 })
