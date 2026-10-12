@@ -1,4 +1,5 @@
 import fs, { type FSWatcher } from 'node:fs'
+import { join } from 'node:path'
 
 /**
  * Filesystem watching, on `node:fs.watch` with no dependencies.
@@ -13,8 +14,10 @@ import fs, { type FSWatcher } from 'node:fs'
  *    triggers a debounced rescan. Being payload-independent is what makes a
  *    zero-dependency watcher safe.
  *
- * If recursive watching proves unreliable on Linux, `chokidar` drops in behind
- * this same interface — nothing outside this file knows how watching works.
+ * Node's recursive watching on Linux misses writes to a file saved by renaming,
+ * so there each folder is watched itself (`eachFolder`). Should that prove
+ * unreliable too, `chokidar` drops in behind this same interface — nothing
+ * outside this file knows how watching works.
  */
 /**
  * A directory to watch. Not recursive for a folder whose own entries matter but
@@ -35,14 +38,26 @@ interface Watching {
   failed: boolean
 }
 
+/** What a key watches: the targets it was last given, and a watcher for each folder. */
+interface Watched {
+  listed: Set<string>
+  folders: Map<string, Watching>
+}
+
 export class DirectoryWatcher {
-  /** Each key's watchers, by what they watch. */
-  private readonly watchers = new Map<string, Map<string, Watching>>()
+  private readonly watched = new Map<string, Watched>()
   private readonly timers = new Map<string, NodeJS.Timeout>()
 
   constructor(
     private readonly onChange: (key: string) => void,
-    private readonly debounceMs = 200
+    private readonly debounceMs = 200,
+    /**
+     * Watch a folder in depth as each folder in it, rather than as Node does. On Linux
+     * Node watches each file in it, by inode: a file saved by renaming another over it,
+     * as the app and many editors save, is watched no more, and what is written to it
+     * after is never told. A folder's own watcher is told of every file in it.
+     */
+    private readonly eachFolder = process.platform === 'linux'
   ) {}
 
   /**
@@ -54,46 +69,66 @@ export class DirectoryWatcher {
    * watcher closed (on macOS, with any watcher closed), and a rescan calls this
    * as it shows its view, so a change made just then would never be shown. One
    * no longer listed is let go; a new one, or one made again in place of one
-   * deleted, is watched from now.
+   * deleted, is watched from now. Where one of those was listed before, it may
+   * have changed since the rescan calling this read it: it is rescanned.
    * A rescan already due still happens: the change behind it may have come
    * after the rescan now watching again read the files.
    */
   watch(key: string, targets: Array<string | WatchTarget>): void {
-    const before = this.watchers.get(key) ?? new Map<string, Watching>()
-    const after = new Map<string, Watching>()
+    const before = this.watched.get(key)
+    const now: Watched = { listed: new Set(), folders: new Map() }
+    let appeared = false
     for (const target of targets) {
       const { path, recursive } =
         typeof target === 'string' ? { path: target, recursive: true } : target
-      const what = `${recursive ? 'all of' : 'in'} ${path}`
-      if (after.has(what)) continue
-      const folder = folderOf(path)
-      // Missing or unreadable: nothing to watch until a rescan finds it there.
-      if (folder === null) continue
-      const kept = before.get(what)
-      if (kept && !kept.failed && kept.folder === folder) {
-        after.set(what, kept)
-        before.delete(what)
-        continue
-      }
-      try {
-        const watching: Watching = {
-          watcher: fs.watch(path, { recursive, persistent: false }, () => this.schedule(key)),
-          folder,
-          failed: false
+      const listed = nameOf(path, recursive)
+      now.listed.add(listed)
+      const each =
+        recursive && this.eachFolder
+          ? foldersIn(path).map((folder) => ({ path: folder, recursive: false }))
+          : [{ path, recursive }]
+      for (const one of each) {
+        const what = nameOf(one.path, one.recursive)
+        if (now.folders.has(what)) continue
+        const folder = folderOf(one.path)
+        // Missing or unreadable: nothing to watch until a rescan finds it there.
+        if (folder === null) continue
+        const kept = before?.folders.get(what)
+        if (kept && !kept.failed && kept.folder === folder) {
+          now.folders.set(what, kept)
+          continue
         }
-        // A watched directory being deleted surfaces here rather than crashing.
-        watching.watcher.on('error', () => {
-          watching.failed = true
-          this.schedule(key)
-        })
-        after.set(what, watching)
-      } catch {
-        // Unreadable or missing directory: skip it, keep the others.
+        const opened = this.open(key, one.path, one.recursive, folder)
+        if (!opened) continue
+        now.folders.set(what, opened)
+        if (before?.listed.has(listed)) appeared = true
       }
     }
     // What is no longer listed, or is watched anew, once its replacement watches.
-    for (const { watcher } of before.values()) watcher.close()
-    this.watchers.set(key, after)
+    for (const [what, watching] of before?.folders ?? []) {
+      if (now.folders.get(what) !== watching) watching.watcher.close()
+    }
+    this.watched.set(key, now)
+    if (appeared) this.schedule(key)
+  }
+
+  private open(key: string, path: string, recursive: boolean, folder: string): Watching | null {
+    try {
+      const watching: Watching = {
+        watcher: fs.watch(path, { recursive, persistent: false }, () => this.schedule(key)),
+        folder,
+        failed: false
+      }
+      // A watched directory being deleted surfaces here rather than crashing.
+      watching.watcher.on('error', () => {
+        watching.failed = true
+        this.schedule(key)
+      })
+      return watching
+    } catch {
+      // Unreadable or missing directory: skip it, keep the others.
+      return null
+    }
   }
 
   private schedule(key: string): void {
@@ -115,13 +150,31 @@ export class DirectoryWatcher {
   }
 
   private close(key: string): void {
-    for (const { watcher } of this.watchers.get(key)?.values() ?? []) watcher.close()
-    this.watchers.delete(key)
+    for (const { watcher } of this.watched.get(key)?.folders.values() ?? []) watcher.close()
+    this.watched.delete(key)
   }
 
   dispose(): void {
-    for (const key of [...this.watchers.keys()]) this.unwatch(key)
+    for (const key of [...this.watched.keys()]) this.unwatch(key)
   }
+}
+
+const nameOf = (path: string, recursive: boolean) => `${recursive ? 'all of' : 'in'} ${path}`
+
+/** A folder and every folder in it, at any depth. */
+function foldersIn(root: string): string[] {
+  const found = [root]
+  for (let i = 0; i < found.length; i++) {
+    const folder = found[i]!
+    try {
+      for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+        if (entry.isDirectory()) found.push(join(folder, entry.name))
+      }
+    } catch {
+      // Not there, or not readable: its watcher, if any, says so.
+    }
+  }
+  return found
 }
 
 /**

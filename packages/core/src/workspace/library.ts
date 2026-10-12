@@ -210,11 +210,19 @@ export async function loadChecks(
       const name = entry.name.slice(0, -'.js'.length)
       if (!/^[A-Za-z_$][\w$]*$/.test(name)) continue
       const file = path.join(directory, entry.name)
+      let code: string
+      try {
+        code = await readText(file)
+      } catch (cause) {
+        // Deleted since the folder was listed: the change is read again once it is told.
+        if ((cause as NodeJS.ErrnoException).code === 'ENOENT') continue
+        throw cause
+      }
       byName.set(name, {
         name,
         filename: relativePosix(root, file),
         // Windows editors may save a byte order mark, which would hide `export` on line 1.
-        code: stripBom(await readText(file))
+        code: stripBom(code)
       })
     }
   }

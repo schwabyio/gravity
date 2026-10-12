@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { loadChecks } from './library.js'
 import { readEnvironments, readProject } from './project.js'
 import {
   observeReadRetries,
@@ -132,5 +133,24 @@ describe('what a project holds, held by another program', () => {
     expect(info.problems).toEqual([
       { path: 'project.yml', message: 'could not be read (EBUSY: resource busy or locked)' }
     ])
+  })
+})
+
+describe('what a project holds, changed while it is read', () => {
+  it('leaves out a check file deleted between listing its folder and reading it', async () => {
+    await fs.mkdir(path.join(tmp, 'checks'))
+    await fs.writeFile(path.join(tmp, 'checks', 'orders.js'), 'export function counted() {}\n')
+    await fs.writeFile(path.join(tmp, 'checks', 'gone.js'), 'export function gone() {}\n')
+    const read = fs.readFile.bind(fs)
+    vi.spyOn(fs, 'readFile').mockImplementation(((file: string, options: never) =>
+      file.endsWith('gone.js')
+        ? Promise.reject(
+            Object.assign(new Error(`ENOENT: no such file or directory, open '${file}'`), {
+              code: 'ENOENT'
+            })
+          )
+        : read(file, options)) as never)
+    const checks = await settled(loadChecks(tmp, null))
+    expect(checks.map((check) => check.name)).toEqual(['orders'])
   })
 })

@@ -83,6 +83,23 @@ describe('refreshing a project', () => {
   })
 })
 
+describe('reading a project again for a change', () => {
+  it('writes a failure to the load log, never leaving it unhandled', async () => {
+    const id = await addShop()
+    const logged: string[] = []
+    const internals = service as unknown as {
+      options: { log?: (subject: string, text: string, problem?: boolean) => void }
+      rescan(id: string): void
+    }
+    internals.options.log = (subject, text, problem) => {
+      if (problem) logged.push(`${subject}: ${text}`)
+    }
+    Object.assign(service, { readRepo: () => Promise.reject(new Error('git went away')) })
+    internals.rescan(id)
+    await expect.poll(() => logged).toEqual(['shop: Could not be read again: git went away'])
+  })
+})
+
 describe('choosing an environment', () => {
   it('shows the choice at once, and a refresh begun before it keeps it', async () => {
     const id = await addShop()

@@ -167,9 +167,7 @@ export class ProjectService {
   /** When each repository was last fetched in the background. */
   private readonly lastFetched = new Map<string, number>()
   private readonly autoFetchTimers = new Map<string, NodeJS.Timeout>()
-  private readonly watcher = new DirectoryWatcher(
-    (id) => void this.refresh(id, undefined, 'files changed')
-  )
+  private readonly watcher = new DirectoryWatcher((id) => this.rescan(id))
   /** How often each project has been forgotten: a refresh begun before the last time is stale. */
   private readonly generations = new Map<string, number>()
   /** How many refreshes of each project have begun: each is numbered by its place. */
@@ -784,6 +782,18 @@ export class ProjectService {
     const view = this.views.get(id)
     if (!view) throw new Error('Unknown project')
     return view
+  }
+
+  /**
+   * Read a project again for a change its watcher told of. Nothing awaits it, so
+   * a failure is written to the load log: left unhandled, Electron would show it
+   * in a dialog that holds up the main process, every project with it, until closed.
+   */
+  private rescan(id: string): void {
+    this.refresh(id, undefined, 'files changed').catch((cause: unknown) => {
+      const why = cause instanceof Error ? cause.message : String(cause)
+      this.options.log?.(this.views.get(id)?.name ?? id, `Could not be read again: ${why}`, true)
+    })
   }
 
   /**

@@ -6,6 +6,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { launchApp } from './launch'
 import { sizeWindow } from './window'
 import { addProject } from './addProject'
+import { loadLog } from './loadLog'
 
 /**
  * A project's rules (SPEC.md §1.4), its `rules.yml` over its global
@@ -430,11 +431,17 @@ test('rules that cannot be read are a problem of the project’s, and none apply
   const problem = page
     .getByRole('region', { name: 'Project shop', exact: true })
     .getByRole('img', { name: 'Project problems' })
-  await expect(problem).toHaveAttribute(
-    'title',
-    /Rules are not valid \(SPEC\.md §1\.4\):\n {2}ids\.colections \(rules\.yml\): not a rule/,
-    { timeout: 10_000 }
-  )
+  await expect(problem)
+    .toHaveAttribute(
+      'title',
+      /Rules are not valid \(SPEC\.md §1\.4\):\n {2}ids\.colections \(rules\.yml\): not a rule/,
+      { timeout: 10_000 }
+    )
+    // Failed twice on Windows only, after the test before deletes bases/ and checks/:
+    // what the app read, or that main did not answer, says why.
+    .catch(async (cause: Error) => {
+      throw new Error(`${cause.message}\n\n${await loadLog(page)}`)
+    })
   await expect(row('CreateOrder').locator('.rule-mark')).toHaveCount(0)
   await page.getByRole('button', { name: 'Project actions for shop' }).click()
   await page.getByRole('menuitem', { name: 'Project settings' }).click()
