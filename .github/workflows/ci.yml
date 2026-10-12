@@ -35,7 +35,12 @@ jobs:
           DUGITE_CACHE_DIR: ${{ runner.temp }}/dugite
       - run: npm run lint
       - run: npm run typecheck
+      # The unit tests import electron but never run it, and importing it downloads
+      # Electron first: pointed elsewhere, it downloads nothing, so a GitHub outage
+      # cannot fail them. The e2e job still downloads it, as a fresh clone does.
       - run: npm test
+        env:
+          ELECTRON_OVERRIDE_DIST_PATH: ${{ runner.temp }}/no-electron
       - run: npm run build
 
   e2e:
