@@ -176,8 +176,11 @@ export class ProjectService {
   private readonly refreshesBegun = new Map<string, number>()
   /** The number of the refresh whose view each project shows (see `refresh`). */
   private readonly refreshShown = new Map<string, number>()
-  /** Projects git has answered for since they were listed: until then each shows as loading. */
-  private readonly gitAnswered = new Set<string>()
+  /**
+   * The repository git last found each project in, since it was listed: until git has
+   * answered, a project shows as loading. Watched still while git is asked again.
+   */
+  private readonly gitAnswered = new Map<string, GitRepo | null>()
   private readonly projectListeners = new Set<ProjectListener>()
   private readonly stateListeners = new Set<StateListener>()
   private readonly progressListeners = new Set<ProgressListener>()
@@ -997,7 +1000,9 @@ export class ProjectService {
       }
       if (mayShow()) {
         this.views.set(id, shown)
-        this.watcher.watch(id, this.watchTargets(shown, null))
+        // Its git files still watched: let go until git answers, a change to them would be
+        // missed, and on macOS letting any watcher go can lose a change not yet told.
+        this.watcher.watch(id, this.watchTargets(shown, this.gitAnswered.get(id) ?? null))
         this.emitProject(shown)
       }
       listed?.(this.views.get(id) ?? shown)
@@ -1014,7 +1019,7 @@ export class ProjectService {
       busy: repo !== null && this.isBusy(repo.root),
       loading: false
     }
-    this.gitAnswered.add(id)
+    this.gitAnswered.set(id, repo)
     this.logGit(view, reason, performance.now() - started)
 
     if (!mayShow()) return this.views.get(id) ?? view
