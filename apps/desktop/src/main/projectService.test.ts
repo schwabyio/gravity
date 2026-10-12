@@ -175,3 +175,36 @@ describe('starting up', () => {
     expect(shown.at(-1)?.gitNote).toMatch(/git is not installed/)
   })
 })
+
+describe('the rules, where a collection goes', () => {
+  it('refuses a rename, move or folder rename that puts a kind of collection outside its folders', async () => {
+    const shop = path.join(tmp, 'shop')
+    await fs.writeFile(
+      path.join(shop, 'rules.yml'),
+      "layout:\n  kinds:\n    negative:\n      tags: [negative]\n      id: '.*_N'\n      folders: '.*-errors'\n"
+    )
+    await fs.mkdir(path.join(shop, 'collections', 'orders'))
+    await fs.mkdir(path.join(shop, 'collections', 'orders-errors'))
+    const refund = path.join(shop, 'collections', 'orders-errors', 'refund.yml')
+    await fs.writeFile(refund, 'id: refund\ntags: [negative]\nsteps: []\n')
+    const id = await addShop()
+    const rule = ' (rule layout.kinds in rules.yml)'
+
+    await expect(service.moveToFolder(refund, 'orders')).rejects.toThrow(
+      `tag negative makes it negative: negative collections go in a folder matching .*-errors, not orders${rule}`
+    )
+    await expect(
+      service.renameCollection(path.join(shop, 'collections', 'a.yml'), 'a_N')
+    ).rejects.toThrow(
+      `its id, matching .*_N, makes it negative: negative collections go in a folder matching .*-errors, not at the top of collections/${rule}`
+    )
+    await expect(service.renameFolder(id, 'orders-errors', 'refunds')).rejects.toThrow(
+      `orders-errors/refund.yml: tag negative makes it negative: negative collections go in a folder matching .*-errors, not refunds${rule}`
+    )
+    await expect(service.renameFolder(id, 'orders', 'orders-errors-2')).resolves.toBeDefined()
+    await expect(service.renameFolder(id, 'orders-errors', 'refund-errors')).resolves.toBeDefined()
+    expect(
+      await fs.readFile(path.join(shop, 'collections', 'refund-errors', 'refund.yml'), 'utf8')
+    ).toContain('negative')
+  })
+})

@@ -651,7 +651,8 @@ export class ProjectService {
   /** Give a collection a new id: its file and its data file renamed, and its `id:` rewritten. */
   async renameCollection(file: string, id: string): Promise<string> {
     const owner = this.ownerOf(file)
-    obey(placeProblem(owner.rules, COLLECTIONS_DIR, id.trim(), folderOf(owner.path, file)))
+    const folder = folderOf(owner.path, file)
+    obey(placeProblem(owner.rules, COLLECTIONS_DIR, id.trim(), folder, await ownTags(file)))
     const renamed = await renameCollectionFile(owner.path, file, id)
     await this.refreshAt(owner.path)
     return renamed
@@ -660,7 +661,8 @@ export class ProjectService {
   /** Move a collection, with its data file, to another folder of its project — or its root. */
   async moveToFolder(file: string, folder: string | null): Promise<string> {
     const owner = this.ownerOf(file)
-    obey(placeProblem(owner.rules, COLLECTIONS_DIR, path.basename(file, DOC_EXTENSION), folder))
+    const id = path.basename(file, DOC_EXTENSION)
+    obey(placeProblem(owner.rules, COLLECTIONS_DIR, id, folder, await ownTags(file)))
     const moved = await moveCollectionToFolder(owner.path, file, folder)
     await this.refreshAt(owner.path)
     return moved
@@ -679,7 +681,8 @@ export class ProjectService {
       throw new Error(`${path.basename(file)} is in ${target.name} already`)
     }
     // The rules of the project it goes to.
-    obey(placeProblem(target.rules, COLLECTIONS_DIR, path.basename(file, DOC_EXTENSION), directory))
+    const id = path.basename(file, DOC_EXTENSION)
+    obey(placeProblem(target.rules, COLLECTIONS_DIR, id, directory, await ownTags(file)))
     const copied = await copyCollectionFile(file, target.path, directory, { move })
     await Promise.all([this.refreshAt(owner.path), this.refreshAt(target.path)])
     return copied
@@ -710,7 +713,19 @@ export class ProjectService {
   /** Rename a folder of a project's `collections/`, with everything in it. */
   async renameFolder(projectId: string, name: string, to: string): Promise<string> {
     const view = this.required(projectId)
-    if (to.trim() !== name) obey(newFolderProblem(view.rules, to.trim()))
+    if (to.trim() !== name) {
+      obey(newFolderProblem(view.rules, to.trim()))
+      // What it holds, under its new name: an id that names its folder, a kind kept to its folders.
+      for (const collection of view.collections.filter((c) => c.directory === name)) {
+        const id = path.basename(collection.path, DOC_EXTENSION)
+        const tags = await ownTags(collection.path)
+        const problem = placeProblem(view.rules, COLLECTIONS_DIR, id, to.trim(), tags)
+        // Only what the new name breaks: what it breaks already is marked where it is.
+        if (problem && !placeProblem(view.rules, COLLECTIONS_DIR, id, name, tags)) {
+          obey(`${collection.relativePath}: ${problem}`)
+        }
+      }
+    }
     const renamed = await renameCollectionsFolder(view.path, name, to)
     await this.refreshAt(view.path)
     return renamed
@@ -1731,6 +1746,18 @@ async function readRules(
   } catch (cause) {
     if (!(cause instanceof RulesError)) throw cause
     return { view: { ...NO_RULES, problem: cause.message, agents }, findings: [] }
+  }
+}
+
+/**
+ * A collection's own tags, as its file has them, for `layout.kinds`; undefined
+ * when it will not parse, so only its id can place it.
+ */
+async function ownTags(file: string): Promise<string[] | undefined> {
+  try {
+    return parseCollection(await fs.readFile(file, 'utf8'), path.basename(file)).data.tags ?? []
+  } catch {
+    return undefined
   }
 }
 

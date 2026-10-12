@@ -301,6 +301,64 @@ describe('lintFile', () => {
     expect(at('collections', 'id: a\nsteps: []\n')).toEqual([])
   })
 
+  it('keeps each kind of collection to its folders under layout.kinds, at the tag that makes it one', async () => {
+    const loaded = await rules(
+      lines(
+        'layout:',
+        '  kinds:',
+        '    negative:',
+        '      tags: [negative]',
+        "      id: '.*_N'",
+        "      folders: '.*-errors'"
+      )
+    )
+    const at = (relativePath: string, source: string) =>
+      lintFile({ home: 'collections', relativePath, source }, loaded).map(
+        ({ file, line, rule, message }) => [file, line, rule, message]
+      )
+    const tagged = (id: string) =>
+      lines(`id: ${id}`, 'tags:', '  - smoke', '  - negative', 'steps: []')
+    const plain = (id: string) => lines(`id: ${id}`, 'steps: []')
+
+    expect(at('orders/create.yml', tagged('create'))).toEqual([
+      [
+        'collections/orders/create.yml',
+        4,
+        'layout.kinds',
+        'tag negative makes it negative: negative collections go in a folder matching .*-errors, not orders'
+      ]
+    ])
+    expect(at('create_N.yml', plain('create_N'))).toEqual([
+      [
+        'collections/create_N.yml',
+        1,
+        'layout.kinds',
+        'its id, matching .*_N, makes it negative: negative collections go in a folder matching .*-errors, not at the top of collections/'
+      ]
+    ])
+    expect(at('orders-errors/create.yml', plain('create'))).toEqual([
+      [
+        'collections/orders-errors/create.yml',
+        1,
+        'layout.kinds',
+        'orders-errors holds negative collections only: those tagged negative, or with an id matching .*_N'
+      ]
+    ])
+    expect(at('orders-errors/create.yml', tagged('create'))).toEqual([])
+    expect(at('orders-errors/create_N.yml', plain('create_N'))).toEqual([])
+    expect(at('orders/create.yml', plain('create'))).toEqual([])
+    expect(at('create.yml', plain('create'))).toEqual([])
+    // A step's tags are its own, not the collection's.
+    const stepTagged = lines(
+      'id: create',
+      'stepTags: true',
+      'steps:',
+      '  - GET: /orders',
+      '    tags: [negative]'
+    )
+    expect(at('orders/create.yml', stepTagged)).toEqual([])
+  })
+
   it('finds every use of the check files under layout.checks, before.script and tests alike', async () => {
     const loaded = await rules('layout:\n  checks: none\n')
     const source = lines(

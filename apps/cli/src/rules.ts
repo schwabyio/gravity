@@ -7,6 +7,7 @@ import {
   readProject,
   RULES_FILE,
   ruleDoc,
+  ruleValueText,
   type LintResult,
   type LoadedRules,
   type RuleFinding
@@ -72,8 +73,8 @@ function rulesLine(project: RulesProject, p: Paint): string {
   return field('Rules', p.dim(`none: ${where}`))
 }
 
-const shownValue = (value: unknown): string =>
-  value === null ? 'off' : Array.isArray(value) ? `[${value.join(', ')}]` : String(value)
+/** Values longer than this, such as `layout.kinds`, are not padded to, so the rest stay close. */
+const PADDED_VALUE = 32
 
 /** `gta rules`: each rule set, its value, the file it came from and what it means. */
 export async function rulesCommand(root: string, { out, emit, p }: Output): Promise<void> {
@@ -95,9 +96,10 @@ export async function rulesCommand(root: string, { out, emit, p }: Output): Prom
   if (settings.length > 0) {
     out('')
     const ruleWidth = Math.max(...settings.map((s) => s.rule.length))
-    const valueWidth = Math.max(...settings.map((s) => shownValue(s.value).length))
+    const widths = settings.map((s) => ruleValueText(s.value).length)
+    const valueWidth = Math.max(0, ...widths.filter((width) => width <= PADDED_VALUE))
     for (const setting of settings) {
-      const value = shownValue(setting.value).padEnd(valueWidth)
+      const value = ruleValueText(setting.value).padEnd(valueWidth)
       out(
         `${p.bold(setting.rule.padEnd(ruleWidth))}  ${setting.on ? value : p.dim(value)}  ${p.dim(setting.source)}`
       )

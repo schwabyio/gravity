@@ -320,7 +320,11 @@ ids:
   requests: camelCase
 layout:
   folders: required # every collection in a folder of collections/
-  folderNames: [accounts, payments, smoke]
+  folderNames: [accounts, payments, smoke, payments-errors]
+  kinds:
+    negative: # tagged negative: in a folder ending in -errors, which hold no other
+      tags: [negative]
+      folders: .*-errors
   maxSteps: 30
 steps:
   names: required
@@ -348,6 +352,7 @@ flags what `tests.only` does not allow as a script is typed.
 | `ids.endpoints`      | style or pattern       | Each endpoints file's id (§2.6).                                                |
 | `layout.folders`     | `required`             | Every collection sits in a folder of `collections/`, none at its top.           |
 | `layout.folderNames` | list, style or pattern | Each folder of `collections/`: one of the list, or following the format.        |
+| `layout.kinds`       | map of kinds (below)   | Each kind of collection sits in its own folders, and they hold no other.        |
 | `layout.maxSteps`    | integer ≥ 1            | The most steps a collection has in `steps`; `setup` and `teardown` aside.       |
 | `layout.bases`       | `none`                 | No base collections: no file in `bases/`, and no `extends:` (below).            |
 | `layout.checks`      | `none`                 | No check files: no `.js` file in `checks/`, and no use of `checks` (below).     |
@@ -430,6 +435,42 @@ tests: |
 `tests.only` checks every `tests` script: a collection's own and each of its steps', and
 those of reusable requests files, base collections and endpoints files.
 `before.script` is not checked.
+
+**`layout.kinds`** keeps each kind of collection in its own folders: negative tests in
+the `-errors` folders, say, and nothing else there.
+
+```yaml
+layout:
+  kinds:
+    negative:
+      tags: [negative] # a collection tagged negative is one
+      id: .*_N # and so is one whose id ends in _N
+      folders: .*-errors # it goes in a folder ending in -errors, and those hold no other
+```
+
+- Each kind has a name of your choosing, used in its findings, and three keys:
+  - **`tags`**, a list: a collection with any of these tags of its own is one. A step's
+    tags do not count.
+  - **`id`**, a style or pattern: so is a collection whose id follows it. Like an id
+    pattern, it matches the whole id, so `.*_N` is an id ending in `_N`.
+  - **`folders`**, required: a list of folder names, a style or a pattern, as
+    `layout.folderNames` takes. A pattern matches the whole name, so `.*-errors` is a
+    folder ending in `-errors`, while `-errors$` matches only a folder called `-errors`.
+- A kind needs `tags`, `id` or both. With both, either makes a collection one.
+- A kind's `id` does not loosen `ids.collections`. An id ending in `_N` is neither
+  kebab-case nor snake_case, so a project with both sets a pattern that allows it, such
+  as `ids: { collections: '[a-z0-9_]+(_N)?' }`.
+- **One of a kind outside its folders** is a finding, at the tag that makes it one, or
+  at its `id` when the id does. A collection at the top of `collections/` is in no folder.
+- **One not of the kind inside them** is a finding too. So collections without the tag
+  or the id, the positive tests here, stay out of the `-errors` folders.
+- Each kind is checked on its own, so a project can have several, such as `slow` in
+  `slow/` beside `negative` in `.*-errors`.
+- Gravity will not rename, move or copy a collection, or rename a folder, where it
+  would break this. A new collection may be made in a kind's folders when the kind has
+  `tags`, since it can only be tagged once it exists. Until it is, it is a finding.
+- A project's `layout.kinds` replaces its global project's whole, as every rule's value
+  does. `null` turns it off.
 
 **`layout.bases` and `layout.checks`** keep a project to what its own files say, with no
 base collection (§2.7) or check file (§5) adding to them:

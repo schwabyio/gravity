@@ -72,6 +72,62 @@ const RequirementSchema = z.enum(['required', 'optional'], {
 
 const NoneSchema = z.enum(['none', 'allowed'], { error: 'is none or allowed' })
 
+/** Folders of `collections/`: a list of their names, or a style or pattern each name follows. */
+const FolderNamesSchema = z.union([NameFormatSchema, z.array(z.string().min(1)).min(1)], {
+  error: `is a list of folder names, a style (${STYLE_NAMES}) or a pattern`
+})
+
+const isMap = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** One kind of collection under `layout.kinds`: what makes a collection one, and where it goes. */
+export interface CollectionKind {
+  /** A collection with any of these tags of its own is one. */
+  tags?: string[]
+  /** So is one whose id follows this style or pattern. */
+  id?: string
+  /** The folders of `collections/` its collections go in, and that hold nothing else. */
+  folders: string | string[]
+}
+
+const KIND_KEYS: Record<keyof CollectionKind, z.ZodType> = {
+  tags: z.array(TagSchema, { error: 'is a list of tags' }).min(1, 'is a list of tags, one or more'),
+  id: NameFormatSchema,
+  folders: FolderNamesSchema
+}
+
+/** `layout.kinds`: each kind by name, its messages naming the kind and the key they are about. */
+const KindsSchema = z.unknown().superRefine((kinds, ctx) => {
+  const issue = (message: string) => ctx.addIssue({ code: 'custom', message })
+  if (!isMap(kinds) || Object.keys(kinds).length === 0) {
+    issue(
+      'is a map of kinds of collection, such as negative: { tags: [negative], folders: .*-errors }'
+    )
+    return
+  }
+  for (const [name, kind] of Object.entries(kinds)) {
+    if (!isMap(kind)) {
+      issue(`${name}: a map of tags, id and folders`)
+      continue
+    }
+    for (const [key, value] of Object.entries(kind)) {
+      const schema = KIND_KEYS[key as keyof CollectionKind] as z.ZodType | undefined
+      if (!schema) {
+        issue(`${name}.${key}: not part of a kind, which has tags, id and folders`)
+        continue
+      }
+      const result = schema.safeParse(value)
+      if (!result.success)
+        issue(`${name}.${key}: ${result.error.issues[0]?.message ?? 'not valid'}`)
+    }
+    if (kind.tags === undefined && kind.id === undefined) {
+      issue(`${name}: says what makes a collection one, with tags, id or both`)
+    }
+    if (kind.folders === undefined)
+      issue(`${name}.folders: missing — the folders its collections go in`)
+  }
+})
+
 /** A pattern a URL matches somewhere, as `RegExp.test` does: it must compile. */
 const UrlPatternSchema = z
   .string({ error: 'is a pattern, such as ^\\{\\{baseUrl\\}\\}' })
@@ -115,10 +171,12 @@ export const RULES = {
       'required: every collection sits in a folder of collections/, none at its top.'
     ),
     folderNames: {
-      schema: z.union([NameFormatSchema, z.array(z.string().min(1)).min(1)], {
-        error: `is a list of folder names, a style (${STYLE_NAMES}) or a pattern`
-      }),
+      schema: FolderNamesSchema,
       doc: `The folders of collections/: a list of the names allowed, or a style (${STYLE_NAMES}) or pattern each name follows.`
+    },
+    kinds: {
+      schema: KindsSchema,
+      doc: 'Kinds of collection, each kept to its own folders. A collection with one of a kind’s tags of its own, or an id following its id style or pattern, goes in one of its folders — a list of names, a style or a pattern — and those folders hold that kind only.'
     },
     maxSteps: {
       schema: z.number({ error: 'is a whole number of steps, 1 or more' }).int().min(1),
@@ -192,6 +250,17 @@ const ruleInfo = (rule: RuleName): RuleInfo => {
 /** What a rule means, as `gta rules` says it. */
 export const ruleDoc = (rule: RuleName): string => ruleInfo(rule).doc
 
+/** A rule's value as `gta rules` and the app show it: `[gta, console]`, `{negative: {…}}`, `off` for null. */
+export function ruleValueText(value: unknown): string {
+  if (value === null) return 'off'
+  if (Array.isArray(value)) return `[${value.map(ruleValueText).join(', ')}]`
+  if (isMap(value)) {
+    const entries = Object.entries(value).map(([key, inner]) => `${key}: ${ruleValueText(inner)}`)
+    return `{${entries.join(', ')}}`
+  }
+  return String(value)
+}
+
 /** Whether a rule set to `value` is in effect: not `null`, nor its word for off. */
 export const ruleIsOn = (rule: RuleName, value: unknown): boolean =>
   value !== null && value !== ruleInfo(rule).off
@@ -202,6 +271,7 @@ export interface Rules {
   layout: {
     folders?: 'required'
     folderNames?: string | string[]
+    kinds?: Record<string, CollectionKind>
     maxSteps?: number
     bases?: 'none'
     checks?: 'none'
@@ -304,6 +374,87 @@ export function folderNameProblem(loaded: LoadedRules, folder: string): string |
   return problem ? `folder ${folder} ${problem}` : null
 }
 
+/** Whether `folder` is one of a kind's folders: one of a list, or following a style or pattern. */
+const isKindFolder = (folder: string, folders: string | readonly string[]): boolean =>
+  Array.isArray(folders)
+    ? folders.includes(folder)
+    : nameFormatProblem(folder, folders as string, null) === null
+
+/** A kind's folders as a finding names them: `a folder matching .*-errors`. */
+function kindFoldersText(folders: string | readonly string[]): string {
+  if (Array.isArray(folders)) {
+    return folders.length === 1
+      ? `folder ${folders[0]}`
+      : `one of the folders ${folders.join(', ')}`
+  }
+  const format = folders as string
+  return Object.hasOwn(NAME_STYLES, format) ? `a ${format} folder` : `a folder matching ${format}`
+}
+
+/** An id style or pattern as a finding names it: `an id matching .*_N`. */
+const kindIdText = (format: string) =>
+  Object.hasOwn(NAME_STYLES, format) ? `a ${format} id` : `an id matching ${format}`
+
+/** What makes a collection one of a kind: `tagged negative, or with an id matching .*_N`. */
+function kindMembersText(kind: CollectionKind): string {
+  const tags = kind.tags ?? []
+  const tagged =
+    tags.length === 0
+      ? null
+      : `tagged ${tags.length === 1 ? tags[0] : `${tags.slice(0, -1).join(', ')} or ${tags.at(-1)}`}`
+  const withId = kind.id === undefined ? null : `with ${kindIdText(kind.id)}`
+  return [tagged, withId].filter(Boolean).join(', or ')
+}
+
+/** Where a collection breaks `layout.kinds`, for one kind. */
+export interface KindProblem {
+  kind: string
+  /** The tag of its own that makes it one, to point at; null when its id does, or it is not one. */
+  tag: string | null
+  message: string
+}
+
+/**
+ * Where a collection with `id`, in `folder` of `collections/` (null for its
+ * top), breaks `layout.kinds`: one of a kind outside that kind's folders, or
+ * one not of it inside them. `tags` are its own; undefined for a collection
+ * not written yet, which can be tagged once it is, so only its id can make it one.
+ */
+export function kindProblems(
+  kinds: Readonly<Record<string, CollectionKind>>,
+  id: string,
+  folder: string | null,
+  tags?: readonly string[]
+): KindProblem[] {
+  const problems: KindProblem[] = []
+  for (const [name, kind] of Object.entries(kinds)) {
+    const tag = tags?.find((own) => kind.tags?.includes(own)) ?? null
+    const byId = kind.id !== undefined && nameFormatProblem(id, kind.id, folder) === null
+    const inFolders = folder !== null && isKindFolder(folder, kind.folders)
+    if ((tag !== null || byId) && !inFolders) {
+      const why =
+        tag !== null
+          ? `tag ${tag}`
+          : Object.hasOwn(NAME_STYLES, kind.id!)
+            ? `its ${kind.id} id`
+            : `its id, matching ${kind.id},`
+      const where = folder === null ? 'at the top of collections/' : folder
+      problems.push({
+        kind: name,
+        tag,
+        message: `${why} makes it ${name}: ${name} collections go in ${kindFoldersText(kind.folders)}, not ${where}`
+      })
+    } else if (tag === null && !byId && inFolders && !(tags === undefined && kind.tags)) {
+      problems.push({
+        kind: name,
+        tag: null,
+        message: `${folder} holds ${name} collections only: those ${kindMembersText(kind)}`
+      })
+    }
+  }
+  return problems
+}
+
 /** What a finding says under `layout.bases` and `layout.checks`. */
 export const NO_BASES = 'base collections are not used here'
 export const NO_CHECKS = 'check files are not used here'
@@ -311,15 +462,18 @@ export const NO_CHECKS = 'check files are not used here'
 /**
  * Why a file would break the rules where it is about to be written — a new
  * collection, one renamed, moved or copied — or null when it would not: any
- * base collection under `layout.bases`, its id under `ids.<home>`, and a
- * collection at the top of `collections/` under `layout.folders`. `folder` is
- * the folder of its home it goes in, null for none.
+ * base collection under `layout.bases`, its id under `ids.<home>`, a
+ * collection at the top of `collections/` under `layout.folders`, and one in
+ * the wrong folder for its kind under `layout.kinds`. `folder` is the folder
+ * of its home it goes in, null for none; `tags`, a collection's own, are
+ * undefined for a new one.
  */
 export function placeProblem(
   loaded: LoadedRules,
   home: LintHome,
   id: string,
-  folder: string | null
+  folder: string | null,
+  tags?: readonly string[]
 ): string | null {
   if (home === BASES_DIR && loaded.rules.layout.bases) {
     return withRule(loaded, 'layout.bases', NO_BASES)
@@ -329,6 +483,11 @@ export function placeProblem(
   if (problem) return withRule(loaded, `ids.${home}`, `id: ${id} ${problem}`)
   if (home === COLLECTIONS_DIR && loaded.rules.layout.folders && folder === null) {
     return withRule(loaded, 'layout.folders', 'a collection goes in a folder of collections/ here')
+  }
+  const kinds = loaded.rules.layout.kinds
+  if (home === COLLECTIONS_DIR && kinds) {
+    const [kind] = kindProblems(kinds, id, folder, tags)
+    if (kind) return withRule(loaded, 'layout.kinds', kind.message)
   }
   return null
 }

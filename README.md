@@ -43,8 +43,9 @@ Both run on macOS, Windows and Linux.
 **Project rules**
 
 - A `rules.yml` sets how a project's files are named, laid out and written: id styles,
-  folders, required docs and step names, allowed tags, what `tests` may call, and
-  whether base collections and check files are used at all.
+  folders and which kinds of collection go in them, required docs and step names,
+  allowed tags, what `tests` may call, and whether base collections and check files are
+  used at all.
 - `gta lint` checks every file against the rules, and fails CI on what it finds.
   `gta rules` lists the rules in effect and where each came from.
 - The desktop app marks each file and step that breaks a rule, and flags script code

@@ -8,7 +8,9 @@ import {
   newFolderProblem,
   placeProblem,
   RULE_NAMES,
-  ruleDoc
+  RULES,
+  ruleDoc,
+  ruleValueText
 } from './model.js'
 import { loadRules, RulesError } from './rules.js'
 
@@ -207,6 +209,77 @@ describe('loadRules', () => {
     await expect(loadRules(root, null)).rejects.toThrow('rules.yml will not parse')
   })
 
+  it('reads layout.kinds, naming the kind and key of each mistake', async () => {
+    const root = await folder({
+      'rules.yml': [
+        'layout:',
+        '  kinds:',
+        '    negative:',
+        '      tags: [negative]',
+        "      id: '.*_N'",
+        "      folders: '.*-errors'"
+      ].join('\n')
+    })
+    expect((await loadRules(root, null)).rules.layout.kinds).toEqual({
+      negative: { tags: ['negative'], id: '.*_N', folders: '.*-errors' }
+    })
+
+    await fs.writeFile(
+      path.join(root, 'rules.yml'),
+      [
+        'layout:',
+        '  kinds:',
+        '    negative:',
+        '      tags: [not negative]',
+        '      folder: errors',
+        '    slow:',
+        '      folders: [slow]',
+        '    smoke: smoke'
+      ].join('\n')
+    )
+    const error = await loadRules(root, null).catch((cause: unknown) => cause)
+    expect((error as Error).message).toBe(
+      [
+        'Rules are not valid (SPEC.md §1.4):',
+        '  layout.kinds (rules.yml): negative.tags: a tag is letters, digits and - _ . : with no spaces'
+      ].join('\n')
+    )
+
+    // Every mistake is checked, though loadRules shows each rule's first.
+    const kinds = (value: unknown) => {
+      const issues = RULES.layout.kinds.schema.safeParse(value).error?.issues ?? []
+      return issues.map((issue) => issue.message)
+    }
+    expect(
+      kinds({
+        negative: { tags: [], folder: 'errors' },
+        slow: { folders: ['slow'] },
+        smoke: 'smoke'
+      })
+    ).toEqual([
+      'negative.tags: is a list of tags, one or more',
+      'negative.folder: not part of a kind, which has tags, id and folders',
+      'negative.folders: missing — the folders its collections go in',
+      'slow: says what makes a collection one, with tags, id or both',
+      'smoke: a map of tags, id and folders'
+    ])
+    expect(kinds({})).toEqual([
+      'is a map of kinds of collection, such as negative: { tags: [negative], folders: .*-errors }'
+    ])
+    expect(kinds({ negative: { id: 'kebab', folders: '.*-errors' } })).toEqual([
+      'negative.id: "kebab" is not a style (kebab-case, snake_case, camelCase, PascalCase), nor a pattern such as ^[a-z]+-[0-9]{3}$'
+    ])
+  })
+
+  it('shows a value as gta rules does, a map of kinds included', () => {
+    expect(ruleValueText(null)).toBe('off')
+    expect(ruleValueText(['gta', 'console'])).toBe('[gta, console]')
+    expect(ruleValueText(30)).toBe('30')
+    expect(
+      ruleValueText({ negative: { tags: ['negative'], id: '.*_N', folders: '.*-errors' } })
+    ).toBe('{negative: {tags: [negative], id: .*_N, folders: .*-errors}}')
+  })
+
   it('documents every rule', () => {
     for (const rule of RULE_NAMES) expect(ruleDoc(rule).length).toBeGreaterThan(20)
   })
@@ -289,6 +362,60 @@ describe('placeProblem and newFolderProblem', () => {
     const none = await loadRules(await folder({}), null)
     expect(newFolderProblem(none, 'Any Thing')).toBeNull()
     expect(placeProblem(none, 'collections', 'Any', null)).toBeNull()
+  })
+
+  it('keeps each kind of collection to its folders, and its folders to it', async () => {
+    const root = await folder({
+      'rules.yml': [
+        'layout:',
+        '  kinds:',
+        '    negative:',
+        '      tags: [negative, error]',
+        "      id: '.*_N'",
+        "      folders: '.*-errors'",
+        '    slow:',
+        '      tags: [slow]',
+        '      folders: [slow]'
+      ].join('\n')
+    })
+    const loaded = await loadRules(root, null)
+    const rule = ' (rule layout.kinds in rules.yml)'
+    expect(placeProblem(loaded, 'collections', 'create_N', 'orders-errors')).toBeNull()
+    expect(placeProblem(loaded, 'collections', 'create', 'orders-errors', ['error'])).toBeNull()
+    expect(placeProblem(loaded, 'collections', 'create', 'orders', [])).toBeNull()
+    expect(placeProblem(loaded, 'collections', 'create', null, [])).toBeNull()
+    expect(placeProblem(loaded, 'collections', 'create_N', 'orders')).toBe(
+      `its id, matching .*_N, makes it negative: negative collections go in a folder matching .*-errors, not orders${rule}`
+    )
+    expect(placeProblem(loaded, 'collections', 'create', null, ['smoke', 'error'])).toBe(
+      `tag error makes it negative: negative collections go in a folder matching .*-errors, not at the top of collections/${rule}`
+    )
+    expect(placeProblem(loaded, 'collections', 'create', 'orders-errors', ['smoke'])).toBe(
+      `orders-errors holds negative collections only: those tagged negative or error, or with an id matching .*_N${rule}`
+    )
+    // A new collection can be tagged once it is written: only its id can say what it is.
+    expect(placeProblem(loaded, 'collections', 'create', 'orders-errors')).toBeNull()
+    expect(placeProblem(loaded, 'collections', 'nightly', 'orders', ['slow'])).toBe(
+      `tag slow makes it slow: slow collections go in folder slow, not orders${rule}`
+    )
+    expect(placeProblem(loaded, 'collections', 'nightly', 'slow', ['smoke'])).toBe(
+      `slow holds slow collections only: those tagged slow${rule}`
+    )
+    // Only collections have kinds.
+    expect(placeProblem(loaded, 'requests', 'create_N', null)).toBeNull()
+
+    await fs.writeFile(
+      path.join(root, 'rules.yml'),
+      'layout:\n  kinds:\n    errors:\n      id: snake_case\n      folders: [bad-input, not-found]\n'
+    )
+    const byId = await loadRules(root, null)
+    expect(placeProblem(byId, 'collections', 'missing_id', 'orders')).toBe(
+      'its snake_case id makes it errors: errors collections go in one of the folders bad-input, not-found, not orders (rule layout.kinds in rules.yml)'
+    )
+    // With no tags to give it, a new collection's id says what it is.
+    expect(placeProblem(byId, 'collections', 'missing-id', 'not-found')).toBe(
+      'not-found holds errors collections only: those with a snake_case id (rule layout.kinds in rules.yml)'
+    )
   })
 
   it('refuses any base collection under layout.bases, whatever its id', async () => {

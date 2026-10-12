@@ -29,6 +29,7 @@ import { discoverProject, type GlobalProject } from '../workspace/project.js'
 import { readFolder } from '../workspace/readFolder.js'
 import {
   folderNameProblem,
+  kindProblems,
   LINT_HOMES,
   nameFormatProblem,
   NO_BASES,
@@ -182,6 +183,16 @@ export function lintFile(
         fileLine(),
         'sits at the top of collections/; every collection goes in a folder'
       )
+    }
+    if (rules.layout.kinds) {
+      const tags = doc.tags ?? []
+      for (const problem of kindProblems(rules.layout.kinds, id, folder, tags)) {
+        const line =
+          problem.tag === null
+            ? fileLine()
+            : (lineOf(['tags', tags.indexOf(problem.tag)]) ?? fileLine())
+        find('layout.kinds', line, problem.message)
+      }
     }
     const max = rules.layout.maxSteps
     if (max !== undefined && doc.steps.length > max) {

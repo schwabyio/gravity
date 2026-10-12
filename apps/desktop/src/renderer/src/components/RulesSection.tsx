@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AGENTS_SECTION, type RuleFinding } from '@schwabyio/gravity-core/model'
+import { AGENTS_SECTION, ruleValueText, type RuleFinding } from '@schwabyio/gravity-core/model'
 import type { ProjectView } from '@shared/ipc.js'
 import { joinPath } from '../externalEditor.js'
 import { findingsLabel } from '../ruleFindings.js'
@@ -9,10 +9,6 @@ import OpenInEditor from './OpenInEditor.js'
 
 /** Findings listed here; `gta lint` lists the rest. */
 const SHOWN = 100
-
-/** A rule's value as `gta rules` shows it: `[gta, console]`, `off` for null. */
-const shownValue = (value: unknown): string =>
-  value === null ? 'off' : Array.isArray(value) ? `[${value.join(', ')}]` : String(value)
 
 /**
  * The project's rules (SPEC.md §1.4) in Project settings: each rule set, its
@@ -100,7 +96,7 @@ export default function RulesSection(props: {
             <div key={setting.rule} className={`rule${setting.on ? '' : ' off'}`}>
               <dt>
                 <code className="rule-name">{setting.rule}</code>
-                <code className="rule-value">{shownValue(setting.value)}</code>
+                <code className="rule-value">{ruleValueText(setting.value)}</code>
                 <span className="rule-source">
                   {setting.source}
                   {sharedFile(setting.source) && <span className="shared-tag">shared</span>}

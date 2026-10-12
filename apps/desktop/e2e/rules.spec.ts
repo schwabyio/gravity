@@ -378,6 +378,55 @@ test('a library file’s row is marked, its finding opens it, and the app refuse
   expect(fs.existsSync(path.join(tmp, 'shared/collections/CreateOrder.yml'))).toBe(false)
 })
 
+test('each kind of collection keeps to its folders, and no other collection moves into them', async () => {
+  write(
+    'shop/collections/orders-errors/refund-declined.yml',
+    lines('id: refund-declined', 'docs: A refund refused.', 'tags: [negative]', 'steps: []')
+  )
+  write(
+    'shop/collections/misc/health-down.yml',
+    lines('id: health-down', 'docs: Is it down?', 'tags: [negative]', 'steps: []')
+  )
+  write(
+    'shop/rules.yml',
+    lines(
+      'layout:',
+      '  kinds:',
+      '    negative:',
+      '      tags: [negative]',
+      "      folders: '.*-errors'"
+    )
+  )
+  await expect(row('health-down').locator('.rule-mark')).toHaveAttribute(
+    'title',
+    'tag negative makes it negative: negative collections go in a folder matching .*-errors, not misc (layout.kinds in rules.yml)',
+    { timeout: 10_000 }
+  )
+  await expect(row('refund-declined').locator('.rule-mark')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Collection actions for ping' }).click()
+  await page.getByRole('menuitem', { name: 'Move to folder…' }).click()
+  const move = page.getByRole('form', { name: 'Move ping to a folder' })
+  await move.getByLabel('Folder').selectOption({ label: 'orders-errors/' })
+  await move.getByRole('button', { name: 'Move' }).click()
+  await expect(move.getByRole('alert')).toHaveText(
+    'orders-errors holds negative collections only: those tagged negative (rule layout.kinds in rules.yml)'
+  )
+  await move.getByRole('button', { name: 'Cancel' }).click()
+  expect(fs.existsSync(path.join(shop, 'collections/misc/ping.yml'))).toBe(true)
+
+  // The kinds as gta rules shows them.
+  await page.getByRole('button', { name: /rule findings: open the project’s rules/ }).click()
+  const drawer = page.getByRole('dialog', { name: 'Project settings' })
+  await expect(
+    drawer.locator('.rule', { hasText: 'layout.kinds' }).locator('.rule-value')
+  ).toHaveText('{negative: {tags: [negative], folders: .*-errors}}')
+  await page.keyboard.press('Escape')
+
+  fs.rmSync(path.join(shop, 'collections/orders-errors'), { recursive: true })
+  fs.rmSync(path.join(shop, 'collections/misc/health-down.yml'))
+})
+
 test('with no base collections or check files allowed, each is a finding and the app offers no new base', async () => {
   write('shop/bases/authed.yml', lines('id: authed', 'headers:', '  Authorization: Bearer x'))
   write('shop/checks/orders.js', 'export function counted() {}\n')
