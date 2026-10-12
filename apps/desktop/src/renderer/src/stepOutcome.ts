@@ -49,8 +49,39 @@ const NONE: StepOutcome = { mark: null, summary: null, detail: null, hover: null
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
 
+/**
+ * A wait step's result (SPEC.md §2.1): how long it waited, with no mark, since
+ * nothing was checked; or why it did not wait it out.
+ */
+function waited(result: RunResult): StepOutcome {
+  if (result.status === 'pass') {
+    return {
+      mark: null,
+      summary: `waited ${formatMs(result.durationMs)}`,
+      detail: null,
+      hover: null
+    }
+  }
+  const message = result.error?.message ?? 'error'
+  return {
+    mark: 'error',
+    summary: null,
+    detail: message,
+    hover: { title: 'Wait error', lines: [message] }
+  }
+}
+
+/** How long a wait has left, as its row and view count it down: `1.4 s left`. */
+export function waitLeft(ms: number, elapsed: number): string {
+  const left = Math.max(0, ms - elapsed)
+  if (left < 60_000) return `${(left / 1000).toFixed(1)} s left`
+  const minutes = Math.floor(left / 60_000)
+  return `${minutes} min ${Math.ceil((left - minutes * 60_000) / 1000)} s left`
+}
+
 /** One request's result. */
 function single(result: RunResult): StepOutcome {
+  if (result.request.method === 'WAIT' && result.status !== 'skipped') return waited(result)
   const summary = result.response
     ? `${result.response.status} · ${formatMs(result.durationMs)}`
     : null

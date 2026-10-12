@@ -402,6 +402,37 @@ describe('htmlReport', () => {
     expect(page).toContain('<span class="name">teardown › revoke (item 2 of 2)</span>')
   })
 
+  it('shows a wait step as how long it waited, with no request or response', () => {
+    const wait = (over: Partial<RunResult>) =>
+      result('wait 2 s', {
+        request: { method: 'WAIT', url: '2000 ms', headers: [], body: null },
+        response: null,
+        assertions: [],
+        durationMs: 2003,
+        ...over
+      })
+    const page = pageFor(
+      wait({}),
+      wait({
+        status: 'error',
+        error: { phase: 'wait', message: 'Wait cancelled after 1.2 s of 2 s', code: 'ABORTED' },
+        durationMs: 1200
+      })
+    )
+    expect(page).toContain(
+      '<span class="method m-wait">WAIT</span><span class="name">wait 2 s</span><span class="res"><span class="dim">waited 2.00 s</span>'
+    )
+    expect(page).toContain(
+      '<p class="wait-note">Waited 2 s before the next step. Nothing was sent.</p>'
+    )
+    expect(page).toContain('<span class="c-failed">stopped after 1.20 s</span>')
+    expect(page).toContain(
+      '<section class="sub problem"><h3>Wait Error</h3><pre>Wait cancelled after 1.2 s of 2 s</pre></section>'
+    )
+    expect(page).not.toContain('<h3>Request</h3>')
+    expect(page).not.toContain('no response')
+  })
+
   it('shows a test’s error first, errored tests counting as failed for the Failed chip', () => {
     const page = pages(
       run(

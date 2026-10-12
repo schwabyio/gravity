@@ -466,14 +466,15 @@ describe('the steps and tests rules', () => {
       'step 2 (read, its base left out): no tests check its status code with gta.expectResponseStatusCodeToBe',
       'step 3 (delete, only the base collection checks it): no tests check its status code with gta.expectResponseStatusCodeToBe'
     ])
-    // With no base, a request and a read with no tests at all are found.
+    // With no base, a request and a read with no tests at all are found; a wait has nothing to check.
     const bare = lines(
       'id: bare',
       'steps:',
       '  - name: nothing checks it',
       "    DELETE: '{{baseUrl}}/orders/7'",
       '  - name: nor this',
-      '    connection: feed'
+      '    connection: feed',
+      '  - wait: 1000 # nothing to check'
     )
     expect(
       lintFile({ ...file, relativePath: 'bare.yml', source: bare }, loaded, context).map(

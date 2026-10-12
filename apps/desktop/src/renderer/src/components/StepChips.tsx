@@ -1,6 +1,7 @@
 import {
   isReadStep,
   isUseStep,
+  isWaitStep,
   type Collection,
   type FlagConditions,
   type FlagValue,
@@ -46,9 +47,13 @@ export default function StepChips(props: Props) {
   )
   const names = Object.keys(props.flags)
   const needs = names.map((name) => `${name}: ${showFlagValue(props.flags[name]!)}`).join(', ')
-  // Only setup and teardown repeat: a list of things to prepare or clean up.
+  // Only setup and teardown requests repeat: a list of things to prepare or clean up.
   const repeats =
-    props.list !== 'steps' && !isUseStep(step) && !isReadStep(step) && step.connection === undefined
+    props.list !== 'steps' &&
+    !isUseStep(step) &&
+    !isReadStep(step) &&
+    !isWaitStep(step) &&
+    step.connection === undefined
   const place = `${props.list}:${props.index}`
 
   return (

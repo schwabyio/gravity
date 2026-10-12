@@ -10,10 +10,8 @@ import { takeCoverage } from 'node:v8'
 import {
   checkFlags,
   Connections,
-  isReadStep,
-  isUseStep,
-  readRequestLine,
   stepLabel,
+  stepMethod,
   UnknownFlagError,
   redact,
   runRequest,
@@ -323,7 +321,7 @@ function flagGate(
   const notRun = (): RunResult => ({
     item: { path: collectionPath, name: stepLabel(step), seq: null },
     request: {
-      method: isUseStep(step) ? 'USE' : isReadStep(step) ? 'READ' : readRequestLine(step).method,
+      method: stepMethod(step),
       url: '',
       headers: [],
       body: null

@@ -182,7 +182,8 @@ export const RunErrorSchema = z.object({
   /**
    * Which stage failed, so the UI can say where without guessing. `body` is a
    * file the body names that could not be read (SPEC.md §2.2); `connection`, a
-   * step reading a connection that is not open (§2.11).
+   * step reading a connection that is not open (§2.11); `wait`, a wait step whose
+   * `{{variable}}` is no wait, or that was cancelled (§2.1).
    */
   phase: z.enum([
     'use',
@@ -193,6 +194,7 @@ export const RunErrorSchema = z.object({
     'pre-request',
     'http',
     'connection',
+    'wait',
     'tests'
   ]),
   message: z.string(),

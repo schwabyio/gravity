@@ -95,6 +95,7 @@ export interface RunError {
     | 'pre-request'
     | 'http'
     | 'connection'
+    | 'wait'
     | 'tests'
   message: string
   code?: string

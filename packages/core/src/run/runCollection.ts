@@ -1,9 +1,7 @@
 import path from 'node:path'
 import {
-  isReadStep,
-  isUseStep,
-  readRequestLine,
   stepLabel,
+  stepMethod,
   type Collection,
   type Stage,
   type Step,
@@ -376,7 +374,7 @@ const skipped = (step: Step, reason: string, collectionPath: string | null): Run
 const notRun = (step: Step, collectionPath: string | null): RunResult => ({
   item: { path: collectionPath, name: stepLabel(step), seq: null },
   request: {
-    method: isUseStep(step) ? 'USE' : isReadStep(step) ? 'READ' : readRequestLine(step).method,
+    method: stepMethod(step),
     url: '',
     headers: [],
     body: null

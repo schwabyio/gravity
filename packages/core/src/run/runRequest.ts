@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { CheckSession } from '../assert/session.js'
 import { readConnection, sendHttpRequest, type SendOutcome } from '../http/client.js'
 import type { OpenStream, StreamWatch } from '../http/stream.js'
@@ -6,11 +7,16 @@ import type { Body, Collection, Step, VarValue } from '../model/documents.js'
 import {
   isReadStep,
   isUseStep,
+  isWaitMs,
+  isWaitStep,
+  MAX_WAIT_MS,
   readRequestLine,
   stepLabel,
+  waitText,
   type Before,
   type Headers,
-  type Settings
+  type Settings,
+  type WaitStep
 } from '../model/documents.js'
 import {
   deriveStatus,
@@ -133,7 +139,10 @@ export interface SetRun {
   /** Which of its steps this is, 0-based, and how many it has. */
   child: number
   of: number
-  /** The use step's own `tests`, run on the step marked `useTests`, else the set's last. */
+  /**
+   * The use step's own `tests`, run on the step marked `useTests`, else the set's
+   * last step that sends a request.
+   */
   useTests?: string | undefined
 }
 
@@ -217,6 +226,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       durationMs: 0
     }
   }
+  if (isWaitStep(step)) return runWait(step, input)
   const library = context && needsLibrary(input) ? await loadLibrary(context.collectionPath) : null
   const checks = input.checks ?? library?.checks
   const endpoints = input.endpoints ?? library?.endpoints ?? []
@@ -292,9 +302,11 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
         }
       : {})
   })
-  // The use step's own checks look at the step marked `useTests`, else the set's last.
+  // The use step's own checks look at the step marked `useTests`, else the set's last
+  // request: a wait has no response to check.
   const marked = set ? set.doc.steps.findIndex((s) => s.useTests === true) : -1
-  const useChecksThis = set ? set.child === (marked >= 0 ? marked : set.of - 1) : false
+  const last = set ? set.doc.steps.findLastIndex((s) => !isWaitStep(s)) : -1
+  const useChecksThis = set ? set.child === (marked >= 0 ? marked : last) : false
   const layers: Layer[] = requestLayers({
     endpoint,
     base,
@@ -524,6 +536,89 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
     status: deriveStatus(checked.assertions, testsError, true),
     durationMs: performance.now() - startedHr
   }
+}
+
+/**
+ * A wait step (SPEC.md §2.1): nothing is sent and nothing checked, and no
+ * script runs — the step waits its milliseconds, or until the run is stopped.
+ */
+async function runWait(step: WaitStep, input: RunStepInput): Promise<RunResult> {
+  const { itemPath = null, signal, set } = input
+  const startedHr = performance.now()
+  const result = (ms: number | null, outcome: Pick<RunResult, 'status' | 'error'>): RunResult => ({
+    item: { path: itemPath, name: stepLabel(step), seq: null },
+    request: {
+      method: 'WAIT',
+      url: ms === null ? String(step.wait) : `${ms} ms`,
+      headers: [],
+      body: null
+    },
+    response: null,
+    assertions: [],
+    ...outcome,
+    ...(set
+      ? {
+          use: {
+            set: set.name,
+            ...(set.useName ? { name: set.useName } : {}),
+            child: set.child,
+            of: set.of
+          }
+        }
+      : {}),
+    durationMs: performance.now() - startedHr
+  })
+
+  let ms: number
+  try {
+    ms = typeof step.wait === 'number' ? step.wait : await waitOf(step.wait, input)
+  } catch (cause) {
+    const error: RunError =
+      cause instanceof InterpolationError
+        ? interpolateError(cause)
+        : { phase: cause instanceof WaitError ? 'wait' : 'use', message: (cause as Error).message }
+    return result(null, { status: 'error', error })
+  }
+  try {
+    await sleep(ms, undefined, signal ? { signal } : {})
+  } catch {
+    const waited = Math.round(performance.now() - startedHr)
+    return result(ms, {
+      status: 'error',
+      error: {
+        phase: 'wait',
+        message: `Wait cancelled after ${waitText(waited)} of ${waitText(ms)}`,
+        code: 'ABORTED'
+      }
+    })
+  }
+  return result(ms, { status: 'pass', error: null })
+}
+
+/** A wait's `{{variables}}` that do not come to a wait a step can have. */
+class WaitError extends Error {}
+
+/**
+ * The milliseconds a wait step's `{{variables}}` come to, now: in a request
+ * set, its params included.
+ */
+async function waitOf(expression: string, input: RunStepInput): Promise<number> {
+  const run = input.scope ?? (input.context ? await buildScope(input.context) : new VariableScope())
+  // A set's params resolve only when asked for: a wait that names none leaves them be.
+  const params = !expression.includes('params.')
+    ? undefined
+    : input.set
+      ? input.set.params()
+      : (input.params ??
+        (input.collection?.params ? resolveParams(input.collection.params, {}, run) : undefined))
+  const text = interpolateToString(expression, params ? new ParamsScope(run, params) : run).trim()
+  const ms = /^\d+$/.test(text) ? Number(text) : Number.NaN
+  if (!isWaitMs(ms)) {
+    throw new WaitError(
+      `wait: ${expression} is ${JSON.stringify(text)}, not a whole number of milliseconds from 0 to ${MAX_WAIT_MS} (SPEC.md §2.1)`
+    )
+  }
+  return ms
 }
 
 /**

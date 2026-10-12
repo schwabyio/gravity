@@ -615,15 +615,17 @@ Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
 | `connection` | string       | no       | Keep the event stream this request opens as a connection (§2.11).               |
 | `base`       | `false`      | no       | `false` leaves the step's endpoint base out (§2.6).                             |
 | `docs`       | string       | no       | Markdown (§2, `docs`).                                                          |
+| `wait`       | int, string  | no       | Wait this many milliseconds instead of sending a request (below).               |
 
 - A step with two method keys is an error, and so is a step with none, unless it is a
-  use step or reads a connection.
+  use step, reads a connection or waits.
 - **The URL is authoritative, query string included.** There is no separate block of
   query parameters. Editors show a parameter table as a view over the URL.
 - A step may instead run reusable requests with `use:` (§2.5). A use step has no
   method key.
 - A step may also read a connection, an event stream an earlier step keeps open, with
   `connection:` and no method key (§2.11).
+- A step may only wait, with `wait:` and no method key (below).
 - **Any other key is an error**, so a misspelled key such as `heders:` fails at once
   rather than being ignored. A method key in lower case (`get:`) is reported as such.
 
@@ -648,6 +650,37 @@ teardown:
 - An empty list skips the step. Anything that is not a list fails it before anything
   is sent.
 - A use step cannot have `forEach`.
+
+**`wait`** makes a step that sends nothing: it waits, then the next step runs. It is for
+something the API does after it answers, such as a search index catching up:
+
+```yaml
+steps:
+  - name: create order
+    POST: '{{baseUrl}}/orders'
+  - wait: 2000 # milliseconds; reports call it "wait 2 s"
+  - name: order is searchable
+    GET: '{{baseUrl}}/search?q={{orderId}}'
+```
+
+- It is a whole number of milliseconds, from 0 to 600000 (10 minutes). A fixed wait any
+  longer is nearly always waiting for something to be ready, which a step that checks
+  for it does better.
+- It may be a string of `{{variables}}`, resolved when the step runs, such as
+  `wait: '{{retryAfterMs}}'` with a value an earlier step's `tests` set with `gta.set`.
+  What it comes to must be a whole number from 0 to 600000, or the step fails. A string
+  that holds no `{{variable}}`, such as `2s`, is an error.
+- A wait step has `wait`, and may have `name`, `docs`, `flags` and `tags` (§2.4, §2.9).
+  It has no method key, `use`, `connection`, `headers`, `body`, `settings`, `before`,
+  `tests`, `forEach`, `useTests` or `base`. Its name defaults to how long it waits:
+  `wait 2 s`, `wait 500 ms`, `wait {{retryAfterMs}}`.
+- No script runs for it, the collection's included: there is no request or response.
+  Its feature flags, `gta.skipRest`, `bail` and tags apply as to any step.
+- Its result has the method `WAIT`, no response and no checks, and passes once it has
+  waited. A cancel, or `timeoutCollection`, stops it at once, as a failure; teardown
+  then runs as §2.10 says.
+- It can be a step of `steps`, `setup` and `teardown`, and of a reusable requests file
+  (§2.5). An endpoints file holds none (§2.6).
 
 ### 2.2 `body`
 
@@ -948,9 +981,10 @@ without `use` is an error too.
 - **Layers.** Headers and settings: the collection's, under the file's, under each
   step's own. Scripts run collection, then file, then step: `before.script` before the
   request and `tests` after. The use step's own `tests` run last, on the response of
-  the file's step marked `useTests: true`, or else its last step. `params` is the
-  file's alone: the collection's scripts, and a base collection's or an endpoint's
-  (§2.6, §2.7), never see it. In an endpoint's `before.script`, a segment written as
+  the file's step marked `useTests: true`, or else its last step that sends a request:
+  a wait has no response. A use step with `tests` cannot run a file of only waits.
+  `params` is the file's alone: the collection's scripts, and a base collection's or an
+  endpoint's (§2.6, §2.7), never see it. In an endpoint's `before.script`, a segment written as
   `{{params.id}}` reads as written.
 - **One level.** A reusable requests file must not `use:` another, and has `params`,
   not `vars`. A file in `requests/` without `params` is not a reusable requests file.
@@ -1015,7 +1049,7 @@ steps:
 ```
 
 - An endpoint's URL must be a path starting with `/`. An endpoints file must not hold a
-  use step.
+  use step or a wait step.
 - **Matching.** A step's request is under the endpoint with its method and a matching
   path. The path is read from the URL as written. The host, or a leading
   `{{variable}}` standing for it, is ignored, and so is the query string, so one base
@@ -1769,8 +1803,8 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 **Steps**
 
 - A step has exactly one method key, out of `GET`, `POST`, `PUT`, `PATCH`, `DELETE`,
-  `HEAD` and `OPTIONS`, in capitals, and its value is a string. A use step and a step
-  reading a connection have none.
+  `HEAD` and `OPTIONS`, in capitals, and its value is a string. A use step, a step
+  reading a connection and a wait step have none.
 - A step has no key outside the table in §2.1.
 - A use step has no method key, `headers`, `body`, `settings` or `before`. `with` is used
   only with `use`.
@@ -1782,6 +1816,9 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
   step at most.
 - A step reading a connection has no `headers`, `body`, `base` or `forEach`. A step
   opening one has no `forEach`, and a use step has no `connection` (§2.11).
+- A wait step's `wait` is a whole number from 0 to 600000, or a string holding a
+  `{{variable}}`, and it holds nothing but `wait`, `name`, `docs`, `flags` and `tags`.
+  At run time its `{{variables}}` must come to a whole number from 0 to 600000 (§2.1).
 
 **Values**
 

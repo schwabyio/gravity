@@ -2,8 +2,10 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import {
   isReadStep,
   isUseStep,
+  isWaitStep,
   readRequestLine,
   stepLabel,
+  waitText,
   type RuleFinding,
   type RunResult,
   type Step,
@@ -18,9 +20,12 @@ import {
   MARK_GLYPHS,
   MARK_NAMES,
   stepOutcome,
+  waitLeft,
   type StepHover,
   type StepOutcome
 } from '../stepOutcome.js'
+import { formatMs } from '../format.js'
+import { useElapsed } from '../hooks/useElapsed.js'
 import MenuIcon, { type MenuIconName } from './MenuIcon.js'
 import RuleMark from './RuleMark.js'
 import Tooltip from './Tooltip.js'
@@ -177,11 +182,17 @@ export default function StepList(props: Props) {
         {props.steps.map((step, index) => {
           const use = isUseStep(step) ? step : null
           const set = use ? resolveSet(props.sets, use.use) : null
+          const wait = isWaitStep(step) ? step : null
           const { method, url } = use
             ? { method: 'USE', url: set ? set.path : `no reusable requests called ${use.use}` }
-            : isReadStep(step)
-              ? { method: 'READ', url: `connection ${step.connection}` }
-              : readRequestLine(step)
+            : wait
+              ? {
+                  method: 'WAIT',
+                  url: `waits ${typeof wait.wait === 'number' ? waitText(wait.wait) : wait.wait}`
+                }
+              : isReadStep(step)
+                ? { method: 'READ', url: `connection ${step.connection}` }
+                : readRequestLine(step)
           const children = use ? (props.childResults[index] ?? []) : []
           const ran = children.filter((child): child is RunResult => child !== undefined)
           // A forEach step reports once per item: counted like a use step's requests.
@@ -311,7 +322,14 @@ export default function StepList(props: Props) {
                         </span>
                       )}
                     </span>
-                    <StepResult outcome={outcome} />
+                    <StepResult
+                      outcome={outcome}
+                      clock={
+                        isRunning && wait ? (
+                          <WaitCountdown ms={typeof wait.wait === 'number' ? wait.wait : null} />
+                        ) : null
+                      }
+                    />
                   </button>
                 )}
                 <span className="step-menu-wrap">
@@ -471,15 +489,17 @@ export default function StepList(props: Props) {
 /** A step's result, explained on hover: how many of its checks passed, and which failed. */
 /**
  * A step's last run, at the end of its line: its status and time, then its
- * verdict, explained on hover. Nothing before it has run.
+ * verdict, explained on hover. Nothing before it has run. A wait running counts
+ * down in the status's place.
  */
-function StepResult({ outcome }: { outcome: StepOutcome }) {
+function StepResult({ outcome, clock }: { outcome: StepOutcome; clock?: React.ReactNode }) {
   if (outcome.summary === null && outcome.mark === null) return null
   return (
     <ResultHover hover={outcome.hover}>
       {/* An empty title keeps the row's own, its URL, from showing too. */}
       <span className="step-result" title="">
-        {outcome.summary !== null && <span className="step-summary">{outcome.summary}</span>}
+        {clock ??
+          (outcome.summary !== null && <span className="step-summary">{outcome.summary}</span>)}
         {outcome.mark ? (
           <span
             className={`step-mark ${outcome.mark}`}
@@ -494,6 +514,14 @@ function StepResult({ outcome }: { outcome: StepOutcome }) {
         )}
       </span>
     </ResultHover>
+  )
+}
+
+/** A wait step's row while it waits: how long it has left, or, for a variable, how long so far. */
+function WaitCountdown({ ms }: { ms: number | null }) {
+  const elapsed = useElapsed()
+  return (
+    <span className="step-summary">{ms === null ? formatMs(elapsed) : waitLeft(ms, elapsed)}</span>
   )
 }
 

@@ -125,6 +125,7 @@ Both run on macOS, Windows and Linux.
 **Running**
 
 - Steps run in order and share variables. Collections can run in parallel.
+- A wait step pauses a run before its next step, for up to 10 minutes: `wait: 2000`.
 - Data-driven runs: a CSV or JSON file beside a collection runs it once per row.
 - Setup and teardown run once around all the rows. Setup stops at its first failure;
   teardown runs even after a failure, a cancel or a timeout.

@@ -48,6 +48,7 @@ import SaveStatus from './components/SaveStatus.js'
 import SettingsPage from './components/SettingsPage.js'
 import StepChips from './components/StepChips.js'
 import Tooltip from './components/Tooltip.js'
+import WaitView from './components/WaitStep.js'
 import ProjectSettingsDrawer from './components/ProjectSettingsDrawer.js'
 import ChangesDrawer from './components/ChangesDrawer.js'
 import ProjectSidebar from './components/ProjectSidebar.js'
@@ -964,7 +965,14 @@ export default function App() {
     if (request.use !== null || request.forEach.trim() !== '') {
       return void runIndexesOf(stepList, [stepIndex], false)
     }
-    if (request.reads === null ? request.url.trim() === '' : request.reads === '') return
+    // Nothing to send without a URL, a connection to read, or a wait.
+    const nothing =
+      request.wait !== null
+        ? request.wait.trim() === ''
+        : request.reads === null
+          ? request.url.trim() === ''
+          : request.reads === ''
+    if (nothing) return
     const runId = nextRunId()
     activeRunId.current = runId
     resultsRunId.current = runId
@@ -1528,6 +1536,9 @@ export default function App() {
                     const [first] = connectionNames(doc)
                     if (first) editor.addStep(afterIdOf(list, after), { connection: first }, list)
                   }}
+                  onAddWait={(list, after) =>
+                    editor.addStep(afterIdOf(list, after), { wait: 1000 }, list)
+                  }
                   connections={(collectionPath && held[collectionPath]) || NO_CONNECTIONS}
                   onCloseConnection={(name) => {
                     if (collectionPath) window.desktop.closeConnection(collectionPath, name)
@@ -1603,7 +1614,37 @@ export default function App() {
                     setTagFilters((current) => ({ ...current, [open.summary.path]: tags }))
                   }
                 >
-                  {stepIndex >= 0 && request && (
+                  {stepIndex >= 0 && request && request.wait !== null && (
+                    <WaitView
+                      request={request}
+                      onChange={editor.patch}
+                      chips={
+                        <StepChips
+                          collection={doc}
+                          list={stepList}
+                          index={stepIndex}
+                          flags={request.flags}
+                          onFlags={(flags) => editor.patch({ flags: flags ?? {} })}
+                          flagValues={flagValues}
+                          forEach={request.forEach}
+                          onForEach={(forEach) => editor.patch({ forEach })}
+                          previews={shownPreviews}
+                          onCopyVariable={copyVariable}
+                        />
+                      }
+                      previews={shownPreviews}
+                      onCopyVariable={copyVariable}
+                      result={selectedResult}
+                      error={error}
+                      running={runningId !== null && runningId === editor.selectedId}
+                      onSend={() => void send()}
+                      onCancel={cancel}
+                      conflict={open.conflict !== null}
+                      onReloadFromDisk={editor.reloadFromDisk}
+                      onKeepMine={editor.keepMine}
+                    />
+                  )}
+                  {stepIndex >= 0 && request && request.wait === null && (
                     <RequestView
                       request={request}
                       collection={doc}

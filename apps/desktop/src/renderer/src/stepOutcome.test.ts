@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RunResult } from '@schwabyio/gravity-core/model'
-import { stepOutcome } from './stepOutcome.js'
+import { stepOutcome, waitLeft } from './stepOutcome.js'
 
 const result = (over: Partial<RunResult> = {}): RunResult => ({
   item: { path: null, name: 'step', seq: null },
@@ -36,6 +36,37 @@ describe('stepOutcome', () => {
       detail: null,
       hover: { title: 'All 2 checks passed', lines: [] }
     })
+  })
+
+  it('says how long a wait step waited, with no mark, or why it stopped', () => {
+    const wait = { method: 'WAIT', url: '2000 ms', headers: [], body: null }
+    expect(one(result({ request: wait, response: null, durationMs: 2004 }))).toEqual({
+      mark: null,
+      summary: 'waited 2.00 s',
+      detail: null,
+      hover: null
+    })
+    const message = 'Wait cancelled after 1.2 s of 2 s'
+    expect(
+      one(
+        result({
+          request: wait,
+          response: null,
+          status: 'error',
+          error: { phase: 'wait', message, code: 'ABORTED' }
+        })
+      )
+    ).toEqual({
+      mark: 'error',
+      summary: null,
+      detail: message,
+      hover: { title: 'Wait error', lines: [message] }
+    })
+    expect([waitLeft(2000, 600), waitLeft(2000, 2500), waitLeft(90_000, 0)]).toEqual([
+      '1.4 s left',
+      '0.0 s left',
+      '1 min 30 s left'
+    ])
   })
 
   it('marks nothing as passed when the step has no tests', () => {

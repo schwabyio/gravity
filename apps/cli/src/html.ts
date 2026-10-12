@@ -19,6 +19,7 @@ import {
   resultName,
   sortArraysBy,
   toJsonLines,
+  waitText,
   type AssertionResult,
   type BodyLine,
   type Check,
@@ -328,24 +329,37 @@ function testSection(r: RunResult, index: number, ref: StepRef | undefined): str
     : escape(named)
   const method = r.request.method.toUpperCase()
   const res = r.response
+  // A wait step sends nothing (SPEC.md §2.1): how long it waited is what it did, or
+  // how long it got before a cancel, or that it never began.
+  const waits = method === 'WAIT'
   const outcome = r.skipped
     ? '<span class="dim">skipped</span>'
-    : res
-      ? `${statusCode(res)}<span class="dim">${duration(res.timings.totalMs)}</span>`
-      : '<span class="c-failed">no response</span>'
+    : waits
+      ? !r.error
+        ? `<span class="dim">waited ${duration(r.durationMs)}</span>`
+        : r.error.code === 'ABORTED'
+          ? `<span class="c-failed">stopped after ${duration(r.durationMs)}</span>`
+          : '<span class="c-failed">did not wait</span>'
+      : res
+        ? `${statusCode(res)}<span class="dim">${duration(res.timings.totalMs)}</span>`
+        : '<span class="c-failed">no response</span>'
   const id = `t${index + 1}`
   // A skipped step sent nothing: the reason — a feature flag, gta.skip — is all there is to show.
   const body = r.skipped
     ? `<p class="skip-reason">${escape(r.skipped.reason)} — this test was not run</p>`
-    : [
-        r.error ? errorSection(r) : '',
-        requestSection(r.request),
-        responseSection(r, id),
-        assertionsSection(r.assertions),
-        r.logs?.length ? consoleSection(r) : ''
-      ]
-        .filter(Boolean)
-        .join('\n')
+    : waits
+      ? r.error
+        ? errorSection(r)
+        : `<p class="wait-note">Waited ${escape(waitedFor(r.request.url))} before the next step. Nothing was sent.</p>`
+      : [
+          r.error ? errorSection(r) : '',
+          requestSection(r.request),
+          responseSection(r, id),
+          assertionsSection(r.assertions),
+          r.logs?.length ? consoleSection(r) : ''
+        ]
+          .filter(Boolean)
+          .join('\n')
   // What the search matches: the name as shown, iteration and all.
   return `<details class="test s-${status}" id="${id}" data-status="${group(status)}" data-search="${escape(named.toLowerCase())}"${status === 'passed' || status === 'skipped' ? '' : ' open'}>
 <summary><span class="n">${index + 1}</span><span class="method ${methodClass(method)}">${escape(method)}</span><span class="name">${name}</span><span class="res">${outcome}${mark(status)}<span class="chev" aria-hidden="true">▶</span></span></summary>
@@ -860,6 +874,12 @@ function statusCode(res: ReceivedResponse): string {
 /** The app's colour for a method; one it has none for keeps the text's. */
 const methodClass = (method: string) => `m-${method.toLowerCase().replace(/[^a-z]/g, '')}`
 
+/** A wait step's milliseconds, as its result's URL holds them (`2000 ms`), in words. */
+const waitedFor = (url: string): string => {
+  const ms = /^(\d+) ms$/.exec(url)?.[1]
+  return ms === undefined ? url : waitText(Number(ms))
+}
+
 /**
  * A ring of the parts, and the pass rate in it: of what ran, so skipped is
  * left out. Never 100% while anything failed, as the rate rounds down.
@@ -1218,6 +1238,7 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word}
 .test-body{padding:16px;display:grid;gap:20px;border-top:1px solid var(--border-soft);min-width:0}
 .empty{margin:0;padding:16px}
 .skip-reason{margin:0;color:var(--skipped)}
+.wait-note{margin:0;color:var(--dim)}
 .sub{min-width:0}
 .sub h3{margin:0 0 8px;font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.08em;color:var(--dim)}
 .sub h3 .dim{text-transform:none;letter-spacing:0;font-weight:400;margin-left:6px}

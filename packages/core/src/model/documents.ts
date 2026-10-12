@@ -297,6 +297,16 @@ export const StepSchema = z
     connection: z
       .string()
       .regex(CONNECTION_NAME_PATTERN, 'a connection name is letters, digits and - _ .')
+      .optional(),
+    /**
+     * A step that only waits, this many milliseconds, before the next step
+     * (SPEC.md §2.1): a whole number up to `MAX_WAIT_MS`, or a string of
+     * `{{variables}}` resolving to one when the step runs. It sends nothing.
+     */
+    wait: z
+      .union([z.number(), z.string()], {
+        error: `wait is a whole number of milliseconds, as wait: 2000, or a {{variable}} holding one (SPEC.md §2.1)`
+      })
       .optional()
   })
   .superRefine((step, ctx) => {
@@ -313,10 +323,23 @@ export const StepSchema = z
             ? 'expect: blocks are not supported; write the checks in tests with gta.expect… (SPEC.md §5)'
             : method
               ? `${key}: a method key is written in capitals, ${method} (SPEC.md §2.1)`
-              : `unknown key "${key}" on a step; a step holds a method (${HTTP_METHODS.join(', ')}) or use and with, and ${[...STEP_KEYS].filter((k) => k !== 'use' && k !== 'with').join(', ')} (SPEC.md §2.1)`
+              : `unknown key "${key}" on a step; a step holds a method (${HTTP_METHODS.join(', ')}), use and with, or wait, and ${[...STEP_KEYS].filter((k) => k !== 'use' && k !== 'with' && k !== 'wait').join(', ')} (SPEC.md §2.1)`
       })
     }
     const methods = HTTP_METHODS.filter((m) => m in step)
+    if ('wait' in step) {
+      // A wait step sends nothing, so it has nothing of a request, and no scripts.
+      for (const key of [...methods, ...WAIT_FORBIDDEN.filter((key) => key in step)]) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: `a wait step only waits, so it cannot have ${key}; it holds wait, name, docs, flags and tags (SPEC.md §2.1)`
+        })
+      }
+      const problem = waitProblem(step.wait)
+      if (problem) ctx.addIssue({ code: 'custom', path: ['wait'], message: problem })
+      return
+    }
     if ('use' in step) {
       if ('forEach' in step) {
         ctx.addIssue({
@@ -362,7 +385,7 @@ export const StepSchema = z
       }
       ctx.addIssue({
         code: 'custom',
-        message: `step must declare one method key (${HTTP_METHODS.join(', ')}), or read a connection with connection: alone`
+        message: `step must declare one method key (${HTTP_METHODS.join(', ')}), read a connection with connection: alone, or wait with wait:`
       })
       return
     }
@@ -404,7 +427,8 @@ const STEP_KEYS: ReadonlySet<string> = new Set([
   'useTests',
   'base',
   'docs',
-  'connection'
+  'connection',
+  'wait'
 ])
 
 /** What a use step may not have: those belong to the set's own requests. */
@@ -412,6 +436,62 @@ const USE_FORBIDDEN = ['headers', 'body', 'settings', 'before'] as const
 
 /** What a step reading a connection may not have: it sends no request. */
 const READ_FORBIDDEN = ['headers', 'body', 'base', 'forEach'] as const
+
+/** What a wait step may not have: everything but `wait`, `name`, `docs`, `flags` and `tags`. */
+const WAIT_FORBIDDEN = [
+  'use',
+  'with',
+  'connection',
+  'headers',
+  'body',
+  'settings',
+  'before',
+  'tests',
+  'forEach',
+  'useTests',
+  'base'
+] as const
+
+/**
+ * The longest a wait step waits, 10 minutes (SPEC.md §2.1). A fixed wait any
+ * longer is nearly always waiting for something to be ready, which a request
+ * that checks for it does better; and a typo should not hold a run for an hour.
+ */
+export const MAX_WAIT_MS = 600_000
+
+/** Whether `ms` is a wait a step can have: a whole number from 0 to `MAX_WAIT_MS`. */
+export const isWaitMs = (ms: number): boolean =>
+  Number.isInteger(ms) && ms >= 0 && ms <= MAX_WAIT_MS
+
+/**
+ * What is wrong with a step's `wait:` as written; null when nothing is. A
+ * string must hold `{{variables}}`: its value is checked when the step runs.
+ */
+export function waitProblem(wait: number | string | undefined): string | null {
+  if (wait === undefined) return null
+  if (typeof wait === 'string') {
+    return /\{\{.+\}\}/.test(wait)
+      ? null
+      : `wait: ${wait} is not a number of milliseconds; write it as wait: 2000, or a {{variable}} holding one (SPEC.md §2.1)`
+  }
+  if (!Number.isInteger(wait) || wait < 0) {
+    return `wait: ${wait} is not a whole number of milliseconds, 0 or more; wait: 1500 waits a second and a half (SPEC.md §2.1)`
+  }
+  if (wait > MAX_WAIT_MS) {
+    return `wait: ${wait} is longer than a wait can be, ${MAX_WAIT_MS} ms (${waitText(MAX_WAIT_MS)}) (SPEC.md §2.1)`
+  }
+  return null
+}
+
+/** A wait in words: `500 ms`, `2 s`, `1.5 s`, `1 min 30 s`, `10 min`. */
+export function waitText(ms: number): string {
+  if (ms < 1000) return `${ms} ms`
+  const seconds = (value: number) => `${Number((value / 1000).toFixed(3))} s`
+  if (ms < 60_000) return seconds(ms)
+  const minutes = Math.floor(ms / 60_000)
+  const rest = ms - minutes * 60_000
+  return rest === 0 ? `${minutes} min` : `${minutes} min ${seconds(rest)}`
+}
 
 /** A step that runs a request set: `use:` and the values it passes `with:`. */
 export type UseStep = Step & { use: string }
@@ -424,7 +504,24 @@ export type ReadStep = Step & { connection: string }
 export const isReadStep = (step: Step): step is ReadStep =>
   typeof step.connection === 'string' &&
   !isUseStep(step) &&
+  !isWaitStep(step) &&
   !HTTP_METHODS.some((method) => method in step)
+
+/** A step that only waits (SPEC.md §2.1): `wait:`, milliseconds or a `{{variable}}`. */
+export type WaitStep = Step & { wait: number | string }
+
+export const isWaitStep = (step: Step): step is WaitStep => step.wait !== undefined
+
+/**
+ * What a step does, as results and the app label it: its method, or `USE`,
+ * `READ` or `WAIT` for a step that sends no request of its own.
+ */
+export function stepMethod(step: Step): HttpMethod | 'USE' | 'READ' | 'WAIT' {
+  if (isUseStep(step)) return 'USE'
+  if (isWaitStep(step)) return 'WAIT'
+  if (isReadStep(step)) return 'READ'
+  return readRequestLine(step).method
+}
 
 /**
  * One input of a request set: a plain default, or `{ required, default,
@@ -487,9 +584,9 @@ export function stepsForTags(
 }
 
 /**
- * Pull the single method key and its URL back out of a step. A use step and a
- * step reading a connection have neither: callers check `isUseStep` and
- * `isReadStep` first.
+ * Pull the single method key and its URL back out of a step. A use step, a
+ * step reading a connection and a wait step have neither: callers check
+ * `isUseStep`, `isReadStep` and `isWaitStep` first, or use `stepMethod`.
  */
 export function readRequestLine(step: Step): { method: HttpMethod; url: string } {
   const method = HTTP_METHODS.find((m) => m in step) as HttpMethod
@@ -500,6 +597,9 @@ export function readRequestLine(step: Step): { method: HttpMethod; url: string }
 export function stepLabel(step: Step): string {
   if (step.name && step.name.trim() !== '') return step.name
   if (isUseStep(step)) return step.use
+  if (isWaitStep(step)) {
+    return `wait ${typeof step.wait === 'number' ? waitText(step.wait) : step.wait}`
+  }
   if (isReadStep(step)) return `read ${step.connection}`
   const { method, url } = readRequestLine(step)
   return `${method} ${url}`

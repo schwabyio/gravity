@@ -21,6 +21,7 @@ export type MenuIconName =
   | 'delete'
   | 'use'
   | 'read'
+  | 'wait'
 
 /**
  * The icon at the start of a menu item: the app's own where it has one, the
@@ -114,6 +115,13 @@ const DRAWN: Record<
   ),
   // A pulse, as a stream's events come.
   read: <path d="M1.5 8h3l1.5-4 3 8 1.5-4h4" />,
+  // An hourglass: time passing before the next step.
+  wait: (
+    <>
+      <path d="M4.5 2h7M4.5 14h7" />
+      <path d="M5.5 2v1.5C5.5 5 8 6.5 8 8s-2.5 3-2.5 4.5V14M10.5 2v1.5C10.5 5 8 6.5 8 8s2.5 3 2.5 4.5V14" />
+    </>
+  ),
   up: <path d="M8 13V3M4 7l4-4 4 4" />,
   down: <path d="M8 3v10M4 9l4 4 4-4" />,
   delete: (

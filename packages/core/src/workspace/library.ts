@@ -11,6 +11,7 @@ import { parseCollection } from '../format/index.js'
 import {
   isReadStep,
   isUseStep,
+  isWaitStep,
   readRequestLine,
   type Collection,
   type HttpMethod,
@@ -271,7 +272,7 @@ export async function loadEndpoints(
     // One that will not parse, or whose id is wrong, is shown with its problem, not used.
     if (!file.doc || file.problem) continue
     for (const step of file.doc.steps) {
-      if (isUseStep(step) || isReadStep(step)) continue
+      if (isUseStep(step) || isReadStep(step) || isWaitStep(step)) continue
       const { method, url } = readRequestLine(step)
       const base: EndpointBase = {
         method,
@@ -298,6 +299,7 @@ export function endpointProblem(doc: Collection): string | undefined {
     if (isReadStep(step)) {
       return 'an endpoint is a method and a path, not a step reading a connection'
     }
+    if (isWaitStep(step)) return 'an endpoint is a method and a path, not a wait: step'
     if (step.connection !== undefined) return 'an endpoint opens no connection'
     const { method, url } = readRequestLine(step)
     if (!url.startsWith('/'))

@@ -1,6 +1,7 @@
 import path from 'node:path'
 import {
   isUseStep,
+  isWaitStep,
   readParam,
   STEP_LISTS,
   type Collection,
@@ -57,6 +58,11 @@ export async function planSteps(
       const set = await resolveRequestSet(project.root, project.global, step.use)
       checkWith(step.use, set.doc, step.with ?? {})
       if (set.doc.steps.length === 0) throw new Error(`use: ${step.use} — the file has no steps`)
+      if (step.tests?.trim() && set.doc.steps.every(isWaitStep)) {
+        throw new Error(
+          `use: ${step.use} — every step of it waits, so the use step's tests have no response to check`
+        )
+      }
       const planSet: PlannedSet = {
         name: step.use,
         useName: step.name?.trim() ? step.name : undefined,

@@ -157,6 +157,35 @@ describe('connections in the editor', () => {
   })
 })
 
+describe('wait steps in the editor', () => {
+  it('keeps a wait step one, its milliseconds a number and a {{variable}} as typed', () => {
+    const original = StepSchema.parse({
+      name: 'settle',
+      wait: 2000,
+      flags: { search: true },
+      docs: 'The index catches up.'
+    })
+    const state = fromStep(original)
+    expect(state).toMatchObject({ wait: '2000', use: null, reads: null, url: '' })
+    expect(mergeIntoStep(original, state)).toEqual(original)
+    expect(mergeIntoStep(original, { ...state, wait: ' 1500 ', name: '' })).toEqual({
+      wait: 1500,
+      flags: { search: true },
+      docs: 'The index catches up.'
+    })
+    expect(mergeIntoStep(original, { ...state, wait: '{{pause}}', docs: '' })).toEqual({
+      name: 'settle',
+      wait: '{{pause}}',
+      flags: { search: true }
+    })
+    // What is no wait yet leaves the step's as it was, rather than write a file that will not load.
+    expect(mergeIntoStep(original, { ...state, wait: '2s' })).toEqual(original)
+    expect(mergeIntoStep(original, { ...state, wait: '' })).toEqual(original)
+    expect(mergeIntoStep(original, { ...state, wait: '900000' })).toEqual(original)
+    expect(fromStep(StepSchema.parse({ GET: '/x' })).wait).toBeNull()
+  })
+})
+
 describe('docs in the editor', () => {
   it('reads a step’s docs, writes a change, and removes emptied ones', () => {
     const original = StepSchema.parse({ name: 'get', GET: 'http://x', docs: 'Gets it.' })

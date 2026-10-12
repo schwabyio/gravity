@@ -13,6 +13,7 @@ import { sourceLine } from '../format/lines.js'
 import {
   isReadStep,
   isUseStep,
+  isWaitStep,
   readRequestLine,
   STEP_LISTS,
   stepLabel,
@@ -170,8 +171,9 @@ export function lintFile(
       return { step, list, index, short, name: `${short} (${stepLabel(step)})` }
     })
   )
-  /** What a step does: send a request, run a request set, or read a connection. */
-  const kindOf = (step: Step) => (isUseStep(step) ? 'use' : isReadStep(step) ? 'read' : 'request')
+  /** What a step does: send a request, run a request set, read a connection, or wait. */
+  const kindOf = (step: Step) =>
+    isUseStep(step) ? 'use' : isWaitStep(step) ? 'wait' : isReadStep(step) ? 'read' : 'request'
 
   if (file.home === COLLECTIONS_DIR) {
     if (rules.layout.folders && folder === null) {
@@ -286,8 +288,9 @@ export function lintFile(
     const base = doc.extends ? context.baseTests(doc.extends) : undefined
     for (const { step, list, index, name } of steps) {
       const kind = kindOf(step)
-      // A use step's requests are steps of their request set, checked there.
-      if (kind === 'use') continue
+      // A use step's requests are steps of their request set, checked there; a wait
+      // has no response to check.
+      if (kind === 'use' || kind === 'wait') continue
       const request = kind === 'request' && step.base !== false ? readRequestLine(step) : null
       const endpoint = request ? findEndpoint(request.method, request.url, context.endpoints) : null
       const tests = [...(endpoint?.tests ?? []), base, doc.tests, step.tests].filter(

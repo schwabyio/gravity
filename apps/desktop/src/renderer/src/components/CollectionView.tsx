@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   isReadStep,
-  isUseStep,
-  readRequestLine,
   stepLabel,
+  stepMethod,
   STEP_LISTS,
   type Collection,
   type FlagConditions,
@@ -93,6 +92,8 @@ interface Props {
   onAddUse: (list: ListName, after?: number) => void
   /** Add a step reading a connection the collection's steps open (SPEC.md §2.11). */
   onAddRead: (list: ListName, after?: number) => void
+  /** Add a step that waits before the next one (SPEC.md §2.1). */
+  onAddWait: (list: ListName, after?: number) => void
   /** The connections this collection's Sends hold open, and a way to close them. */
   connections: ConnectionView[]
   onCloseConnection: (name: string) => void
@@ -213,13 +214,7 @@ export default function CollectionView(props: Props) {
   const selectedSteps = stepsOf(props.collection, props.selectedList)
   const stepCount = selectedSteps.length
   const selectedStep = selectedSteps[props.selectedIndex]
-  const selectedMethod = selectedStep
-    ? isUseStep(selectedStep)
-      ? 'USE'
-      : isReadStep(selectedStep)
-        ? 'READ'
-        : readRequestLine(selectedStep).method
-    : ''
+  const selectedMethod = selectedStep ? stepMethod(selectedStep) : ''
   // The connections the collection's steps open, for steps to read.
   const opened = connectionNames(props.collection)
 
@@ -246,7 +241,8 @@ export default function CollectionView(props: Props) {
       : null
   /**
    * What can be added to a list: at its end, from its heading's +, or below the
-   * step at `after`, from that step's ⋯. Reading a connection, once a step opens one.
+   * step at `after`, from that step's ⋯. Reading a connection, once a step opens
+   * one; a wait, except among an endpoints file's endpoints.
    */
   const addsTo = (list: ListName, after?: number): AddAction[] => {
     const below = after === undefined ? '' : ' below'
@@ -268,6 +264,15 @@ export default function CollectionView(props: Props) {
               icon: 'read' as const,
               label: `Read a connection${below}`,
               onClick: () => props.onAddRead(list, after)
+            }
+          ]
+        : []),
+      ...(props.library !== 'endpoints'
+        ? [
+            {
+              icon: 'wait' as const,
+              label: `Add wait${below}`,
+              onClick: () => props.onAddWait(list, after)
             }
           ]
         : [])

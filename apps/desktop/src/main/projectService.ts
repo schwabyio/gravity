@@ -17,13 +17,11 @@ import {
   PROJECT_FILE,
   GitRepo,
   REQUESTS_DIR,
-  isReadStep,
-  isUseStep,
   listRequestSets,
   loadChecks,
   parseCollection,
-  readRequestLine,
   stepLabel,
+  stepMethod,
   addLfAttributes,
   applyProjectEdits,
   clone,
@@ -939,7 +937,7 @@ export class ProjectService {
         params: set.doc?.params ?? {},
         steps: (set.doc?.steps ?? []).map((step) => ({
           label: stepLabel(step),
-          method: isUseStep(step) ? 'USE' : isReadStep(step) ? 'READ' : readRequestLine(step).method
+          method: stepMethod(step)
         })),
         problem:
           set.problem ??
