@@ -23,19 +23,27 @@ export interface PaneWidth {
  *
  * `max` can follow the room there is. The width asked for is kept as asked:
  * less room narrows the pane for as long as it lasts, and it is back at that
- * width once there is room again.
+ * width once there is room again. `measureMax` reads that room from the layout
+ * as it is now: `max` follows a resize a frame or so after it, and a drag
+ * straight after the room grew would otherwise stop at the old room's edge.
  */
-export function usePaneWidth(key: string, initial: number, min: number, max: number): PaneWidth {
+export function usePaneWidth(
+  key: string,
+  initial: number,
+  min: number,
+  max: number,
+  measureMax?: () => number
+): PaneWidth {
   const [stored, setStored] = useState(() => read(key) ?? initial)
   const width = clamp(stored, min, max)
 
   const setWidth = useCallback(
     (next: number) => {
-      const clamped = clamp(next, min, max)
+      const clamped = clamp(next, min, measureMax?.() ?? max)
       setStored(clamped)
       write(key, clamped)
     },
-    [key, min, max]
+    [key, min, max, measureMax]
   )
 
   const reset = useCallback(() => setWidth(initial), [setWidth, initial])

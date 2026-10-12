@@ -224,9 +224,10 @@ test('the scripts pane drags as far left as the request and response leave room 
   await stepsHandle().focus()
   await page.keyboard.press('Home')
 
-  // Each keeps its least, room for its name and Hide; the scripts pane takes the rest.
+  // Each keeps its least, room for its name and Hide; the scripts pane takes the rest,
+  // laid out once the room the Home keys made is measured.
   await drag(scriptsHandle(), -3000)
-  expect(await widthOf(requestPane())).toBeCloseTo(120, -1)
+  await expect.poll(() => widthOf(requestPane())).toBeCloseTo(120, -1)
   expect(await widthOf(responsePane())).toBeCloseTo(120, -1)
   const widest = await widthOf(scriptsPane())
   expect(widest).toBeCloseTo((await widthOf(page.locator('.panes'))) - 240, -1)

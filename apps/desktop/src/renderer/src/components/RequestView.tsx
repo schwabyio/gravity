@@ -180,11 +180,16 @@ export default function RequestView(props: Props) {
     (room, shown) => room + (shown ? PANE_LEAST : STRIP),
     0
   )
+  const measureScriptsMax = useCallback(
+    () => Math.max(SCRIPTS_LEAST, (panesEl.current?.clientWidth ?? panesRoom) - beside),
+    [panesRoom, beside]
+  )
   const scriptsPane = usePaneWidth(
     'pane.scripts',
     380,
     SCRIPTS_LEAST,
-    Math.max(SCRIPTS_LEAST, panesRoom - beside)
+    Math.max(SCRIPTS_LEAST, panesRoom - beside),
+    measureScriptsMax
   )
   const collapseEditor = () => {
     setRequestOpen(false)
