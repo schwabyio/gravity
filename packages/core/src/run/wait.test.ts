@@ -179,7 +179,7 @@ describe('a wait step', () => {
     const { summary, names } = await suite({
       steps: [{ POST: `${origin}/orders` }, { wait: 60 }, { GET: `${origin}/search` }]
     })
-    expect(performance.now() - started).toBeGreaterThanOrEqual(55)
+    expect(performance.now() - started).toBeGreaterThanOrEqual(60)
     expect(seen).toEqual(['POST /orders', 'GET /search'])
     expect(names).toEqual([`POST ${origin}/orders`, 'wait 60 ms', `GET ${origin}/search`])
     expect(summary).toMatchObject({ total: 3, passed: 3, failed: 0, errored: 0 })
@@ -191,7 +191,7 @@ describe('a wait step', () => {
       error: null,
       status: 'pass'
     })
-    expect(wait.durationMs).toBeGreaterThanOrEqual(55)
+    expect(wait.durationMs).toBeGreaterThanOrEqual(60)
   })
 
   it('runs no script of its collection: there is no request or response for one', async () => {

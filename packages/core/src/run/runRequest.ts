@@ -584,7 +584,12 @@ async function runWait(step: WaitStep, input: RunStepInput): Promise<RunResult> 
     return result(null, { status: 'error', error })
   }
   try {
-    await sleep(ms, undefined, signal ? { signal } : {})
+    // Node's timers keep time in whole milliseconds and can end one early, as
+    // performance.now() counts it: what is left is waited out, so a wait is never short.
+    const until = performance.now() + ms
+    for (let left = ms; left > 0; left = until - performance.now()) {
+      await sleep(Math.ceil(left), undefined, signal ? { signal } : {})
+    }
   } catch {
     const waited = Math.round(performance.now() - startedHr)
     return result(ms, {
