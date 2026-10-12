@@ -343,6 +343,10 @@ package as `dist/SPEC.md`, and `gta`'s messages cite its sections, as in "(SPEC.
 `gta` function that `tests` and `before.script` can call, with examples. It ships as
 `dist/FUNCTIONS.md`.
 
+[SETUP-AND-TEARDOWN.md](https://github.com/schwabyio/gravity/blob/main/SETUP-AND-TEARDOWN.md)
+is an overview of setup and teardown: how they run, when to use them, and when plain steps
+or reusable requests do better.
+
 ## License
 
 MIT. The packages bundled into `gta` keep their own licenses, collected in
