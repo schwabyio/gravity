@@ -74,7 +74,10 @@ afterAll(async () => {
   await fs.rm(tmp, { recursive: true, force: true })
 })
 
-async function suite(doc: Record<string, unknown>, options: { signal?: AbortSignal } = {}) {
+async function suite(
+  doc: Record<string, unknown>,
+  options: { signal?: AbortSignal; onResult?: (result: RunResult) => void } = {}
+) {
   seen = []
   const collection = CollectionSchema.parse({ id: 'orders', ...doc })
   const reported: RunResult[] = []
@@ -89,7 +92,10 @@ async function suite(doc: Record<string, unknown>, options: { signal?: AbortSign
     },
     rows: null,
     ...(options.signal ? { signal: options.signal } : {}),
-    onResult: (_index, result) => reported.push(result)
+    onResult: (_index, result) => {
+      reported.push(result)
+      options.onResult?.(result)
+    }
   })
   return { summary, reported, names: summary.results.map(resultName) }
 }
@@ -232,22 +238,31 @@ describe('a wait step', () => {
 
   it('is cut short by a cancel, and teardown still runs after it', async () => {
     const cancel = new AbortController()
-    setTimeout(() => cancel.abort(), 30)
-    const started = performance.now()
+    let started = performance.now()
     const { summary } = await suite(
       {
-        steps: [{ wait: 5000 }, { GET: `${origin}/never` }],
+        steps: [{ GET: `${origin}/first` }, { wait: 5000 }, { GET: `${origin}/never` }],
         teardown: [{ DELETE: `${origin}/orders` }]
       },
-      { signal: cancel.signal }
+      {
+        signal: cancel.signal,
+        // Cancelled once the wait is under way. A timer set as the test starts can
+        // fire before the run reaches its first step on a slow machine, and a run
+        // stopped before anything ran leaves teardown nothing to clean up after.
+        onResult: (result) => {
+          if (!result.request.url.endsWith('/first')) return
+          started = performance.now()
+          setTimeout(() => cancel.abort(), 30)
+        }
+      }
     )
     expect(performance.now() - started).toBeLessThan(2000)
-    expect(seen).toEqual(['DELETE /orders'])
-    expect(summary.results[0]).toMatchObject({
+    expect(seen).toEqual(['GET /first', 'DELETE /orders'])
+    expect(summary.results[1]).toMatchObject({
       status: 'error',
       error: { phase: 'wait', code: 'ABORTED' }
     })
-    expect(summary.results[0]!.error!.message).toMatch(/^Wait cancelled after \d+ ms of 5 s$/)
+    expect(summary.results[1]!.error!.message).toMatch(/^Wait cancelled after \d+ ms of 5 s$/)
   })
 
   it('runs in setup and teardown, and is skipped as any step is', async () => {
