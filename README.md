@@ -276,8 +276,7 @@ You need Node.js 22.12 or later.
 git clone https://github.com/schwabyio/gravity.git
 cd gravity
 npm install
-npm run dev        # start the desktop app
-npm run dev:clean  # the same, as a first launch: no workspaces or settings
+npm run dev
 ```
 
 `npm install` also downloads the copy of git that the desktop app bundles, about 60 MB,
@@ -285,9 +284,14 @@ from GitHub's releases. If that download fails, `npm run dev` stops and prints t
 that downloads it again. The first `npm run dev` also downloads Electron, 120 to 150 MB, from
 GitHub's releases. Behind a proxy, set `HTTPS_PROXY`, or point `ELECTRON_MIRROR` at a mirror.
 
-`npm run dev:clean` keeps its data in `gravity-clean` in the system's temp folder, and
-empties it each time it starts. The app's own data, your workspaces and settings, is never
-read or changed.
+To start the app as a new user sees it, with no workspaces or settings:
+
+```sh
+npm run dev:clean
+```
+
+It keeps its data in `gravity-clean` in the system's temp folder, and empties it each time
+it starts. The app's own data, your workspaces and settings, is never read or changed.
 
 To put the `gta` built from this repository on your `PATH`, in place of the published
 one:
