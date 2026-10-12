@@ -185,8 +185,12 @@ function moveBetweenSteps(event: React.KeyboardEvent<HTMLElement>) {
 export default function CollectionView(props: Props) {
   const collectionDocs = (props.collection.docs ?? '').trim() !== ''
   // Writing the collection's docs in place; another collection opens to read its own.
-  const [editingDocs, setEditingDocs] = useState(false)
-  useEffect(() => setEditingDocs(false), [props.relativePath])
+  // Held as the path written, so another collection reads from its first render: reset
+  // in an effect, it rendered once with the editor open on the new collection's docs.
+  const [editingDocsOf, setEditingDocsOf] = useState<string | null>(null)
+  useEffect(() => setEditingDocsOf(null), [props.relativePath])
+  const editingDocs = editingDocsOf === props.relativePath
+  const setEditingDocs = (editing: boolean) => setEditingDocsOf(editing ? props.relativePath : null)
   const { summary } = props
   // Wide enough for a name beside its status, time and verdict.
   const steps = usePaneWidth('pane.steps', 320, 180, 560)

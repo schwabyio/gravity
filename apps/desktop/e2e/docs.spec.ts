@@ -368,10 +368,46 @@ const token = (name: string) =>
 const colorOf = (locator: ReturnType<Page['locator']>) =>
   locator.evaluate((element) => (globalThis as unknown as PageDom).getComputedStyle(element).color)
 
+/** A node the observer saw added; text nodes have neither. */
+interface AddedElement {
+  matches: (selector: string) => boolean
+  querySelector: (selector: string) => unknown
+}
+/** As much of a page's MutationObserver as the test below uses, typed the same way. */
+interface Watching {
+  MutationObserver: new (
+    callback: (records: { addedNodes: ArrayLike<Partial<AddedElement>> }[]) => void
+  ) => { observe: (target: unknown, options: { childList: boolean; subtree: boolean }) => void }
+  document: { body: unknown }
+  sawEditor?: boolean
+}
+
+test('another collection opens with its docs closed while these are written', async () => {
+  // The test before left plain's docs being written.
+  await expect(page.getByRole('textbox', { name: 'Collection docs' })).toBeVisible()
+  // Watched from before the click, so an editor counts even if it is gone again by the
+  // next frame. Removed by then, it still holds its text box.
+  await page.evaluate(() => {
+    const watching = globalThis as unknown as Watching
+    const editor = '[aria-label="Collection docs"]'
+    watching.sawEditor = false
+    new watching.MutationObserver((records) => {
+      for (const { addedNodes } of records)
+        for (const node of Array.from(addedNodes))
+          if (node.matches?.(editor) || node.querySelector?.(editor)) watching.sawEditor = true
+    }).observe(watching.document.body, { childList: true, subtree: true })
+  })
+  await openCollection('colours')
+  await expect(page.getByRole('heading', { name: 'colours', level: 1 })).toBeVisible()
+  await expect(docsToggle()).toHaveAttribute('aria-expanded', 'false')
+  expect(await page.evaluate(() => (globalThis as unknown as Watching).sawEditor)).toBe(false)
+})
+
 test('docs are coloured: callouts, fenced code, variables, a method and a status code', async () => {
   await openCollection('colours')
   await expect(page.getByRole('heading', { name: 'colours', level: 1 })).toBeVisible()
-  if ((await docsToggle().getAttribute('aria-expanded')) !== 'true') await docsToggle().click()
+  await expect(docsToggle()).toHaveAttribute('aria-expanded', 'false')
+  await docsToggle().click()
   await expect(docsToggle()).toHaveAttribute('aria-expanded', 'true')
 
   // Callouts as GitHub has them: a title and icon in the callout's colour.
