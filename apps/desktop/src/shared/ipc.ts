@@ -5,6 +5,7 @@ import type {
   DataTable,
   EnvironmentDoc,
   EnvironmentRef,
+  FileSetter,
   FlagValue,
   HttpMethod,
   LayerParts,
@@ -445,6 +446,8 @@ export interface RequestSetView {
   params: Record<string, ParamSpec>
   /** Its steps, for the list under a use step. */
   steps: Array<{ label: string; method: string }>
+  /** What its scripts set, for the editor to name a variable a use step of it sets. */
+  setters: FileSetter[]
   /** Why it cannot be used, when it cannot. */
   problem?: string | undefined
 }

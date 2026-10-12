@@ -20,6 +20,7 @@ import {
   listRequestSets,
   loadChecks,
   parseCollection,
+  fileSetters,
   stepLabel,
   stepMethod,
   addLfAttributes,
@@ -999,6 +1000,7 @@ export class ProjectService {
           label: stepLabel(step),
           method: stepMethod(step)
         })),
+        setters: set.doc ? fileSetters(set.doc) : [],
         problem:
           set.problem ??
           (set.doc && !set.doc.params

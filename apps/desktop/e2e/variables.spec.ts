@@ -67,6 +67,27 @@ test.beforeAll(async () => {
     '      gta.expectResponseStatusCodeToBe(200)',
     "      gta.set('orderId', res.body[0].id)"
   ])
+  // A reusable requests file saving the token under the name its caller gives.
+  write('requests/sign-in.yml', [
+    'id: sign-in',
+    'params:',
+    '  saveTokenAs: { required: true }',
+    'steps:',
+    '  - name: sign in',
+    '    POST: "{{baseUrl}}/login"',
+    '    tests: gta.set(params.saveTokenAs, res.body.token)'
+  ])
+  write('collections/reuse.yml', [
+    'id: reuse',
+    'steps:',
+    '  - use: sign-in',
+    '    name: sign in admin',
+    '    with: { saveTokenAs: adminToken }',
+    '  - name: list orders',
+    '    GET: "{{baseUrl}}/orders?as={{adminToken}}"',
+    '    headers:',
+    '      Authorization: "Bearer {{adminToken}}"'
+  ])
   write('environments/local.yml', ['vars:', `  baseUrl: ${origin}`, '  apiKey: { secret: true }'])
   write('environments/other.yml', ['vars:', `  baseUrl: ${origin}`, '  apiKey: { secret: true }'])
   write('.env', [`apiKey=${SECRET}`])
@@ -76,7 +97,7 @@ test.beforeAll(async () => {
   await sizeWindow(app, page, { width: 1400, height: 900 })
   await page.waitForSelector('.sidebar')
   await addProject(app, page, repo)
-  await page.locator('.collection-row').click()
+  await page.locator('.collection-row', { hasText: 'orders' }).click()
   await page.getByLabel('Environment', { exact: true }).selectOption('local')
 })
 
@@ -199,4 +220,22 @@ test('the Console button switches the panel to the console, and back', async () 
   await variablesButton().click()
   await expect(panel()).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Console', exact: true })).toHaveCount(0)
+})
+
+test("a reusable requests file's step names the variable its caller gives, and its Send carries it", async () => {
+  await page.locator('.collection-row', { hasText: 'reuse' }).click()
+  await openStep('list orders')
+  await hover('adminToken')
+  await expect(card().locator('.var-card-value')).toHaveText('Not set until that step runs')
+  await expect(card().locator('.var-card-origin')).toHaveText('set by sign in admin · tests')
+
+  // A use step's Send is its Run.
+  await openStep('sign in admin')
+  await page.getByRole('button', { name: 'Run', exact: true }).click()
+  await expect(variablesButton()).toHaveAccessibleName('Variables, 1 set', { timeout: 15_000 })
+  await openStep('list orders')
+  await send()
+  await expect(page.locator('.status-pill')).toContainText('200 OK')
+  await variablesButton().click()
+  await expect(row('adminToken')).toContainText('sign in admin · tests')
 })

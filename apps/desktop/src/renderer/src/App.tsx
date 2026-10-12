@@ -593,6 +593,9 @@ export default function App() {
     runtime?.at
   ])
 
+  /** Request sets a use step can run: the open project's, and its global project's. */
+  const sets = activeProject?.requestSets ?? NO_SETS
+
   // A request set's own requests read `{{params.name}}`: known, valued by default.
   // A forEach step's read `{{item}}`: known, valued only as it runs.
   const repeats = (request?.forEach ?? '').trim() !== ''
@@ -603,14 +606,17 @@ export default function App() {
   const collectionTests = doc?.tests
   const stepsSet = useMemo((): VariablePreviews => {
     if (!steps) return {}
-    const found = namesStepsSet({ setup, steps, teardown, tests: collectionTests })
+    const found = namesStepsSet({ setup, steps, teardown, tests: collectionTests }, (use) => {
+      const file = resolveSet(sets, use)
+      return file && { params: file.params, steps: file.steps.length, setters: file.setters }
+    })
     return Object.fromEntries(
       Object.entries(found).map(([name, { step, by }]) => [
         name,
         { value: null, origin: setByText(step, by), kind: 'runtime' } satisfies VariablePreview
       ])
     )
-  }, [setup, steps, teardown, collectionTests])
+  }, [setup, steps, teardown, collectionTests, sets])
   const shownPreviews = useMemo((): VariablePreviews => {
     const item: VariablePreviews = repeats
       ? { item: { value: null, origin: 'forEach', kind: 'dynamic' } }
@@ -1185,9 +1191,6 @@ export default function App() {
     }
     return byList
   }, [open, results])
-
-  /** Request sets a use step can run: the open project's, and its global project's. */
-  const sets = activeProject?.requestSets ?? NO_SETS
 
   /** For each use step, its set's results, one per request, in order. */
   const childResults = useMemo(() => {

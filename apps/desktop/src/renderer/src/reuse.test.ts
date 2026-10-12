@@ -44,7 +44,8 @@ const set = (name: string, source: RequestSetView['source']): RequestSetView => 
   source,
   title: name,
   params: {},
-  steps: [{ label: 'login', method: 'POST' }]
+  steps: [{ label: 'login', method: 'POST' }],
+  setters: []
 })
 
 describe('request sets', () => {
