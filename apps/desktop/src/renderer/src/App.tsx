@@ -1579,7 +1579,12 @@ export default function App() {
                   onCollectionVars={editor.setCollectionVars}
                   onCollectionParams={editor.setCollectionParams}
                   bases={
-                    isLibraryOf('bases') || isLibraryOf('endpoints')
+                    isLibraryOf('bases') ||
+                    isLibraryOf('endpoints') ||
+                    // Under layout.bases, no base to pick: only one to take off.
+                    (openFile !== null &&
+                      !!activeProject?.rules.rules.layout.bases &&
+                      !doc?.extends)
                       ? null
                       : (activeProject?.bases ?? [])
                   }

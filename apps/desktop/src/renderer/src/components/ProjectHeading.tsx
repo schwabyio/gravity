@@ -261,7 +261,9 @@ export default function ProjectHeading(props: Props) {
               {item('new-folder', 'New folder', props.onNewDirectory)}
               {item('new', 'New reusable requests file', props.onNewSet)}
               {item('new', 'New endpoints file', props.onNewEndpoints)}
-              {item('new', 'New base collection', props.onNewBase)}
+              {/* Not where the project's rules say it has none (layout.bases). */}
+              {!project.rules.rules.layout.bases &&
+                item('new', 'New base collection', props.onNewBase)}
               <div className="menu-divider" role="separator" />
               {git && (
                 <>

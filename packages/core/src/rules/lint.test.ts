@@ -278,6 +278,86 @@ describe('lintFile', () => {
     ])
   })
 
+  it('finds a base collection, and every extends:, under layout.bases', async () => {
+    const loaded = await rules('layout:\n  bases: none\n')
+    const at = (home: 'collections' | 'requests' | 'bases', source: string) =>
+      lintFile({ home, relativePath: 'a.yml', source }, loaded).map(
+        ({ file, line, rule, message }) => [file, line, rule, message]
+      )
+    expect(at('bases', 'id: a\nheaders:\n  X-Key: k\n')).toEqual([
+      ['bases/a.yml', 1, 'layout.bases', 'base collections are not used here']
+    ])
+    expect(at('collections', 'id: a\nextends: global:authed\nsteps: []\n')).toEqual([
+      [
+        'collections/a.yml',
+        2,
+        'layout.bases',
+        'extends: global:authed: base collections are not used here'
+      ]
+    ])
+    expect(at('requests', 'id: a\nparams: {}\nextends: authed\n')).toEqual([
+      ['requests/a.yml', 3, 'layout.bases', 'extends: authed: base collections are not used here']
+    ])
+    expect(at('collections', 'id: a\nsteps: []\n')).toEqual([])
+  })
+
+  it('finds every use of the check files under layout.checks, before.script and tests alike', async () => {
+    const loaded = await rules('layout:\n  checks: none\n')
+    const source = lines(
+      'id: checkout',
+      'before:',
+      '  script: gta.set("n", checks.ids.next())',
+      'tests: |',
+      '  gta.expectResponseStatusCodeToBe(200)',
+      '  checks.common.expectJson()',
+      'steps:',
+      '  - name: pay',
+      '    POST: /pay',
+      '    before:',
+      '      script: |',
+      '        const c = checks',
+      '    tests: |',
+      '      gta.expectResponseStatusCodeToBe(200)'
+    )
+    expect(
+      lintFile({ home: 'collections', relativePath: 'checkout.yml', source }, loaded).map(
+        ({ line, rule, message, step }) => [line, rule, message, step]
+      )
+    ).toEqual([
+      [3, 'layout.checks', 'before.script: checks.ids.next(): check files are not used here', null],
+      [
+        6,
+        'layout.checks',
+        'tests: checks.common.expectJson(): check files are not used here',
+        null
+      ],
+      [
+        12,
+        'layout.checks',
+        'step 1 (pay) before.script: checks: check files are not used here',
+        { list: 'steps', index: 0 }
+      ]
+    ])
+  })
+
+  it('reports a use of the check files once, under layout.checks, when tests.only refuses it too', async () => {
+    const loaded = await rules('layout:\n  checks: none\ntests:\n  only: [gta]\n')
+    const source = lines(
+      'id: checkout',
+      'tests: |',
+      '  checks.common.expectJson()',
+      '  console.log(res.status)'
+    )
+    expect(
+      lintFile({ home: 'collections', relativePath: 'checkout.yml', source }, loaded).map(
+        ({ line, rule }) => [line, rule]
+      )
+    ).toEqual([
+      [3, 'layout.checks'],
+      [4, 'tests.only']
+    ])
+  })
+
   it('reports a file that will not parse as not checked', async () => {
     const loaded = await rules('docs: { collections: required }\n')
     expect(
@@ -550,6 +630,35 @@ describe('lintProject', () => {
       'collections/orders/ folder orders is not one of: payments',
       'collections/payments/Refunds_old.yml id: Refunds_old is not kebab-case',
       'requests/auth/Logout.yml id: Logout is not kebab-case'
+    ])
+  })
+
+  it('lists the project’s own check files under layout.checks, after every other file', async () => {
+    const root = await project({
+      'rules.yml': 'layout:\n  checks: none\n',
+      'collections/a.yml': 'id: a\nsteps: []\n',
+      'checks/pagination.js': 'export function expectPage() {}\n',
+      'checks/common.js': 'export function expectJson() {}\n',
+      'checks/README.md': 'Not a check file.\n'
+    })
+    const result = await lintProject(root, await loadRules(root, null))
+    expect(result.findings).toEqual([
+      {
+        file: 'checks/common.js',
+        line: null,
+        rule: 'layout.checks',
+        source: 'rules.yml',
+        step: null,
+        message: 'check files are not used here'
+      },
+      {
+        file: 'checks/pagination.js',
+        line: null,
+        rule: 'layout.checks',
+        source: 'rules.yml',
+        step: null,
+        message: 'check files are not used here'
+      }
     ])
   })
 

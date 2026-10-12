@@ -373,6 +373,58 @@ test('a library file’s row is marked, its finding opens it, and the app refuse
   expect(fs.existsSync(path.join(tmp, 'shared/collections/CreateOrder.yml'))).toBe(false)
 })
 
+test('with no base collections or check files allowed, each is a finding and the app offers no new base', async () => {
+  write('shop/bases/authed.yml', lines('id: authed', 'headers:', '  Authorization: Bearer x'))
+  write('shop/checks/orders.js', 'export function counted() {}\n')
+  write(
+    'shop/rules.yml',
+    lines('layout:', '  folderNames: [orders, payments, misc]', '  bases: none', '  checks: none')
+  )
+  await expect(
+    page.locator('.set-row', { hasText: 'authed' }).locator('.rule-mark')
+  ).toHaveAttribute('title', 'base collections are not used here (layout.bases in rules.yml)', {
+    timeout: 10_000
+  })
+  // The shared tests.only refuses checks.orders.counted() too: it is one finding, not two.
+  await row('list-orders').click()
+  await expect(step('count').getByRole('img', { name: '1 rule finding' })).toBeVisible()
+  await expect(step('count').locator('.rule-mark')).toHaveAttribute(
+    'title',
+    /checks\.orders\.counted\(\): check files are not used here \(layout\.checks in rules\.yml\)$/
+  )
+
+  await page.getByRole('button', { name: 'Project actions for shop' }).click()
+  await expect(page.getByRole('menuitem', { name: 'New endpoints file' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'New base collection' })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  // No base to choose for a collection that has none.
+  await page.getByRole('button', { name: 'Collection settings' }).click()
+  const settings = page.getByRole('dialog', { name: 'Collection settings' })
+  await expect(settings.getByRole('heading', { name: 'Group runs' })).toBeVisible()
+  await expect(settings.getByLabel('Base collection')).toHaveCount(0)
+  await settings.getByRole('button', { name: 'Close' }).click()
+
+  // A check file opens in the external editor only: it is no collection.
+  await page.getByRole('button', { name: /rule findings: open the project’s rules/ }).click()
+  const findings = page
+    .getByRole('dialog', { name: 'Project settings' })
+    .getByRole('list', { name: 'Rule findings' })
+  await expect(findings.locator('.rule-finding-place', { hasText: 'checks/orders.js' })).toHaveText(
+    'checks/orders.js'
+  )
+  await expect(findings.getByRole('button', { name: 'checks/orders.js', exact: true })).toHaveCount(
+    0
+  )
+  await expect(
+    findings.getByRole('button', { name: 'bases/authed.yml:1', exact: true })
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  fs.rmSync(path.join(shop, 'bases'), { recursive: true })
+  fs.rmSync(path.join(shop, 'checks'), { recursive: true })
+})
+
 test('rules that cannot be read are a problem of the project’s, and none apply', async () => {
   write('shop/rules.yml', lines('ids:', '  colections: kebab-case'))
   const problem = page

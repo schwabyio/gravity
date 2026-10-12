@@ -139,10 +139,12 @@ export default function RulesSection(props: {
             {findings.slice(0, SHOWN).map((finding, index) => {
               const place = finding.line === null ? finding.file : `${finding.file}:${finding.line}`
               const folder = finding.file.endsWith('/')
+              // A collection-shaped file opens in the app; a check file only in the editor.
+              const inApp = finding.file.endsWith('.yml')
               return (
                 <li key={index}>
                   <div className="rule-finding-head">
-                    {folder ? (
+                    {!inApp ? (
                       <code className="rule-finding-place">{place}</code>
                     ) : (
                       <button

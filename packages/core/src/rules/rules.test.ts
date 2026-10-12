@@ -154,6 +154,30 @@ describe('loadRules', () => {
     )
   })
 
+  it('turns layout.bases and layout.checks off with allowed, as optional does a required rule', async () => {
+    const root = await folder({
+      'shared/rules.yml': 'layout:\n  bases: none\n  checks: none\nsteps:\n  url: optional\n',
+      'app/rules.yml': 'layout:\n  checks: allowed\n'
+    })
+    const loaded = await loadRules(path.join(root, 'app'), {
+      root: path.join(root, 'shared'),
+      uses: '../shared'
+    })
+    expect(loaded.rules.layout).toEqual({ bases: 'none' })
+    // Each rule by its own word: a URL pattern may be any text, optional too.
+    expect(loaded.rules.steps).toEqual({ url: 'optional' })
+    expect(loaded.settings.map(({ rule, on }) => [rule, on])).toEqual([
+      ['layout.bases', true],
+      ['layout.checks', false],
+      ['steps.url', true]
+    ])
+
+    await fs.writeFile(path.join(root, 'app/rules.yml'), 'layout:\n  bases: optional\n')
+    await expect(loadRules(path.join(root, 'app'), null)).rejects.toThrow(
+      'layout.bases (rules.yml): is none or allowed'
+    )
+  })
+
   it('turns off a group only where a file under it set its rules', async () => {
     const root = await folder({
       'shared/rules.yml': 'docs:\n  collections: required\n',
@@ -265,5 +289,16 @@ describe('placeProblem and newFolderProblem', () => {
     const none = await loadRules(await folder({}), null)
     expect(newFolderProblem(none, 'Any Thing')).toBeNull()
     expect(placeProblem(none, 'collections', 'Any', null)).toBeNull()
+  })
+
+  it('refuses any base collection under layout.bases, whatever its id', async () => {
+    const root = await folder({
+      'rules.yml': 'ids:\n  bases: kebab-case\nlayout:\n  bases: none\n'
+    })
+    const loaded = await loadRules(root, null)
+    expect(placeProblem(loaded, 'bases', 'authed', null)).toBe(
+      'base collections are not used here (rule layout.bases in rules.yml)'
+    )
+    expect(placeProblem(loaded, 'collections', 'authed', null)).toBeNull()
   })
 })

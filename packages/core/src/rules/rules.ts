@@ -5,6 +5,7 @@ import {
   noRules,
   RULE_NAMES,
   RULES,
+  ruleIsOn,
   type LoadedRules,
   type RuleGroup,
   type RuleInfo,
@@ -21,8 +22,8 @@ const GUIDE = 'guide'
  * written, so the people and agents working on it keep it consistent.
  *
  * A global project's `rules.yml` lies under the project's, rule by rule, always:
- * a project changes a shared rule by setting it, and turns it off with `null`
- * or `optional`. Breaking a rule never stops a run; `gta lint` reports it.
+ * a project changes a shared rule by setting it, and turns it off with `null`,
+ * `optional` or `allowed`. Breaking a rule never stops a run; `gta lint` reports it.
  */
 export { RULES_FILE }
 
@@ -130,7 +131,7 @@ export async function loadRules(
   for (const rule of RULE_NAMES) {
     const set = merged.get(rule)
     if (!set) continue
-    const on = set.value !== null && set.value !== 'optional'
+    const on = ruleIsOn(rule, set.value)
     settings.push({ rule, value: set.value, source: set.source, on })
     if (!on) continue
     const [group, key] = rule.split('.') as [RuleGroup, string]

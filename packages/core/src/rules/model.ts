@@ -70,6 +70,8 @@ const RequirementSchema = z.enum(['required', 'optional'], {
   error: 'is required or optional'
 })
 
+const NoneSchema = z.enum(['none', 'allowed'], { error: 'is none or allowed' })
+
 /** A pattern a URL matches somewhere, as `RegExp.test` does: it must compile. */
 const UrlPatternSchema = z
   .string({ error: 'is a pattern, such as ^\\{\\{baseUrl\\}\\}' })
@@ -88,7 +90,12 @@ const UrlPatternSchema = z
 export interface RuleInfo {
   schema: z.ZodType
   doc: string
+  /** The value that turns it off, as `null` does: `optional` for a `required` rule. */
+  off?: string
 }
+
+const required = (doc: string): RuleInfo => ({ schema: RequirementSchema, doc, off: 'optional' })
+const none = (doc: string): RuleInfo => ({ schema: NoneSchema, doc, off: 'allowed' })
 
 const idRule = (home: string, what: string): RuleInfo => ({
   schema: NameFormatSchema,
@@ -104,10 +111,9 @@ export const RULES = {
     endpoints: idRule('endpoints', 'an endpoints file')
   },
   layout: {
-    folders: {
-      schema: RequirementSchema,
-      doc: 'required: every collection sits in a folder of collections/, none at its top.'
-    },
+    folders: required(
+      'required: every collection sits in a folder of collections/, none at its top.'
+    ),
     folderNames: {
       schema: z.union([NameFormatSchema, z.array(z.string().min(1)).min(1)], {
         error: `is a list of folder names, a style (${STYLE_NAMES}) or a pattern`
@@ -117,38 +123,36 @@ export const RULES = {
     maxSteps: {
       schema: z.number({ error: 'is a whole number of steps, 1 or more' }).int().min(1),
       doc: 'The most steps a collection may have in steps:, setup and teardown aside.'
-    }
+    },
+    bases: none(
+      'none: no base collections — no file in bases/, and no file extends: one, the global project’s included.'
+    ),
+    checks: none(
+      'none: no check files — no .js file in checks/, and no tests or before.script uses checks.*, the global project’s included.'
+    )
   },
   steps: {
-    names: {
-      schema: RequirementSchema,
-      doc: 'required: every step of a collection or reusable requests file has a name of its own, no other step of its file sharing it.'
-    },
+    names: required(
+      'required: every step of a collection or reusable requests file has a name of its own, no other step of its file sharing it.'
+    ),
     url: {
       schema: UrlPatternSchema,
       doc: 'A pattern every request step’s URL matches, as written, {{variables}} and all — ^\\{\\{baseUrl\\}\\} for no host written out. It is not anchored: ^ matches from the start.'
     }
   },
   docs: {
-    collections: { schema: RequirementSchema, doc: 'required: every collection has docs.' },
-    requests: {
-      schema: RequirementSchema,
-      doc: 'required: every reusable requests file has docs.'
-    },
-    steps: {
-      schema: RequirementSchema,
-      doc: 'required: every step of a collection or reusable requests file has docs, setup and teardown included.'
-    }
+    collections: required('required: every collection has docs.'),
+    requests: required('required: every reusable requests file has docs.'),
+    steps: required(
+      'required: every step of a collection or reusable requests file has docs, setup and teardown included.'
+    )
   },
   tags: {
     allowed: {
       schema: z.array(TagSchema, { error: 'is a list of tags' }),
       doc: 'The only tags a collection or step may carry.'
     },
-    collections: {
-      schema: RequirementSchema,
-      doc: 'required: every collection has tags: of its own.'
-    }
+    collections: required('required: every collection has tags: of its own.')
   },
   tests: {
     only: {
@@ -161,14 +165,12 @@ export const RULES = {
         }),
       doc: 'What tests may call. gta: only gta.* calls, each argument a value — written out, read from res, req, params, endpoint, item or gta.get(), JSON.parse or new RegExp — and if on gta.flag() only; no checks.*, gta.test, assert or other code. Add gta.test, checks or console to allow those. before.script is not checked.'
     },
-    everyStep: {
-      schema: RequirementSchema,
-      doc: 'required: every step that sends a request or reads a connection is checked by some tests — its own, its file’s, its base collection’s or its endpoint’s. A use step’s requests are checked in their own file.'
-    },
-    statusCode: {
-      schema: RequirementSchema,
-      doc: 'required: every request step’s tests check the status code with gta.expectResponseStatusCodeToBe — in its own tests, its file’s, its base collection’s or its endpoint’s, or in a check function they call.'
-    }
+    everyStep: required(
+      'required: every step that sends a request or reads a connection is checked by some tests — its own, its file’s, its base collection’s or its endpoint’s. A use step’s requests are checked in their own file.'
+    ),
+    statusCode: required(
+      'required: every request step’s tests check the status code with gta.expectResponseStatusCodeToBe — in its own tests, its file’s, its base collection’s or its endpoint’s, or in a check function they call.'
+    )
   }
 } as const satisfies Record<string, Record<string, RuleInfo>>
 
@@ -182,16 +184,28 @@ export const RULE_NAMES = Object.entries(RULES).flatMap(([group, rules]) =>
   Object.keys(rules).map((key) => `${group}.${key}`)
 ) as RuleName[]
 
-/** What a rule means, as `gta rules` says it. */
-export const ruleDoc = (rule: RuleName): string => {
+const ruleInfo = (rule: RuleName): RuleInfo => {
   const [group, key] = rule.split('.') as [RuleGroup, string]
-  return (RULES[group] as Record<string, RuleInfo>)[key]!.doc
+  return (RULES[group] as Record<string, RuleInfo>)[key]!
 }
+
+/** What a rule means, as `gta rules` says it. */
+export const ruleDoc = (rule: RuleName): string => ruleInfo(rule).doc
+
+/** Whether a rule set to `value` is in effect: not `null`, nor its word for off. */
+export const ruleIsOn = (rule: RuleName, value: unknown): boolean =>
+  value !== null && value !== ruleInfo(rule).off
 
 /** The rules in effect: those set, and not turned off. */
 export interface Rules {
   ids: { collections?: string; requests?: string; bases?: string; endpoints?: string }
-  layout: { folders?: 'required'; folderNames?: string | string[]; maxSteps?: number }
+  layout: {
+    folders?: 'required'
+    folderNames?: string | string[]
+    maxSteps?: number
+    bases?: 'none'
+    checks?: 'none'
+  }
   steps: { names?: 'required'; url?: string }
   docs: { collections?: 'required'; requests?: 'required'; steps?: 'required' }
   tags: { allowed?: string[]; collections?: 'required' }
@@ -210,7 +224,7 @@ export const noRules = (): Rules => ({
 /** A rule a `rules.yml` sets, and where: the last file to set it wins. */
 export interface RuleSetting {
   rule: RuleName
-  /** As written. `null` and `optional` turn the rule off. */
+  /** As written. `null` turns the rule off, as `optional` does a `required` one and `allowed` a `none` one. */
   value: unknown
   /** The file, as the project reaches it: `rules.yml`, or `../shared/rules.yml`. */
   source: string
@@ -290,11 +304,16 @@ export function folderNameProblem(loaded: LoadedRules, folder: string): string |
   return problem ? `folder ${folder} ${problem}` : null
 }
 
+/** What a finding says under `layout.bases` and `layout.checks`. */
+export const NO_BASES = 'base collections are not used here'
+export const NO_CHECKS = 'check files are not used here'
+
 /**
  * Why a file would break the rules where it is about to be written — a new
- * collection, one renamed, moved or copied — or null when it would not: its id
- * under `ids.<home>`, and a collection at the top of `collections/` under
- * `layout.folders`. `folder` is the folder of its home it goes in, null for none.
+ * collection, one renamed, moved or copied — or null when it would not: any
+ * base collection under `layout.bases`, its id under `ids.<home>`, and a
+ * collection at the top of `collections/` under `layout.folders`. `folder` is
+ * the folder of its home it goes in, null for none.
  */
 export function placeProblem(
   loaded: LoadedRules,
@@ -302,6 +321,9 @@ export function placeProblem(
   id: string,
   folder: string | null
 ): string | null {
+  if (home === BASES_DIR && loaded.rules.layout.bases) {
+    return withRule(loaded, 'layout.bases', NO_BASES)
+  }
   const format = loaded.rules.ids[home]
   const problem = format ? nameFormatProblem(id, format, folder) : null
   if (problem) return withRule(loaded, `ids.${home}`, `id: ${id} ${problem}`)

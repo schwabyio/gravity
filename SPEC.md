@@ -349,6 +349,8 @@ flags what `tests.only` does not allow as a script is typed.
 | `layout.folders`     | `required`             | Every collection sits in a folder of `collections/`, none at its top.           |
 | `layout.folderNames` | list, style or pattern | Each folder of `collections/`: one of the list, or following the format.        |
 | `layout.maxSteps`    | integer ≥ 1            | The most steps a collection has in `steps`; `setup` and `teardown` aside.       |
+| `layout.bases`       | `none`                 | No base collections: no file in `bases/`, and no `extends:` (below).            |
+| `layout.checks`      | `none`                 | No check files: no `.js` file in `checks/`, and no use of `checks` (below).     |
 | `steps.names`        | `required`             | Every step has a `name`, and no other step of its file has the same one.        |
 | `steps.url`          | pattern                | Every request step's URL, as written, matches it (below).                       |
 | `docs.collections`   | `required`             | Every collection has `docs`.                                                    |
@@ -361,7 +363,8 @@ flags what `tests.only` does not allow as a script is typed.
 | `tests.statusCode`   | `required`             | Every request step's checks include its status code (below).                    |
 
 - Any other group or rule is an error, as is a value of the wrong type.
-- A rule that takes `required` also takes `optional`, which turns it off.
+- A rule that takes `required` also takes `optional`, which turns it off, and one that
+  takes `none` takes `allowed`.
 - A **style** is one of `kebab-case` (`create-user`), `snake_case` (`create_user`),
   `camelCase` (`createUser`) and `PascalCase` (`CreateUser`). Lower case, in the first two,
   includes digits: `404-handling` is kebab-case.
@@ -372,8 +375,8 @@ flags what `tests.only` does not allow as a script is typed.
   `+`, `?`, `(`, `)`, `[`, `]`, `{`, `}`, `|` or a backslash) is an error, so a
   misspelled style is not taken for a pattern.
 - Rules check the project's own files, in `collections/`, `requests/`, `bases/` and
-  `endpoints/`. A global project's files follow the global project's `rules.yml`, checked
-  when `gta lint` runs in its folder.
+  `endpoints/`, and `layout.checks` its `checks/`. A global project's files follow the
+  global project's `rules.yml`, checked when `gta lint` runs in its folder.
 - `steps.*`, `docs.steps`, `tests.everyStep` and `tests.statusCode` are about the steps of
   collections and reusable requests files. An endpoint is a method and a path pattern,
   not a step that runs, so they leave endpoints files alone.
@@ -427,6 +430,29 @@ tests: |
 `tests.only` checks every `tests` script: a collection's own and each of its steps', and
 those of reusable requests files, base collections and endpoints files.
 `before.script` is not checked.
+
+**`layout.bases` and `layout.checks`** keep a project to what its own files say, with no
+base collection (§2.7) or check file (§5) adding to them:
+
+```yaml
+layout:
+  bases: none
+  checks: none
+```
+
+- **`layout.bases: none`**: each file in `bases/` is a finding, and so is every
+  `extends:`, whether it names one of the project's bases or one of its global project's
+  (`global:name`). Gravity offers no new base collection, and no base to choose for a
+  collection that has none.
+- **`layout.checks: none`**: each `.js` file in `checks/` is a finding, and so is every
+  use of `checks` in a script: `before.script` and `tests`, the file's own and each
+  step's, in every file the rules check. A use is any reference to `checks`, so
+  `const c = checks` is one too. It is a finding whichever project the check file is in.
+- With `tests.only` too, a `checks.*` call in `tests` breaks both rules, but it is
+  reported once, under `layout.checks`.
+- To keep every project that shares a global project from them, set them in the global
+  project's `rules.yml`. A project can still turn either off in its own, with `allowed`
+  or `null`, and that shows in its diff and in `gta rules`.
 
 **`guide`** is Markdown, for what no rule can check: how steps are named, which request
 set a login goes through, what a collection is for. `gta rules` prints it after the

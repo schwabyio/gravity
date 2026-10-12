@@ -8,7 +8,9 @@ describe('scriptRuleFindings', () => {
         line: 1,
         from: 0,
         to: 12,
-        message: 'checks.a.b(): check files are not used here; tests here call only gta.* functions'
+        message:
+          'checks.a.b(): check files are not used here; tests here call only gta.* functions',
+        needs: 'checks'
       }
     ])
     expect(scriptRuleFindings('checks.a.b()', ['gta', 'checks'])).toEqual([])

@@ -6,7 +6,7 @@ import {
   type SpreadElement,
   type Statement
 } from 'acorn'
-import { allowedText, type TestsAllowance } from './model.js'
+import { allowedText, NO_CHECKS, type TestsAllowance } from './model.js'
 
 /**
  * `tests.only` (SPEC.md §1.4): what a `tests` script may call.
@@ -29,6 +29,8 @@ export interface ScriptFinding {
   from: number
   to: number
   message: string
+  /** A call the list does not allow, by what would allow it: `checks` for `checks.seed.done()`. */
+  needs?: TestsAllowance
 }
 
 /** Globals an argument may read: the response, the request and the step's inputs. */
@@ -148,7 +150,7 @@ function notAllowed(kind: TestsAllowance | null, allowed: readonly TestsAllowanc
     case 'gta.test':
       return `gta.test runs a check of your own; ${only}`
     case 'checks':
-      return `check files are not used here; ${only}`
+      return `${NO_CHECKS}; ${only}`
     default:
       return only
   }
@@ -188,8 +190,14 @@ export function testsScriptFindings(
   }
 
   const findings: ScriptFinding[] = []
-  const report = (node: Node, message: string) =>
-    findings.push({ line: node.loc?.start.line ?? 1, from: node.start, to: node.end, message })
+  const report = (node: Node, message: string, needs?: TestsAllowance) =>
+    findings.push({
+      line: node.loc?.start.line ?? 1,
+      from: node.start,
+      to: node.end,
+      message,
+      ...(needs ? { needs } : {})
+    })
 
   const check = (statements: readonly Statement[]) => {
     for (const statement of statements) checkStatement(statement)
@@ -215,7 +223,11 @@ export function testsScriptFindings(
     const call = expression?.type === 'CallExpression' && !expression.optional ? expression : null
     const kind = call ? allowanceFor(call) : null
     if (!call || !kind || !allowed.includes(kind)) {
-      report(statement, `${snippet(code, statement)}: ${notAllowed(kind, allowed)}`)
+      report(
+        statement,
+        `${snippet(code, statement)}: ${notAllowed(kind, allowed)}`,
+        kind ?? undefined
+      )
       return
     }
     // gta.test's function is a check of its own: what it does is up to it.
@@ -230,6 +242,88 @@ export function testsScriptFindings(
   }
   // Parsed as a script, so it holds no import or export.
   check(program.body as Statement[])
+  return findings
+}
+
+/* ----------------------------------------------------------- check files -- */
+
+/** Where a name is not a reference to anything: `res.checks`, `{ checks: 1 }`, a label. */
+function isNameOnly(parent: Node | undefined, key: string): boolean {
+  if (!parent) return false
+  const computed = (parent as Node & { computed?: boolean }).computed === true
+  switch (parent.type) {
+    case 'MemberExpression':
+      return key === 'property' && !computed
+    case 'Property':
+    case 'MethodDefinition':
+    case 'PropertyDefinition':
+      return key === 'key' && !computed
+    case 'LabeledStatement':
+    case 'BreakStatement':
+    case 'ContinueStatement':
+      return key === 'label'
+    default:
+      return false
+  }
+}
+
+/**
+ * Every use of the check files in a script (`layout.checks`): each reference
+ * to `checks`, shown as the call it starts — `checks.pagination.expectPage({ size: 20 })`.
+ * By reference, not by call, so `const c = checks` is one too. A script that
+ * will not parse has none to find; its run says it will not parse.
+ */
+export function checksUses(code: string): ScriptFinding[] {
+  let program
+  try {
+    program = parse(code, {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      allowAwaitOutsideFunction: true,
+      allowReturnOutsideFunction: true,
+      locations: true
+    })
+  } catch {
+    return []
+  }
+  const findings: ScriptFinding[] = []
+  const visit = (node: Node, ancestors: Node[], key: string) => {
+    if (
+      node.type === 'Identifier' &&
+      (node as Node & { name: string }).name === 'checks' &&
+      !isNameOnly(ancestors.at(-1), key)
+    ) {
+      // Out to the whole of `checks.a.b(…)`: the member reads, then the call.
+      let use: Node = node
+      for (const parent of [...ancestors].reverse()) {
+        const at = parent as Node & { object?: Node; callee?: Node; expression?: Node }
+        const leads =
+          parent.type === 'MemberExpression'
+            ? at.object === use
+            : parent.type === 'CallExpression' || parent.type === 'NewExpression'
+              ? at.callee === use
+              : parent.type === 'ChainExpression'
+        if (!leads) break
+        use = parent
+      }
+      findings.push({
+        line: use.loc?.start.line ?? 1,
+        from: use.start,
+        to: use.end,
+        message: `${snippet(code, use)}: ${NO_CHECKS}`
+      })
+      return
+    }
+    for (const [childKey, value] of Object.entries(node)) {
+      if (childKey === 'loc' || typeof value !== 'object' || value === null) continue
+      for (const child of Array.isArray(value) ? value : [value]) {
+        if (typeof (child as { type?: unknown } | null)?.type === 'string') {
+          visit(child as Node, [...ancestors, node], childKey)
+        }
+      }
+    }
+  }
+  visit(program, [], '')
   return findings
 }
 

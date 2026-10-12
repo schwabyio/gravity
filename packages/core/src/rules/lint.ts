@@ -1,7 +1,13 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import YAML, { LineCounter } from 'yaml'
-import { BASES_DIR, COLLECTIONS_DIR, ENDPOINTS_DIR, REQUESTS_DIR } from '../format/constants.js'
+import {
+  BASES_DIR,
+  CHECKS_DIR,
+  COLLECTIONS_DIR,
+  ENDPOINTS_DIR,
+  REQUESTS_DIR
+} from '../format/constants.js'
 import { parseCollection } from '../format/index.js'
 import { sourceLine } from '../format/lines.js'
 import {
@@ -19,16 +25,24 @@ import { relativePosix } from '../paths.js'
 import { idOfFile } from '../workspace/ids.js'
 import { libraryFiles, listBases, loadChecks, loadEndpoints } from '../workspace/library.js'
 import { discoverProject, type GlobalProject } from '../workspace/project.js'
+import { readFolder } from '../workspace/readFolder.js'
 import {
   folderNameProblem,
   LINT_HOMES,
   nameFormatProblem,
+  NO_BASES,
+  NO_CHECKS,
   type LintHome,
   type LoadedRules,
   type RuleFinding,
   type RuleName
 } from './model.js'
-import { checksStatusCode, statusCheckFunctions, testsScriptFindings } from './script.js'
+import {
+  checksStatusCode,
+  checksUses,
+  statusCheckFunctions,
+  testsScriptFindings
+} from './script.js'
 
 /**
  * Checking a project's files against its rules (SPEC.md §1.4). What breaks a
@@ -200,6 +214,18 @@ export function lintFile(
     }
   }
 
+  if (rules.layout.bases) {
+    // A base collection is one as a whole; any other file, by the base it extends.
+    if (file.home === BASES_DIR) find('layout.bases', fileLine(), NO_BASES)
+    else if (doc.extends) {
+      find(
+        'layout.bases',
+        lineOf(['extends']) ?? fileLine(),
+        `extends: ${doc.extends}: ${NO_BASES}`
+      )
+    }
+  }
+
   if (file.home === REQUESTS_DIR && rules.docs.requests && isBlank(doc.docs)) {
     find('docs.requests', fileLine(), 'no docs')
   }
@@ -287,26 +313,44 @@ export function lintFile(
     }
   }
 
+  /** Every script of the file, its own and each step's, with how a finding names it. */
+  const scripts = [
+    { code: doc.before?.script, name: 'before.script', kind: 'pre-request' as const, step: null },
+    { code: doc.tests, name: 'tests', kind: 'tests' as const, step: null },
+    ...steps.flatMap(({ step, list, index, name }) => [
+      {
+        code: step.before?.script,
+        name: `${name} before.script`,
+        kind: 'pre-request' as const,
+        step: { list, index }
+      },
+      { code: step.tests, name: `${name} tests`, kind: 'tests' as const, step: { list, index } }
+    ])
+  ].filter((script): script is typeof script & { code: string } => !isBlank(script.code))
+  const lineIn = (script: (typeof scripts)[number], scriptLine: number) =>
+    sourceLine(file.source, {
+      ...(script.step ? { step: script.step } : {}),
+      script: script.kind,
+      scriptLine
+    }) ?? null
+
   const only = rules.tests.only
   if (only) {
-    const scripts = [
-      { code: doc.tests, name: 'tests', step: null },
-      ...steps.map(({ step, list, index, name }) => ({
-        code: step.tests,
-        name: `${name} tests`,
-        step: { list, index }
-      }))
-    ]
     for (const script of scripts) {
-      if (isBlank(script.code)) continue
-      for (const finding of testsScriptFindings(script.code!, only)) {
-        const line =
-          sourceLine(file.source, {
-            ...(script.step ? { step: script.step } : {}),
-            script: 'tests',
-            scriptLine: finding.line
-          }) ?? null
-        find('tests.only', line, `${script.name}: ${finding.message}`, script.step)
+      if (script.kind !== 'tests') continue
+      for (const finding of testsScriptFindings(script.code, only)) {
+        // A use of the check files is layout.checks' to report, once.
+        if (finding.needs === 'checks' && rules.layout.checks) continue
+        const message = `${script.name}: ${finding.message}`
+        find('tests.only', lineIn(script, finding.line), message, script.step)
+      }
+    }
+  }
+  if (rules.layout.checks) {
+    for (const script of scripts) {
+      for (const finding of checksUses(script.code)) {
+        const message = `${script.name}: ${finding.message}`
+        find('layout.checks', lineIn(script, finding.line), message, script.step)
       }
     }
   }
@@ -335,7 +379,7 @@ export function lintFolders(folders: readonly string[], loaded: LoadedRules): Ru
 }
 
 export interface LintResult {
-  /** In file order: `collections/` first, each folder before its files. */
+  /** In file order: `collections/` first, each folder before its files; check files last. */
   findings: RuleFinding[]
   /** How many files of each home were checked. */
   checked: Record<LintHome, number>
@@ -388,6 +432,23 @@ export async function lintProject(
     }
     // A folder's finding before its files', and each file's in line order.
     findings.push(...inHome.sort((a, b) => a.file.localeCompare(b.file)))
+  }
+  if (loaded.rules.layout.checks) {
+    const source = loaded.settings.find((s) => s.rule === 'layout.checks')?.source ?? null
+    const names = (await readFolder(path.join(root, CHECKS_DIR)))
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b))
+    for (const name of names) {
+      findings.push({
+        file: `${CHECKS_DIR}/${name}`,
+        line: null,
+        rule: 'layout.checks',
+        source,
+        step: null,
+        message: NO_CHECKS
+      })
+    }
   }
   return { findings, checked }
 }

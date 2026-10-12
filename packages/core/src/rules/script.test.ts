@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { allowedText } from './model.js'
-import { checksStatusCode, statusCheckFunctions, testsScriptFindings } from './script.js'
+import {
+  checksStatusCode,
+  checksUses,
+  statusCheckFunctions,
+  testsScriptFindings
+} from './script.js'
 
 /** Each finding's line and message: where it is underlined is checked on its own. */
 const gtaOnly = (code: string) =>
@@ -160,6 +165,14 @@ describe('testsScriptFindings', () => {
     ).toEqual([1])
   })
 
+  it('says which allowance a call it refuses needs', () => {
+    expect(
+      testsScriptFindings("checks.a.b()\ngta.test('x', () => {})\nassert.ok(1)", ['gta']).map(
+        (finding) => finding.needs
+      )
+    ).toEqual(['checks', 'gta.test', undefined])
+  })
+
   it('says where in the script a finding is, for an editor to underline', () => {
     const code = 'gta.expectResponseStatusCodeToBe(200)\nchecks.a.b()'
     const [finding] = testsScriptFindings(code, ['gta'])
@@ -183,6 +196,54 @@ describe('testsScriptFindings', () => {
     expect(allowedText(['gta', 'console', 'gta.test', 'checks'])).toBe(
       'gta.*, gta.test, checks.* and console.*'
     )
+  })
+})
+
+describe('checksUses', () => {
+  const uses = (code: string) => checksUses(code).map(({ line, message }) => ({ line, message }))
+
+  it('finds every use of the check files, as the call it starts, alias and all', () => {
+    expect(
+      uses(
+        [
+          "gta.set('page', checks.pagination.next(res.body))",
+          'checks.pagination.expectPage({ size: 20 })',
+          'const c = checks',
+          'await checks.slow?.wait()',
+          'function later() {',
+          "  return checks['auth'].token",
+          '}'
+        ].join('\n')
+      )
+    ).toEqual([
+      { line: 1, message: 'checks.pagination.next(res.body): check files are not used here' },
+      {
+        line: 2,
+        message: 'checks.pagination.expectPage({ size: 20 }): check files are not used here'
+      },
+      { line: 3, message: 'checks: check files are not used here' },
+      { line: 4, message: 'checks.slow?.wait(): check files are not used here' },
+      { line: 6, message: "checks['auth'].token: check files are not used here" }
+    ])
+  })
+
+  it('passes a name that only reads checks, and a script that will not parse', () => {
+    expect(
+      uses(
+        [
+          'gta.set("n", res.body.checks.length)',
+          'const o = { checks: 1 }',
+          'checks: for (;;) break checks'
+        ].join('\n')
+      )
+    ).toEqual([])
+    expect(uses('checks.a.b(')).toEqual([])
+  })
+
+  it('says where in the script a use is, for an editor to underline', () => {
+    const code = "gta.set('id', checks.ids.next())"
+    const [use] = checksUses(code)
+    expect(code.slice(use!.from, use!.to)).toBe('checks.ids.next()')
   })
 })
 
