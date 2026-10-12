@@ -10,7 +10,9 @@ import { addProject } from './addProject'
 /**
  * A project's heading in the sidebar, short of room: the shared project it uses
  * gives way first, cut short and then gone, and the project's own name last, so
- * the project is never hidden behind its shared project.
+ * the project is never hidden behind its shared project. Where that happens
+ * depends on the platform's fonts, Linux's being wider, so the widths here leave
+ * room for any of them.
  */
 
 const MAIN = path.resolve(process.cwd(), 'out/main/index.js')
@@ -66,15 +68,20 @@ async function sidebarTo(x: number) {
 }
 
 test('a long shared project name is cut short before the project’s own name', async () => {
+  await sidebarTo(360)
   const name = heading().locator('.repo-name')
   const badge = heading().locator('.uses-badge')
   await expect(name).toHaveText('orders-service')
   await expect(badge).toHaveText(`uses ${SHARED}`)
   expect(await cutShort(name)).toBe(false)
   expect(await cutShort(badge)).toBe(true)
-  // Its whole name is on hover, and nothing is pushed out of the sidebar.
-  await badge.hover()
-  await expect(page.getByRole('tooltip')).toContainText(`Uses ${SHARED}`)
+  // Its whole name is on hover, and nothing is pushed out of the sidebar. A tooltip goes
+  // at any scroll or resize in the window, so the pointer comes back until it shows.
+  await expect(async () => {
+    await page.mouse.move(800, 600)
+    await badge.hover()
+    await expect(page.getByRole('tooltip')).toContainText(`Uses ${SHARED}`, { timeout: 2000 })
+  }).toPass()
   await page.mouse.move(800, 600)
   const remove = heading().getByRole('button', { name: 'Remove orders-service' })
   expect(await right(remove)).toBeLessThanOrEqual(await right(page.locator('.sidebar')))
@@ -93,4 +100,16 @@ test('a narrow sidebar leaves the shared project out, and keeps the project name
   await sidebarTo(420)
   await expect(heading().locator('.uses-badge')).toBeVisible()
   expect(await cutShort(heading().locator('.repo-name'))).toBe(false)
+})
+
+test('the shared project is left out before the project’s name would be cut short', async () => {
+  const name = heading().locator('.repo-name')
+  const badge = heading().locator('.uses-badge')
+  let goneFirst = false
+  for (let x = 420; x >= 150; x -= 10) {
+    await sidebarTo(x)
+    if (await badge.isVisible()) expect(await cutShort(name), `at ${x}`).toBe(false)
+    else if (!(await cutShort(name))) goneFirst = true
+  }
+  expect(goneFirst).toBe(true)
 })

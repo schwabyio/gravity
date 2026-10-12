@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { ProjectView } from '@shared/ipc.js'
 import { pullState, pushState } from '../gitActions.js'
 import { findingsLabel } from '../ruleFindings.js'
@@ -54,6 +54,39 @@ export default function ProjectHeading(props: Props) {
   // A click anywhere else, or another menu opening, closes the menu.
   const menus = useMenuDismiss(menu, () => setMenu(false))
 
+  // The shared project's badge shows only while the project's whole name fits beside it,
+  // the badge at its least (styles.css cuts it short down to that): the name always wins.
+  // Measured rather than left to a breakpoint, since the room a name needs is its own and
+  // its font's: Linux's fonts run wider than macOS's.
+  const headRef = useRef<HTMLDivElement>(null)
+  const [badgeRoom, setBadgeRoom] = useState(true)
+  const fitBadge = useCallback(() => {
+    const head = headRef.current
+    const name = head?.querySelector<HTMLElement>('.repo-name')
+    const actions = head?.querySelector<HTMLElement>('.repo-actions')
+    if (!head || !name || !actions) return
+    if (head.querySelector('.uses-badge')) {
+      setBadgeRoom(name.scrollWidth <= name.clientWidth)
+      return
+    }
+    // Left out: back once the room left before the actions, their auto margin, holds the
+    // badge at its least and its gap.
+    const style = getComputedStyle(head)
+    const gap = parseFloat(style.columnGap) || 0
+    const least = parseFloat(style.getPropertyValue('--badge-least')) || 0
+    setBadgeRoom(parseFloat(getComputedStyle(actions).marginLeft) >= least + gap)
+  }, [])
+  // After every render, as the name, the branch or a count may have changed; and as the
+  // sidebar is dragged.
+  useLayoutEffect(fitBadge)
+  useLayoutEffect(() => {
+    const head = headRef.current
+    if (!head) return
+    const observer = new ResizeObserver(fitBadge)
+    observer.observe(head)
+    return () => observer.disconnect()
+  }, [fitBadge])
+
   const item = (icon: MenuIconName, label: string, action: () => void) => (
     <button
       type="button"
@@ -70,6 +103,7 @@ export default function ProjectHeading(props: Props) {
 
   return (
     <div
+      ref={headRef}
       className="repo-head"
       onContextMenu={onRightClick(() => {
         if (!menu) menus.opened()
@@ -93,7 +127,7 @@ export default function ProjectHeading(props: Props) {
         </Tooltip>
       )}
 
-      {project.global && (
+      {project.global && badgeRoom && (
         <Tooltip
           text={`Uses ${project.global.name} (${project.global.uses}) for shared variables and environments`}
         >

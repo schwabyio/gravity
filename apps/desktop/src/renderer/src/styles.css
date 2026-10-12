@@ -787,13 +787,15 @@ button:disabled {
 /* A project's heading. Short of room, what says the most about it gives way last: the
    shared project it uses first, then its branch, and its own name only after those. */
 .repo-head {
+  /* The shared project's badge, cut short, is never narrower: ProjectHeading leaves it
+     out once the name would be cut beside it. */
+  --badge-least: 44px;
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 6px 8px 4px 6px;
   color: var(--text-dim);
   font-size: 12px;
-  container-type: inline-size;
 }
 
 /* A disclosure chevron turns down to show what it opened. */
@@ -4741,20 +4743,14 @@ button.tag.filter.on {
 }
 
 /* The shared project's badge, in its tooltip: shrinks long before the name does, cut
-   short, its whole name on hover. */
+   short, its whole name on hover. Too narrow for it beside the whole name, ProjectHeading
+   leaves it out: the name matters more. */
 .repo-head .tooltip-trigger:has(> .uses-badge) {
   flex: 0 10000 auto;
-  min-width: 44px;
+  min-width: var(--badge-least);
 }
 .repo-head .tooltip-trigger > .uses-badge {
   min-width: 0;
-}
-
-/* Too narrow for it beside the name and the branch: the name matters more. */
-@container (max-width: 280px) {
-  .repo-head .tooltip-trigger:has(> .uses-badge) {
-    display: none;
-  }
 }
 
 /* A scratch pad: the app's own folder, no git. Dashed, as a draft is. */
