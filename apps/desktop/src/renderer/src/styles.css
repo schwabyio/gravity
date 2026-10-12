@@ -6252,6 +6252,123 @@ button.copy-button svg {
   color: var(--text);
 }
 
+/* The bottom panel's tabs, where a heading would be: Console, Variables. */
+.panel-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.console-head .panel-tabs button {
+  padding: 2px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.console-head .panel-tabs button:hover {
+  color: var(--text);
+}
+
+.console-head .panel-tabs button.active {
+  background: var(--surface-alt);
+  color: var(--text);
+}
+
+/* Its own size, not the head's buttons'. */
+.console-head button.info-tip {
+  padding: 0;
+}
+
+.status-count.set {
+  background: var(--surface-alt);
+  color: var(--text-dim);
+}
+
+.variables-summary {
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.variables-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.variables-body .console-note {
+  margin: 0;
+}
+
+.variables-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.variables-table th,
+.variables-table td {
+  padding: 3px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.variables-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.variables-table thead th:first-child {
+  width: 22%;
+}
+
+.variables-table thead th:last-child {
+  width: 28%;
+}
+
+.variables-name {
+  overflow: hidden;
+  font-family: var(--mono);
+  font-weight: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variables-value-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.variables-value {
+  overflow: hidden;
+  font-family: var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variables-value.hidden {
+  color: var(--text-dim);
+  font-family: inherit;
+  font-style: italic;
+}
+
+.variables-setter {
+  overflow: hidden;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .console-rows {
   flex: 1;
   min-height: 0;

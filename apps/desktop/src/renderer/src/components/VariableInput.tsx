@@ -155,6 +155,8 @@ export default function VariableInput({
               <div className="var-card-value unresolved">Not defined in this environment</div>
             ) : preview.kind === 'dynamic' ? (
               <div className="var-card-value muted">Generated for each request</div>
+            ) : preview.kind === 'runtime' ? (
+              <div className="var-card-value muted">Not set until that step runs</div>
             ) : preview.kind === 'secret' ? (
               <div className="var-card-value muted">Secret — hidden here, but it can be copied</div>
             ) : (
@@ -162,7 +164,7 @@ export default function VariableInput({
                 {preview.value === '' ? '(empty)' : preview.value}
               </div>
             )}
-            {preview !== undefined && preview.kind !== 'dynamic' && (
+            {preview !== undefined && preview.kind !== 'dynamic' && preview.kind !== 'runtime' && (
               <CopyButton
                 // Another variable's card starts with the copy icon, not a tick.
                 key={hovered.name}

@@ -155,7 +155,12 @@ Both run on macOS, Windows and Linux.
   it came from.
 - A script editor with autocomplete for `gta`, `res`, `req` and `assert`, and lint as
   you type.
-- Hover over a `{{variable}}` to see its value.
+- Hover over a `{{variable}}` to see its value, and where it came from: an environment,
+  the collection, or the step that sets it.
+- A Variables tab beside the console lists what `gta.set` and captures set, with the step
+  that set each. A collection's Sends start from what its earlier Sends and runs set, so
+  you can send a login, then the request that needs its token. Run all starts from
+  nothing; Clear, or another environment, forgets them.
 - Editors for environments, data files (as a grid), feature flag overrides, multipart
   bodies, query parameters and Markdown docs, down to each step.
 - Drag steps to reorder them, select several at once, move with the arrow keys, and

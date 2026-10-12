@@ -52,6 +52,7 @@ import {
   type Result,
   type RunCollectionRequest,
   type RunStartRequest,
+  type RuntimeVariablesView,
   type WorkspacesState
 } from '../shared/ipc.js'
 import {
@@ -63,6 +64,7 @@ import {
 import { settingsStore } from './settingsStore.js'
 import { openInEditor } from './editor.js'
 import { runSupervisor } from './runSupervisor.js'
+import { runtimeVariables } from './runtimeVariables.js'
 import { flagService } from './flagService.js'
 import { scriptRuleFindings } from './scriptRules.js'
 import type { LoadLog } from './loadLog.js'
@@ -190,6 +192,13 @@ export function registerIpc(projects: ProjectService): void {
     }
   }
 
+  /** A preview's scope, with what the collection's Sends set in its environment over it. */
+  const withCarried = (context: ScopeContext | null): ScopeContext | null =>
+    context && {
+      ...context,
+      carried: runtimeVariables.carried(context.collectionPath, context.environmentName ?? null)
+    }
+
   /** Edited environment files sent with a run or preview, checked like files would be. */
   const environmentOverridesOf = (value: unknown) =>
     (Array.isArray(value) ? value : []).flatMap((item: unknown) => {
@@ -258,7 +267,12 @@ export function registerIpc(projects: ProjectService): void {
           typeof payload?.collectionPath === 'string'
             ? assertInProjects(payload.collectionPath)
             : null
+        const environment = optionalString(payload?.environment) ?? null
+        // A Send starts from what the collection's earlier Sends set, as a run's steps do.
+        const carried = collectionPath ? runtimeVariables.carried(collectionPath, environment) : []
+        if (collectionPath) runtimeVariables.begin(collectionPath, environment, 'send')
         const result = await runSupervisor.run(runId, step, collection, collectionPath, {
+          carried,
           environment: optionalString(payload?.environment),
           environmentOverrides: environmentOverridesOf(payload?.environmentOverrides),
           projectVars: projectVarsOf(payload?.projectVars),
@@ -284,9 +298,18 @@ export function registerIpc(projects: ProjectService): void {
           typeof payload?.collectionPath === 'string'
             ? assertInProjects(payload.collectionPath)
             : null
+        // Steps run on their own are Sends, and start from what earlier ones set;
+        // Run all starts from nothing, as gta does.
+        const environment = optionalString(payload?.environment) ?? null
+        const sends = run === 'steps'
+        const carried =
+          collectionPath && sends ? runtimeVariables.carried(collectionPath, environment) : []
+        if (collectionPath)
+          runtimeVariables.begin(collectionPath, environment, sends ? 'send' : 'run')
         // Its results reach the console as they land, through `broadcastRunProgress`.
         return {
           summary: await runSupervisor.runCollection(runId, collection, collectionPath, {
+            carried,
             environment: optionalString(payload?.environment),
             environmentOverrides: environmentOverridesOf(payload?.environmentOverrides),
             projectVars: projectVarsOf(payload?.projectVars),
@@ -977,7 +1000,7 @@ export function registerIpc(projects: ProjectService): void {
         const script = payload?.collection ? payload.collection.script : undefined
         return await previewVariables(
           step,
-          scopeContextOf(payload),
+          withCarried(scopeContextOf(payload)),
           payload?.collection ? (typeof script === 'string' ? script : null) : undefined
         )
       } catch {
@@ -992,7 +1015,7 @@ export function registerIpc(projects: ProjectService): void {
     IpcChannel.variablesCopy,
     async (_event, payload: PreviewRequest, name: unknown): Promise<boolean> => {
       if (typeof name !== 'string' || name === '') return false
-      const context = scopeContextOf(payload)
+      const context = withCarried(scopeContextOf(payload))
       if (!context) return false
       try {
         const scope = await buildScope(context)
@@ -1005,6 +1028,18 @@ export function registerIpc(projects: ProjectService): void {
       }
     }
   )
+
+  ipcMain.handle(
+    IpcChannel.variablesRuntime,
+    (_event, collectionPath: unknown, environment: unknown): RuntimeVariablesView | null =>
+      typeof collectionPath === 'string'
+        ? runtimeVariables.view(collectionPath, optionalString(environment) ?? null)
+        : null
+  )
+
+  ipcMain.on(IpcChannel.variablesClear, (_event, collectionPath: unknown) => {
+    if (typeof collectionPath === 'string') runtimeVariables.clear(collectionPath)
+  })
 
   ipcMain.on(IpcChannel.appCopyText, (_event, text: unknown) => {
     if (typeof text === 'string') clipboard.writeText(text)
@@ -1131,6 +1166,15 @@ export function broadcastRunProgress(): () => void {
     runSupervisor.onLive((runId, live) => toWindows(IpcChannel.eventRunLive, { runId, live })),
     runSupervisor.onConnections((collectionPath, connections) =>
       toWindows(IpcChannel.eventConnections, { collectionPath, connections })
+    ),
+    runSupervisor.onVariables((collectionPath, values) =>
+      runtimeVariables.add(collectionPath, values)
+    ),
+    runtimeVariables.onChange((collectionPath) =>
+      toWindows(IpcChannel.eventVariables, {
+        collectionPath,
+        view: runtimeVariables.current(collectionPath)
+      })
     )
   ]
   return () => {

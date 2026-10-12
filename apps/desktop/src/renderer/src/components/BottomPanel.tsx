@@ -7,6 +7,8 @@ import { useStoredFlag } from '../hooks/useStoredFlag.js'
 import ConsoleIcon from './ConsoleIcon.js'
 import ConsolePanel from './ConsolePanel.js'
 import Tooltip from './Tooltip.js'
+import VariablesIcon from './VariablesIcon.js'
+import VariablesPanel, { type RuntimeVariablesProps } from './VariablesPanel.js'
 
 declare const __GRAVITY_VERSION__: string | undefined
 
@@ -18,11 +20,15 @@ const plural = (count: number, one: string) => `${count} ${one}${count === 1 ? '
 /** What the console leaves of the window's height, at the least: the app bar and some steps. */
 const ROOM_ABOVE = 220
 
+type Tab = 'console' | 'variables'
+
 /**
- * The status bar along the bottom of the window, and the panel its Console
- * button opens above it, across the whole window. The app's version sits at
- * its right, so which build is running is never a question — and beside it,
- * when the app is not running its own git, which git it runs instead and why.
+ * The status bar along the bottom of the window, and the panel its buttons
+ * open above it, across the whole window: the Console, and the Variables the
+ * open collection's Sends and runs set, each a tab of it. The app's version
+ * sits at its right, so which build is running is never a question — and
+ * beside it, when the app is not running its own git, which git it runs
+ * instead and why.
  *
  * The console listens from the moment the window opens, so whatever ran while
  * the panel was closed is there when it opens. Its own state, not the app's:
@@ -32,9 +38,19 @@ export default function BottomPanel(props: {
   /** Something the person asked for went wrong, said here until dismissed. */
   message?: string | null
   onDismissMessage?: () => void
+  variables: RuntimeVariablesProps
 }) {
   const log = useConsoleLog()
   const [open, setOpen] = useStoredFlag('console.open')
+  const [onVariables, setOnVariables] = useStoredFlag('panel.variables')
+  const tab: Tab = onVariables ? 'variables' : 'console'
+  /** A status-bar button: opens its tab, or closes the panel when its tab is shown. */
+  const toggle = (which: Tab) => {
+    if (open && tab === which) return setOpen(false)
+    setOnVariables(which === 'variables')
+    setOpen(true)
+  }
+  const set = props.variables.view?.variables.length ?? 0
   // Never so tall that nothing is left above it, however small the window gets.
   const [windowHeight, setWindowHeight] = useState(() => window.innerHeight)
   useEffect(() => {
@@ -67,15 +83,42 @@ export default function BottomPanel(props: {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, setOpen])
 
+  const tabs = (
+    <div className="panel-tabs" role="tablist" aria-label="Bottom panel">
+      {(['console', 'variables'] as const).map((which) => (
+        <button
+          key={which}
+          type="button"
+          role="tab"
+          aria-selected={tab === which}
+          className={tab === which ? 'active' : ''}
+          onClick={() => setOnVariables(which === 'variables')}
+        >
+          {which === 'console' ? 'Console' : 'Variables'}
+        </button>
+      ))}
+    </div>
+  )
+
   return (
     <>
-      {open && <ConsolePanel log={log} pane={pane} onClose={() => setOpen(false)} />}
+      {open &&
+        (tab === 'console' ? (
+          <ConsolePanel log={log} pane={pane} tabs={tabs} onClose={() => setOpen(false)} />
+        ) : (
+          <VariablesPanel
+            {...props.variables}
+            pane={pane}
+            tabs={tabs}
+            onClose={() => setOpen(false)}
+          />
+        ))}
       <footer className="status-bar">
         <Tooltip text="Console: every request, what scripts write, and errors (⌘J)">
           <button
             type="button"
-            className={`status-button${open ? ' on' : ''}`}
-            aria-expanded={open}
+            className={`status-button${open && tab === 'console' ? ' on' : ''}`}
+            aria-expanded={open && tab === 'console'}
             aria-label={[
               'Console',
               errors > 0 ? plural(errors, 'error') : null,
@@ -83,11 +126,23 @@ export default function BottomPanel(props: {
             ]
               .filter(Boolean)
               .join(', ')}
-            onClick={() => setOpen(!open)}
+            onClick={() => toggle('console')}
           >
             <ConsoleIcon />
             {errors > 0 && <span className="status-count error">{errors}</span>}
             {warnings > 0 && <span className="status-count warn">{warnings}</span>}
+          </button>
+        </Tooltip>
+        <Tooltip text="Variables: what this collection's Sends and runs set">
+          <button
+            type="button"
+            className={`status-button${open && tab === 'variables' ? ' on' : ''}`}
+            aria-expanded={open && tab === 'variables'}
+            aria-label={set > 0 ? `Variables, ${set} set` : 'Variables'}
+            onClick={() => toggle('variables')}
+          >
+            <VariablesIcon />
+            {set > 0 && <span className="status-count set">{set}</span>}
           </button>
         </Tooltip>
         {props.message && (

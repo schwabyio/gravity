@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { StepSchema } from '../model/documents.js'
 import { runRequest } from '../run/runRequest.js'
 import { buildScope, environmentLayer } from './resolve.js'
+import type { SetValue } from './scope.js'
 import { previewVariables, referencedVariables } from './preview.js'
 
 let root: string
@@ -212,6 +213,40 @@ describe('runRequest with variables', () => {
     expect(result.response).toBeNull()
   })
 
+  it('starts from what earlier Sends set, over the environment and the process environment', async () => {
+    const told: SetValue[] = []
+    const result = await runRequest({
+      step: StepSchema.parse({
+        GET: '{{baseUrl}}/orders?token={{authToken}}',
+        tests: "gta.set('orderId', 8812)"
+      }),
+      context: {
+        ...context(collectionPath, 'demo', { apiKey: 'x', baseUrl: 'https://override.test' }),
+        carried: [
+          { name: 'authToken', value: 'tok-1', source: 'tests' },
+          { name: 'baseUrl', value: 'http://127.0.0.1:9', source: 'captured' }
+        ],
+        onSet: (set) => told.push(set)
+      }
+    })
+    expect(result.request.url).toBe('http://127.0.0.1:9/orders?token=tok-1')
+    // Carried values are not set again: only what this Send set is told.
+    expect(told).toEqual([])
+    expect(result.error?.phase).toBe('http')
+  })
+
+  it('tells whoever asked what a Send set, captures included', async () => {
+    const told: SetValue[] = []
+    await runRequest({
+      step: StepSchema.parse({
+        GET: 'http://127.0.0.1:9/x',
+        before: { script: "gta.set('traceId', 't-1')" }
+      }),
+      context: { ...context(collectionPath, null), onSet: (set) => told.push(set) }
+    })
+    expect(told).toEqual([{ name: 'traceId', value: 't-1', source: 'pre-request' }])
+  })
+
   it('runs the collection before.script before the step’s', async () => {
     const result = await runRequest({
       step: StepSchema.parse({
@@ -261,6 +296,29 @@ describe('previewVariables', () => {
     )
     expect(previews['id']).toEqual({ value: null, origin: 'pre-request script', kind: 'dynamic' })
     expect(previews['label']?.kind).toBe('dynamic')
+  })
+
+  it('shows what earlier Sends set over the environment, hiding one that held a secret', async () => {
+    const previews = await previewVariables(step('x', { script: "gta.set('traceId', 1)" }), {
+      ...context(collectionPath, 'demo', { apiKey: 'x' }),
+      carried: [
+        { name: 'baseUrl', value: 'https://captured.test', source: 'set by login · captured' },
+        { name: 'copiedKey', value: 'x', source: 'set by login · tests', secret: true },
+        { name: 'traceId', value: 'old', source: 'set by r · pre-request' }
+      ]
+    })
+    expect(previews['baseUrl']).toEqual({
+      value: 'https://captured.test',
+      origin: 'set by login · captured',
+      kind: 'static'
+    })
+    expect(previews['copiedKey']).toEqual({
+      value: null,
+      origin: 'set by login · tests',
+      kind: 'secret'
+    })
+    // This step's own script sets it again before it is sent.
+    expect(previews['traceId']?.kind).toBe('dynamic')
   })
 
   it('uses the collection script it is given instead of the saved one', async () => {

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   isUseStep,
+  namesStepsSet,
   readParam,
   rowLabel,
+  setByText,
   stepLabel,
   STEP_LISTS,
   type VariablePreview,
@@ -22,7 +24,8 @@ import type {
   EndpointView,
   LibraryFileView,
   ProjectView,
-  RequestSetView
+  RequestSetView,
+  RuntimeVariablesView
 } from '@shared/ipc.js'
 import type { SettingsSection } from './components/CollectionSettings.js'
 import CollectionView, { connectionNames } from './components/CollectionView.js'
@@ -520,6 +523,28 @@ export default function App() {
 
   /* ------------------------------------------------ variable previews */
 
+  /** What the open collection's Sends and runs set, which its next Sends start from. */
+  const [runtime, setRuntime] = useState<RuntimeVariablesView | null>(null)
+  useEffect(() => {
+    setRuntime(null)
+    if (!collectionPath) return
+    let stale = false
+    // Asked for in another environment than they were set in, main forgets them.
+    void window.desktop.variables.runtime(collectionPath, selectedEnvironment).then((view) => {
+      if (!stale) setRuntime(view)
+    })
+    const off = window.desktop.variables.onRuntime((event) => {
+      if (event.collectionPath === collectionPath) setRuntime(event.view)
+    })
+    return () => {
+      stale = true
+      off()
+    }
+  }, [collectionPath, selectedEnvironment])
+  const clearRuntime = useCallback(() => {
+    if (collectionPath) window.desktop.variables.clear(collectionPath)
+  }, [collectionPath])
+
   const previewRequest = useMemo(
     () => ({
       step: pendingStep ?? {},
@@ -563,17 +588,34 @@ export default function App() {
     doc?.extends,
     JSON.stringify(environmentOverrides),
     JSON.stringify(dataRowToRun),
-    ws.state.projects
+    ws.state.projects,
+    // What Sends set: they start the next Send, so the editor shows them.
+    runtime?.at
   ])
 
   // A request set's own requests read `{{params.name}}`: known, valued by default.
   // A forEach step's read `{{item}}`: known, valued only as it runs.
   const repeats = (request?.forEach ?? '').trim() !== ''
+  // What the steps set as they run: known, valued once a Send or run sets them.
+  const setup = doc?.setup
+  const steps = doc?.steps
+  const teardown = doc?.teardown
+  const collectionTests = doc?.tests
+  const stepsSet = useMemo((): VariablePreviews => {
+    if (!steps) return {}
+    const found = namesStepsSet({ setup, steps, teardown, tests: collectionTests })
+    return Object.fromEntries(
+      Object.entries(found).map(([name, { step, by }]) => [
+        name,
+        { value: null, origin: setByText(step, by), kind: 'runtime' } satisfies VariablePreview
+      ])
+    )
+  }, [setup, steps, teardown, collectionTests])
   const shownPreviews = useMemo((): VariablePreviews => {
     const item: VariablePreviews = repeats
       ? { item: { value: null, origin: 'forEach', kind: 'dynamic' } }
       : {}
-    if (!doc?.params) return { ...previews, ...item }
+    if (!doc?.params) return { ...stepsSet, ...previews, ...item }
     const params = Object.entries(doc.params).map(([name, spec]) => {
       const fallback = readParam(spec).default
       return [
@@ -585,8 +627,8 @@ export default function App() {
         } satisfies VariablePreview
       ] as const
     })
-    return { ...previews, ...Object.fromEntries(params), ...item }
-  }, [previews, doc?.params, repeats])
+    return { ...stepsSet, ...previews, ...Object.fromEntries(params), ...item }
+  }, [stepsSet, previews, doc?.params, repeats])
 
   const copyVariable = useCallback(
     (name: string) => window.desktop.variables.copy(previewRequest, name),
@@ -1716,7 +1758,16 @@ export default function App() {
             </main>
           </div>
 
-          <BottomPanel message={editorProblem} onDismissMessage={() => setEditorProblem(null)} />
+          <BottomPanel
+            message={editorProblem}
+            onDismissMessage={() => setEditorProblem(null)}
+            variables={{
+              view: runtime,
+              collectionOpen: collectionPath !== null,
+              onClear: clearRuntime,
+              onCopy: copyVariable
+            }}
+          />
 
           {settingsOpen && (
             <SettingsPage

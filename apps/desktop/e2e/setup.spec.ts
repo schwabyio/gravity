@@ -263,11 +263,25 @@ test('Run all runs setup once, the steps per row, then teardown once per item', 
   )
 })
 
-test('a teardown step sent on its own runs without setup', async () => {
+test('a teardown step sent on its own starts from what Run all set, and without it fails', async () => {
+  // A Send starts from what the collection's runs and Sends set: Run all set roots.
   received = []
   await rowIn('Teardown', 'revoke').locator('.step-open').click()
   await page.getByRole('button', { name: 'Send' }).click()
-  // Its list comes from setup, which did not run.
+  await expect
+    .poll(() => received, { timeout: 10_000 })
+    .toEqual(['DELETE /grant/r1', 'DELETE /grant/r2'])
+
+  // Forgotten, its list is not there: it comes from setup, which a Send does not run.
+  received = []
+  const variables = page.locator('.status-bar').getByRole('button', { name: /^Variables/ })
+  await variables.click()
+  await page
+    .getByRole('region', { name: 'Variables', exact: true })
+    .getByRole('button', { name: 'Clear' })
+    .click()
+  await variables.click()
+  await page.getByRole('button', { name: 'Send' }).click()
   await expect(rowIn('Teardown', 'revoke').locator('.step-status')).toContainText(
     'Variable "roots" is not defined',
     { timeout: 10_000 }

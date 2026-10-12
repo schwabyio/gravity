@@ -8,7 +8,7 @@ import { StepSchema, type Collection } from '../model/documents.js'
 import type { AssertionResult, RunResult } from '../model/run.js'
 import { runRequest } from '../run/runRequest.js'
 import { strftime } from '../vars/generators.js'
-import { VariableScope, type VarLayer } from '../vars/scope.js'
+import { VariableScope, type SetValue, type VarLayer } from '../vars/scope.js'
 import { checkScriptSyntax, runScript } from './sandbox.js'
 import {
   GtaUsageError,
@@ -1210,10 +1210,23 @@ describe('variables, flags and skips, called directly', () => {
       object: '{"id":1}',
       gone: null
     })
-    expect(scope.originOf('text')).toBe('script')
+    expect(scope.originOf('text')).toBe('pre-request')
     // The same in tests, where the step's checks have run.
     testsGta({ session: noSession, scope, pending: [] }).set('text', 'b')
     expect(scope.get('text')).toBe('b')
+    expect(scope.originOf('text')).toBe('tests')
+  })
+
+  it('tells whoever asked of each value set, and by which script', () => {
+    const scope = new VariableScope()
+    const told: SetValue[] = []
+    scope.onSet = (set) => told.push(set)
+    preRequestGta(scope).set('traceId', 't-1')
+    testsGta({ session: noSession, scope, pending: [] }).set('orderId', 8812, { scope: 'run' })
+    expect(told).toEqual([
+      { name: 'traceId', value: 't-1', source: 'pre-request' },
+      { name: 'orderId', value: 8812, source: 'tests' }
+    ])
   })
 
   it('refuses a scope other than run', () => {

@@ -17,6 +17,7 @@ import {
   runRequest,
   runSuite,
   secretValues,
+  type CarriedValue,
   type Collection,
   type RunResult,
   type Step,
@@ -26,6 +27,7 @@ import {
   StepSchema,
   VarsSchema
 } from '@schwabyio/gravity-core'
+import { stepRecorder, type KeptValue } from './runtimeVariables.js'
 
 interface RunStepMessage {
   type: 'run'
@@ -39,6 +41,8 @@ interface RunStepMessage {
   projectVars?: unknown
   flags?: Record<string, string | number | boolean> | null
   dataRow?: DataRow | null
+  /** What earlier Sends of the collection set, to start from. */
+  carried?: CarriedValue[]
 }
 
 /** A data file row as main checked it (SPEC.md §2.8). */
@@ -62,6 +66,8 @@ interface RunCollectionMessage {
   dataRows?: DataRow[]
   /** Steps run on their own: they use, and leave open, the connections Sends hold. */
   keepConnections?: boolean
+  /** What earlier Sends of the collection set, to start from; none for Run all. */
+  carried?: CarriedValue[]
 }
 
 interface CancelMessage {
@@ -160,6 +166,7 @@ const contextFor = (message: {
   projectVars?: unknown
   flags?: Record<string, string | number | boolean> | null
   dataRow?: DataRow | null
+  carried?: CarriedValue[]
   collection: unknown
 }) => {
   if (!message.collectionPath) return {}
@@ -190,8 +197,16 @@ const contextFor = (message: {
       environments: (message.environmentOverrides ?? []).map((override) => ({
         path: override.path,
         doc: EnvironmentDocSchema.parse(override.doc)
-      }))
+      })),
+      ...(message.carried?.length ? { carried: message.carried } : {})
     }
+  }
+}
+
+/** Tell main what a step set, for the collection's next Sends and its Variables tab. */
+const tellVariables = (collectionPath: string | null, values: KeptValue[]) => {
+  if (collectionPath && values.length > 0) {
+    process.parentPort.postMessage({ type: 'variables', collectionPath, values })
   }
 }
 
@@ -208,6 +223,8 @@ async function handleStep(message: RunStepMessage): Promise<void> {
       return
     }
     const run = contextFor(message)
+    const secrets = run.context ? await secretValues(run.context) : []
+    const recorder = stepRecorder(secrets)
     const result = await runRequest({
       step,
       ...(collection ? { collection } : {}),
@@ -215,9 +232,10 @@ async function handleStep(message: RunStepMessage): Promise<void> {
       signal: controller.signal,
       connections: heldFor(message.collectionPath),
       watch: watchFor(message.runId),
-      ...run
+      ...(run.context ? { context: { ...run.context, onSet: recorder.onSet } } : {})
     })
-    const shown = hidingSecrets(run.context ? await secretValues(run.context) : [])
+    tellVariables(message.collectionPath, recorder.take(result))
+    const shown = hidingSecrets(secrets)
     process.parentPort.postMessage({ type: 'result', runId: message.runId, result: shown(result) })
   } catch (cause) {
     postFailure(message.runId, cause)
@@ -235,7 +253,9 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
   try {
     const collection = CollectionSchema.parse(message.collection)
     const run = contextFor(message)
-    const shown = hidingSecrets(run.context ? await secretValues(run.context) : [])
+    const secrets = run.context ? await secretValues(run.context) : []
+    const shown = hidingSecrets(secrets)
+    const recorder = stepRecorder(secrets)
     // Run all closes what Sends left open, and keeps its own only while it runs.
     const sends = heldFor(message.collectionPath)
     if (!message.keepConnections) sends.close()
@@ -257,17 +277,19 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
         : null,
       // Report each step as it lands so the list fills in during the run;
       // `result.stage` says when it is a setup or teardown step.
-      onResult: (index, result, iteration) =>
+      onResult: (index, result, iteration) => {
+        tellVariables(message.collectionPath, recorder.take(result, iteration))
         process.parentPort.postMessage({
           type: 'progress',
           runId: message.runId,
           index,
           result: shown(result),
           ...(iteration ? { iteration } : {})
-        }),
+        })
+      },
       ...(message.keepConnections ? { connections: sends } : {}),
       watch: watchFor(message.runId),
-      ...run
+      ...(run.context ? { context: { ...run.context, onSet: recorder.onSet } } : {})
     })
     process.parentPort.postMessage({
       type: 'summary',

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import { parseCollection } from '../format/index.js'
 import type { Step } from '../model/documents.js'
-import type { VariablePreviews } from '../model/variables.js'
+import { namesSetIn, type VariablePreviews } from '../model/variables.js'
 
 export type { VariableKind, VariablePreview, VariablePreviews } from '../model/variables.js'
 import { interpolate } from './interpolate.js'
@@ -103,8 +103,7 @@ export async function previewVariables(
 
 /** Names a script sets with a literal `gta.set('name', …)`. */
 export function setBy(script: string | undefined): string[] {
-  if (!script) return []
-  return [...script.matchAll(/\bgta\.set\(\s*(['"`])([^'"`]+)\1/g)].map((m) => m[2]!)
+  return namesSetIn(script, 'pre-request').map((set) => set.name)
 }
 
 async function readCollectionScript(file: string): Promise<string | undefined> {

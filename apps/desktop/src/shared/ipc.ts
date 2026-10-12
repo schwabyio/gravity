@@ -15,6 +15,7 @@ import type {
   RuleFinding,
   RuleSetting,
   RunResult,
+  SetBy,
   Step,
   StepList,
   StreamEvent,
@@ -114,6 +115,9 @@ export const IpcChannel = {
   consoleHistory: 'console:history',
   variablesPreview: 'variables:preview',
   variablesCopy: 'variables:copy',
+  /** What a collection's Sends and runs set, which its next Sends start from. */
+  variablesRuntime: 'variables:runtime',
+  variablesClear: 'variables:clear',
   scriptCheck: 'script:check',
   scriptRules: 'script:rules',
 
@@ -125,6 +129,8 @@ export const IpcChannel = {
   eventConsole: 'event:console',
   /** main -> renderer: the connections a collection's Sends hold open changed. */
   eventConnections: 'event:connections',
+  /** main -> renderer: what a collection's Sends and runs set changed. */
+  eventVariables: 'event:variables',
   /** main -> renderer: workspaces, the active one, or which projects they hold changed. */
   eventWorkspaces: 'event:workspaces',
   /** main -> renderer: one project was rescanned or its git state moved. */
@@ -613,6 +619,42 @@ export interface ConnectionsView {
   connections: ConnectionView[]
 }
 
+/** A value a Send or run set, as the Variables tab shows it. */
+export interface RuntimeVariable {
+  name: string
+  /**
+   * As text, with any secret's value in it as `[secret: NAME]`; null for a
+   * variable declared secret, whose value never leaves main.
+   */
+  value: string | null
+  /** The step that set it last, as reports name it: `setup › grant`. */
+  step: string
+  by: SetBy
+  /** The data row it was set in, when Run all ran every row: `row 2`. */
+  row?: string
+}
+
+/**
+ * What a collection's Sends and runs set, in the order first set, which its
+ * next Sends start from, until Clear or a switch of environment.
+ */
+export interface RuntimeVariablesView {
+  collectionPath: string
+  /** The environment they were set in. */
+  environment: string | null
+  /** What started last: a Send, or Run all, which starts from nothing. */
+  last: 'send' | 'run'
+  /** When they last changed, epoch milliseconds. */
+  at: number
+  variables: RuntimeVariable[]
+}
+
+/** A collection's kept values changed; null once there are none. */
+export interface RuntimeVariablesEvent {
+  collectionPath: string
+  view: RuntimeVariablesView | null
+}
+
 export interface RunProgress {
   runId: string
   /** The step's place in its list: `steps` as sent, or `setup`/`teardown` when `result.stage` says. */
@@ -959,6 +1001,17 @@ export interface DesktopApi {
      * clipboard without ever passing through the renderer.
      */
     copy(request: PreviewRequest, name: string): Promise<boolean>
+    /**
+     * What a collection's Sends and runs set in `environment`, which its next
+     * Sends start from; null for nothing. Another environment's are forgotten.
+     */
+    runtime(
+      collectionPath: string,
+      environment: string | null
+    ): Promise<RuntimeVariablesView | null>
+    /** Forget what a collection's Sends and runs set: its next Send starts from nothing. */
+    clear(collectionPath: string): void
+    onRuntime(callback: (event: RuntimeVariablesEvent) => void): Unsubscribe
   }
 
   script: {

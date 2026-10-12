@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { wireNote } from '@schwabyio/gravity-core/model'
 import {
   clockTime,
@@ -35,6 +35,8 @@ interface Props {
   log: ConsoleState & { clear: () => void }
   /** Its height, which its top edge drags. */
   pane: PaneWidth
+  /** The bottom panel's tabs, where its heading would be. */
+  tabs: ReactNode
   onClose: () => void
 }
 
@@ -44,7 +46,7 @@ interface Props {
  * request opens to show itself and its response as raw text, each with a Copy;
  * Copy at the top takes every line shown, for a report.
  */
-export default function ConsolePanel({ log, pane, onClose }: Props) {
+export default function ConsolePanel({ log, pane, tabs, onClose }: Props) {
   const [show, setShow] = useState<ConsoleShow>('all')
   const [query, setQuery] = useState('')
   /** The requests opened to show their raw text, by row key. */
@@ -92,7 +94,7 @@ export default function ConsolePanel({ log, pane, onClose }: Props) {
     >
       <Resizer pane={pane} label="Resize the console" edge="top" />
       <div className="console-head">
-        <h2>Console</h2>
+        {tabs}
         <input
           type="search"
           className="console-filter"

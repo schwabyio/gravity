@@ -117,7 +117,11 @@ const api: DesktopApi = {
 
   variables: {
     preview: (request) => ipcRenderer.invoke(IpcChannel.variablesPreview, request),
-    copy: (request, name: string) => ipcRenderer.invoke(IpcChannel.variablesCopy, request, name)
+    copy: (request, name: string) => ipcRenderer.invoke(IpcChannel.variablesCopy, request, name),
+    runtime: (collectionPath: string, environment: string | null) =>
+      ipcRenderer.invoke(IpcChannel.variablesRuntime, collectionPath, environment),
+    clear: (collectionPath: string) => ipcRenderer.send(IpcChannel.variablesClear, collectionPath),
+    onRuntime: (callback) => subscribe(IpcChannel.eventVariables, callback)
   },
 
   data: {

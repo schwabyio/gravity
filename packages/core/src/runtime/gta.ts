@@ -241,7 +241,7 @@ export function testsGta({
   warn = () => {},
   control = newStepControl()
 }: TestsApi) {
-  const shared = sharedGta(scope)
+  const shared = sharedGta(scope, 'tests')
   return {
     ...shared,
 
@@ -427,7 +427,7 @@ export function preRequestGta(scope: VariableScope, control: StepControl = newSt
     throw new Error(`gta.${name}() checks a response, so it belongs in tests, not before.script`)
   }
   return {
-    ...sharedGta(scope),
+    ...sharedGta(scope, 'pre-request'),
     /**
      * Send nothing for this step, and report it skipped with the reason. The
      * script runs to its end; no later `before.script` does.
@@ -457,7 +457,8 @@ export function preRequestGta(scope: VariableScope, control: StepControl = newSt
   }
 }
 
-function sharedGta(scope: VariableScope) {
+/** What both scripts' `gta` has; `script` is which one, for where a value it sets came from. */
+function sharedGta(scope: VariableScope, script: 'pre-request' | 'tests') {
   return {
     /** A variable's current value, from any layer: environment, `set`, captures. */
     get(name: string): unknown {
@@ -473,8 +474,8 @@ function sharedGta(scope: VariableScope) {
       if (lasting !== undefined && lasting !== 'run') {
         throw new Error(`gta.set(): scope is 'run' or left out, got ${show(lasting)}`)
       }
-      if (lasting === 'run') scope.setForRun(String(name), toVarValue(value), 'script')
-      else scope.set(String(name), toVarValue(value), 'script')
+      if (lasting === 'run') scope.setForRun(String(name), toVarValue(value), script)
+      else scope.set(String(name), toVarValue(value), script)
     },
     /**
      * A feature flag's value in this run (SPEC.md §2.9) — to check something

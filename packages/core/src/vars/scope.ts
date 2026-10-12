@@ -1,6 +1,21 @@
 import { randomUUID } from 'node:crypto'
 import type { FlagValue, VarValue } from '../model/documents.js'
 
+/**
+ * A value set as a run went, and by what: `pre-request` or `tests` for a
+ * script's `gta.set`, `captured` or `captured (environment)` for a check's.
+ */
+export interface SetValue {
+  name: string
+  value: VarValue
+  source: string
+}
+
+/** A value an earlier Send set, carried into the next; `secret` when it holds a secret's. */
+export interface CarriedValue extends SetValue {
+  secret?: boolean
+}
+
 /** A named set of variables, plus where it came from, for error messages. */
 export interface VarLayer {
   source: string
@@ -63,6 +78,11 @@ export class VariableScope {
    * Null when nobody asked.
    */
   produced: Map<string, VarValue> | null = null
+  /**
+   * Told of every value set, as it is set: how the app knows what a Send or a
+   * run set, and which step set it. Null when nobody asked.
+   */
+  onSet: ((set: SetValue) => void) | null = null
   private readonly values = new Map<string, VarValue>()
   private readonly origins = new Map<string, string>()
   private readonly secrets = new Set<string>()
@@ -114,6 +134,18 @@ export class VariableScope {
     this.origins.set(name, source)
     if (this.runWide) this.runValues?.set(name, value)
     this.produced?.set(name, value)
+    this.onSet?.({ name, value, source })
+  }
+
+  /**
+   * A value an earlier Send set, which the app carries into this one: as if
+   * set earlier in the run, over every layer, but not set by this one — so
+   * not reported as set again, nor kept for later rows.
+   */
+  carry({ name, value, source, secret }: CarriedValue): void {
+    this.values.set(name, value)
+    this.origins.set(name, source)
+    if (secret) this.secrets.add(name)
   }
 
   /** `set`, and keep the value for every row after this one and for teardown. */

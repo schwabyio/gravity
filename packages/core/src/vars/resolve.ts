@@ -14,7 +14,14 @@ import type {
   Vars
 } from '../model/documents.js'
 import { parseDotEnv } from './dotenv.js'
-import { exactEnv, InterpolationError, VariableScope, type VarLayer } from './scope.js'
+import {
+  exactEnv,
+  InterpolationError,
+  VariableScope,
+  type CarriedValue,
+  type SetValue,
+  type VarLayer
+} from './scope.js'
 
 export interface ScopeContext {
   /** The collection file whose variables are in scope. */
@@ -60,6 +67,13 @@ export interface ScopeContext {
    * file's fixed `flags.values`; null: none known.
    */
   flags?: Record<string, FlagValue> | null
+  /**
+   * Values earlier Sends set, which the app carries into the next one as the
+   * steps of a run share theirs: over every layer, as if set earlier in it.
+   */
+  carried?: ReadonlyArray<CarriedValue>
+  /** Told of every value the run sets (`VariableScope.onSet`). */
+  onSet?: (set: SetValue) => void
 }
 
 /**
@@ -123,6 +137,8 @@ export async function buildScope(context: ScopeContext): Promise<VariableScope> 
     scope.runWide = context.run.wide === true
     scope.produced = context.run.produced ?? null
   }
+  for (const carried of context.carried ?? []) scope.carry(carried)
+  if (context.onSet) scope.onSet = context.onSet
   scope.flags =
     context.flags !== undefined
       ? context.flags

@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { utilityProcess, type UtilityProcess } from 'electron'
-import type { CollectionRunSummary, RunResult } from '@schwabyio/gravity-core'
+import type { CarriedValue, CollectionRunSummary, RunResult } from '@schwabyio/gravity-core'
 import type { Vars } from '@schwabyio/gravity-core'
 import type {
   ConnectionView,
@@ -9,6 +9,7 @@ import type {
   IterationRef,
   LiveStream
 } from '../shared/ipc.js'
+import type { KeptValue } from './runtimeVariables.js'
 
 /** How a run resolves its variables: the environment chosen, and anything edited but unsaved. */
 export interface RunOptions {
@@ -23,6 +24,8 @@ export interface RunOptions {
   dataRows?: DataRowInput[]
   /** Steps run on their own: they use, and leave open, the connections Sends hold. */
   keepConnections?: boolean
+  /** What earlier Sends of the collection set, for a Send to start from. */
+  carried?: CarriedValue[]
 }
 
 type WorkerMessage =
@@ -38,6 +41,7 @@ type WorkerMessage =
   | { type: 'failure'; runId: string; message: string }
   | { type: 'live'; runId: string; live: LiveStream }
   | { type: 'connections'; collectionPath: string; connections: ConnectionView[] }
+  | { type: 'variables'; collectionPath: string; values: KeptValue[] }
 
 interface Pending {
   resolve: (value: never) => void
@@ -62,6 +66,9 @@ class RunSupervisor {
   private readonly connectionListeners = new Set<
     (collectionPath: string, connections: ConnectionView[]) => void
   >()
+  private readonly variableListeners = new Set<
+    (collectionPath: string, values: KeptValue[]) => void
+  >()
   /** Collections whose Sends hold connections, so a worker that dies can say they are gone. */
   private readonly holding = new Set<string>()
 
@@ -84,6 +91,12 @@ class RunSupervisor {
   ): () => void {
     this.connectionListeners.add(listener)
     return () => this.connectionListeners.delete(listener)
+  }
+
+  /** Values a run set, each by the step that set it, as the steps that set them finish. */
+  onVariables(listener: (collectionPath: string, values: KeptValue[]) => void): () => void {
+    this.variableListeners.add(listener)
+    return () => this.variableListeners.delete(listener)
   }
 
   private reportConnections(collectionPath: string, connections: ConnectionView[]): void {
@@ -112,6 +125,12 @@ class RunSupervisor {
       }
       if (message.type === 'connections') {
         this.reportConnections(message.collectionPath, message.connections)
+        return
+      }
+      if (message.type === 'variables') {
+        for (const listener of this.variableListeners) {
+          listener(message.collectionPath, message.values)
+        }
         return
       }
       const waiting = this.pending.get(message.runId)
@@ -197,6 +216,7 @@ class RunSupervisor {
     this.progressListeners.clear()
     this.liveListeners.clear()
     this.connectionListeners.clear()
+    this.variableListeners.clear()
   }
 }
 
