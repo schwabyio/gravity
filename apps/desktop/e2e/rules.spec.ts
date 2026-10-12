@@ -88,7 +88,11 @@ test.beforeAll(async () => {
   )
   shop = path.join(tmp, 'shop')
 
-  app = await launchApp({ args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`] })
+  app = await launchApp({
+    args: [MAIN, `--user-data-dir=${path.join(tmp, 'ud')}`],
+    // Every read again in the load log, for the failure below that only Windows has had.
+    env: { ...process.env, GRAVITY_LOAD_LOG: 'all' }
+  })
   page = await app.firstWindow()
   await sizeWindow(app, page, { width: 1400, height: 860 })
   await page.waitForSelector('.sidebar')
@@ -428,6 +432,7 @@ test('with no base collections or check files allowed, each is a finding and the
 
 test('rules that cannot be read are a problem of the project’s, and none apply', async () => {
   write('shop/rules.yml', lines('ids:', '  colections: kebab-case'))
+  const wrote = Date.now()
   const problem = page
     .getByRole('region', { name: 'Project shop', exact: true })
     .getByRole('img', { name: 'Project problems' })
@@ -437,10 +442,12 @@ test('rules that cannot be read are a problem of the project’s, and none apply
       /Rules are not valid \(SPEC\.md §1\.4\):\n {2}ids\.colections \(rules\.yml\): not a rule/,
       { timeout: 10_000 }
     )
-    // Failed twice on Windows only, after the test before deletes bases/ and checks/:
-    // what the app read, or that main did not answer, says why.
+    // Fails now and then on Windows only, after the test before deletes bases/ and checks/:
+    // what the app read and when, and whether main has the problem, say why.
     .catch(async (cause: Error) => {
-      throw new Error(`${cause.message}\n\n${await loadLog(page)}`)
+      throw new Error(
+        `${cause.message}\n\n${await loadLog(page, { since: wrote, project: 'shop' })}`
+      )
     })
   await expect(row('CreateOrder').locator('.rule-mark')).toHaveCount(0)
   await page.getByRole('button', { name: 'Project actions for shop' }).click()

@@ -32,6 +32,7 @@ export interface WatchTarget {
 /** A directory being watched, and which folder it was when watching began. */
 interface Watching {
   watcher: FSWatcher
+  path: string
   /** The folder itself, so one deleted and made again in its place is watched anew. */
   folder: string
   /** Its watcher failed, the folder most likely deleted: it is watched anew. */
@@ -66,7 +67,9 @@ export class DirectoryWatcher {
      * as the app and many editors save, is watched no more, and what is written to it
      * after is never told. A folder's own watcher is told of every file in it.
      */
-    private readonly eachFolder = process.platform === 'linux'
+    private readonly eachFolder = process.platform === 'linux',
+    /** What became of a folder's watcher, for the load log: failed, let go, opened again. */
+    private readonly note: (key: string, what: string, path: string) => void = () => undefined
   ) {}
 
   /**
@@ -115,7 +118,9 @@ export class DirectoryWatcher {
     }
     // What is no longer listed, or is watched anew, once its replacement watches.
     for (const [what, watching] of before?.folders ?? []) {
-      if (now.folders.get(what) !== watching) watching.watcher.close()
+      if (now.folders.get(what) === watching) continue
+      watching.watcher.close()
+      this.note(key, now.folders.has(what) ? 'Watching again' : 'Stopped watching', watching.path)
     }
     this.watched.set(key, now)
     if (appeared) this.schedule(key)
@@ -127,17 +132,20 @@ export class DirectoryWatcher {
         watcher: fs.watch(path, { recursive, persistent: false }, (_event, name) =>
           this.schedule(key, name ? join(path, name) : path)
         ),
+        path,
         folder,
         failed: false
       }
       // A watched directory being deleted surfaces here rather than crashing.
-      watching.watcher.on('error', () => {
+      watching.watcher.on('error', (cause: NodeJS.ErrnoException) => {
         watching.failed = true
+        this.note(key, `Watcher failed (${cause.code ?? cause.message})`, path)
         this.schedule(key, path)
       })
       return watching
-    } catch {
+    } catch (cause) {
       // Unreadable or missing directory: skip it, keep the others.
+      this.note(key, `Could not watch (${(cause as NodeJS.ErrnoException).code ?? cause})`, path)
       return null
     }
   }

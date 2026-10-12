@@ -138,6 +138,12 @@ const QUIET_WINDOW_MS = 10_000
 /** The most paths a line names of what the watchers were told of, and the most a run keeps. */
 const MAX_TOLD_SHOWN = 3
 const MAX_TOLD_KEPT = 20
+/**
+ * Every read again logged, all it was told of, how many problems it found, and
+ * what became of each watcher: `GRAVITY_LOAD_LOG=all`, for a test that needs to
+ * know why a change was not shown.
+ */
+const EVERY_READ = process.env.GRAVITY_LOAD_LOG === 'all'
 
 /** A project's run of quick reads again that found nothing new. */
 interface QuietReads {
@@ -146,10 +152,15 @@ interface QuietReads {
   timer: NodeJS.Timeout
 }
 
+/** A path as the load log says it: from the project's folder. */
+const fromProject = (projectPath: string, file: string): string =>
+  relativePosix(projectPath, file) || '.'
+
 /** What the watchers were told of, from the project's folder: `; told of environments/dev.yml, ../.git/index`. */
 function toldWords(projectPath: string, told: readonly string[]): string {
   if (told.length === 0) return ''
-  const shown = told.slice(0, MAX_TOLD_SHOWN).map((file) => relativePosix(projectPath, file) || '.')
+  const limit = EVERY_READ ? MAX_TOLD_KEPT : MAX_TOLD_SHOWN
+  const shown = told.slice(0, limit).map((file) => fromProject(projectPath, file))
   const more = told.length - shown.length
   return `; told of ${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
 }
@@ -186,7 +197,16 @@ export class ProjectService {
   /** When each repository was last fetched in the background. */
   private readonly lastFetched = new Map<string, number>()
   private readonly autoFetchTimers = new Map<string, NodeJS.Timeout>()
-  private readonly watcher = new DirectoryWatcher((id, told) => this.rescan(id, told))
+  private readonly watcher = new DirectoryWatcher(
+    (id, told) => this.rescan(id, told),
+    undefined,
+    undefined,
+    (id, what, folder) => {
+      const view = this.views.get(id)
+      if (EVERY_READ && view)
+        this.options.log?.(view.name, `${what} ${fromProject(view.path, folder)}`)
+    }
+  )
   /** Each project's run of quick reads again that found nothing new, for the load log. */
   private readonly quietReads = new Map<string, QuietReads>()
   /** How often each project has been forgotten: a refresh begun before the last time is stale. */
@@ -1037,6 +1057,8 @@ export class ProjectService {
         // missed, and on macOS letting any watcher go can lose a change not yet told.
         this.watcher.watch(id, this.watchTargets(shown, this.gitAnswered.get(id) ?? null))
         this.emitProject(shown)
+      } else {
+        this.notShown(shown)
       }
       listed?.(this.views.get(id) ?? shown)
     }
@@ -1055,7 +1077,10 @@ export class ProjectService {
     this.gitAnswered.set(id, repo)
     this.logGit(view, reason, performance.now() - started)
 
-    if (!mayShow()) return this.views.get(id) ?? view
+    if (!mayShow()) {
+      this.notShown(view)
+      return this.views.get(id) ?? view
+    }
     this.views.set(id, view)
     this.watcher.watch(id, this.watchTargets(view, repo))
     this.scheduleAutoFetch(entry)
@@ -1085,17 +1110,18 @@ export class ProjectService {
       (previous.collections.length !== view.collections.length ||
         previous.environments.length !== view.environments.length)
     const toldOf = toldWords(view.path, told)
+    const problems = EVERY_READ ? `, ${plural(view.problems.length, 'problem')}` : ''
     if (reason === 'startup' || reason === 'added') {
       log(view.name, `Listed ${counts(view)} in ${duration(ms)} (${REASON_WORDS[reason]})`)
     } else if (changed) {
       log(
         view.name,
-        `Read again (${REASON_WORDS[reason]}): ${counts(view)}, where it had ${counts(previous)}${toldOf}`
+        `Read again (${REASON_WORDS[reason]}): ${counts(view)}${problems}, where it had ${counts(previous)}${toldOf}`
       )
-    } else if (ms >= SLOW_LISTING_MS) {
+    } else if (ms >= SLOW_LISTING_MS || EVERY_READ) {
       log(
         view.name,
-        `Read again (${REASON_WORDS[reason]}) in ${duration(ms)}: ${counts(view)}${toldOf}`
+        `Read again (${REASON_WORDS[reason]}) in ${duration(ms)}: ${counts(view)}${problems}${toldOf}`
       )
     } else if (reason === 'files changed') {
       this.countQuietRead(view, told)
@@ -1130,6 +1156,12 @@ export class ProjectService {
     }
     run.count++
     for (const file of told) if (run.told.size < MAX_TOLD_KEPT) run.told.add(file)
+  }
+
+  /** A read whose view a later one had already shown, so it showed nothing: with every read logged. */
+  private notShown(view: Pick<ProjectView, 'name'>): void {
+    if (EVERY_READ)
+      this.options.log?.(view.name, 'Not shown: a read begun later had shown its view')
   }
 
   /** When git answered a read of a project: the first time, and any time it was slow. */
