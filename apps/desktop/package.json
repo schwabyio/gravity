@@ -42,7 +42,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.2.0",
     "codemirror": "6.0.2",
-    "electron": "44.4.3",
+    "electron": "44.7.0",
     "electron-vite": "5.0.0",
     "monocart-coverage-reports": "2.13.0",
     "react": "19.3.0",

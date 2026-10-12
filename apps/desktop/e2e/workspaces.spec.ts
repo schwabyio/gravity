@@ -318,8 +318,8 @@ test('a step sent on its own shows its result in the list', async () => {
   await page.getByRole('button', { name: 'Send' }).click()
   // The port is closed, so this reports an error rather than a status code.
   await expect(row.locator('.step-mark')).toHaveAccessibleName('error', { timeout: 20_000 })
-  // With no response, no status or time beside the mark, and the reason under the name.
-  await expect(row.locator('.step-summary')).toHaveCount(0)
+  // With no response, how long it went beside the mark, and the reason under the name.
+  await expect(row.locator('.step-summary')).toHaveText(/^no response · /)
   await expect(row.locator('.step-status')).toHaveText('ECONNREFUSED')
   // Only the step that was sent has a result.
   await expect(
