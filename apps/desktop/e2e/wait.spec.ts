@@ -37,12 +37,22 @@ test.beforeAll(async () => {
   const repo = path.join(tmp, 'orders-api')
   file = path.join(repo, 'collections', 'orders.yml')
   fs.mkdirSync(path.dirname(file), { recursive: true })
+  // A flag the environment turns off, for a wait that needs it on.
+  fs.mkdirSync(path.join(repo, 'environments'), { recursive: true })
+  fs.writeFileSync(
+    path.join(repo, 'environments', 'local.yml'),
+    ['name: local', 'flags:', '  values:', '    search: false', ''].join('\n')
+  )
   fs.writeFileSync(
     file,
     [
       'id: orders',
       'vars:',
       '  pause: 300',
+      '  settle: 1500',
+      // A value only a run knows, so none is known beforehand to count down from.
+      'before:',
+      "  script: gta.set('later', 1500)",
       'steps:',
       '  - name: create order',
       `    POST: "${origin}/orders"`,
@@ -59,6 +69,7 @@ test.beforeAll(async () => {
   await addProject(app, page, repo)
   await page.locator('.collection-row').click()
   await page.waitForSelector('.steps-column')
+  await page.getByLabel('Environment', { exact: true }).selectOption('local')
 })
 
 test.afterAll(async () => {
@@ -72,6 +83,16 @@ const openStep = (name: string) => page.locator('.step-open', { hasText: name })
 const waitRow = () => page.locator('.step-list li', { has: page.locator('.method.m-wait') })
 const field = () => page.getByLabel('Milliseconds to wait')
 const status = () => page.getByRole('region', { name: 'Wait', exact: true })
+const send = () => page.locator('.wait-bar .send').click()
+/** The wait added last, at the end of the steps, opened. */
+const openLastWait = () => waitRow().last().locator('.step-open').click()
+
+async function setAutoSave(enabled: boolean) {
+  await page.getByRole('button', { name: 'App settings' }).click()
+  const toggle = page.getByLabel('Auto save')
+  if ((await toggle.isChecked()) !== enabled) await toggle.click()
+  await page.getByRole('button', { name: 'Close settings' }).click()
+}
 
 test('a wait is added below a step from its ⋯, and written as milliseconds', async () => {
   await openStep('create order')
@@ -155,4 +176,93 @@ test('Run all waits between the steps around it, and a list’s + adds one at it
   await page.getByRole('menuitem', { name: 'Add wait', exact: true }).click()
   await expect.poll(onDisk, { timeout: 5_000 }).toMatch(/\/search"\n {2}- wait: 1000\n$/)
   await expect(waitRow()).toHaveCount(2)
+})
+
+test('a {{variable}} wait sent on its own waits its value, its row counting how long so far', async () => {
+  await openLastWait()
+  await field().fill('{{settle}}')
+  await expect.poll(onDisk, { timeout: 5_000 }).toContain('  - wait: "{{settle}}"\n')
+  await expect(page.locator('.wait-reading')).toHaveText('1.5 s')
+  await send()
+  // The view knows the value, from the collection; the row counts up, as for any variable.
+  await expect(status()).toContainText(/Waiting · \d\.\d s left/)
+  await expect(waitRow().last().locator('.step-summary')).toHaveText(/^(\d+ ms|\d\.\d\d s)$/)
+  await expect(status()).toContainText(/Waited 1\.\d\d s/, { timeout: 5_000 })
+})
+
+test('a wait on a value only the run knows counts how long so far, in Run all', async () => {
+  await field().fill('{{later}}')
+  await expect.poll(onDisk, { timeout: 5_000 }).toContain('  - wait: "{{later}}"\n')
+  // Nothing knows it before the run: no reading, and nothing to count down from.
+  await expect(page.locator('.wait-reading')).toHaveText('')
+  await page.getByRole('button', { name: 'Run all' }).click()
+  await expect(status()).toContainText(/Waiting · (\d+ ms|\d\.\d\d s)$/, { timeout: 5_000 })
+  await expect(status().locator('.wait-progress')).toHaveCount(0)
+  await expect(page.locator('.run-summary')).toContainText('4 passed', { timeout: 10_000 })
+  await expect(status()).toContainText(/Waited 1\.\d\d s/)
+})
+
+test('a wait of 0 goes straight on, and an emptied field is no wait to send', async () => {
+  await field().fill('0')
+  await expect.poll(onDisk, { timeout: 5_000 }).toContain('  - wait: 0\n')
+  await expect(page.locator('.wait-reading')).toHaveText('0 ms')
+  await send()
+  await expect(status()).toContainText(/Waited \d+ ms/)
+
+  await field().fill('')
+  await expect(page.locator('.wait-problem')).toHaveCount(0)
+  await expect(page.locator('.wait-reading')).toHaveText('')
+  await expect(page.locator('.wait-bar .send')).toBeDisabled()
+  await expect(page.locator('.save-status')).toHaveText('Saved')
+  expect(onDisk()).toContain('  - wait: 0\n')
+})
+
+test('a wait’s docs are written in place and shown', async () => {
+  await field().fill('500')
+  const docs = page.getByRole('region', { name: 'Step docs' })
+  await expect(docs.locator('.docs-empty')).toHaveText('This step has no docs yet.')
+  await docs.getByRole('button', { name: 'Edit the step’s docs' }).click()
+  await expect(docs.getByRole('textbox', { name: 'Step docs' })).toBeFocused()
+  await page.keyboard.type('Lets the **index** catch up.')
+  await expect
+    .poll(onDisk, { timeout: 5_000 })
+    .toContain('  - wait: 500\n    docs: Lets the **index** catch up.\n')
+  await docs.getByRole('button', { name: 'Done' }).click()
+  await expect(docs.locator('.md strong')).toHaveText('index')
+})
+
+test('a wait’s flags are set from its chip, and one that does not hold skips it', async () => {
+  const chip = page.locator('.wait-bar .step-flag-chip')
+  await chip.click()
+  const flags = page.getByRole('dialog', { name: 'Step feature flags' })
+  await flags.getByRole('button', { name: '+ Add a flag this step needs' }).click()
+  await flags.getByLabel('step flag name').fill('search')
+  await flags.getByLabel('step flag search value').fill('true')
+  await expect
+    .poll(onDisk, { timeout: 5_000 })
+    .toMatch(/- wait: 500\n {4}flags:(\n {6}| \{ )search: true/)
+  await page.keyboard.press('Escape')
+  await expect(chip).toHaveText('⚑ search: true')
+  await send()
+  await expect(status()).toContainText('Skipped: feature flag search')
+
+  await chip.click()
+  await flags.getByRole('button', { name: 'Remove step flag search' }).click()
+  await page.keyboard.press('Escape')
+  await expect.poll(onDisk, { timeout: 5_000 }).not.toContain('search: true')
+})
+
+test('an unsaved wait changed on disk says so, and Reload takes the file’s', async () => {
+  await setAutoSave(false)
+  await field().fill('2500')
+  await expect(page.locator('.save-status')).toContainText('1 unsaved change')
+  fs.writeFileSync(file, onDisk().replace('  - wait: 500\n', '  - wait: 700\n'))
+  const banner = page.locator('.wait-view .banner')
+  await expect(banner).toContainText('Changed on disk', { timeout: 15_000 })
+  // The edit is still there: nothing was discarded.
+  await expect(field()).toHaveValue('2500')
+  await banner.getByRole('button', { name: 'Reload' }).click()
+  await expect(banner).toHaveCount(0)
+  await expect(field()).toHaveValue('700')
+  await setAutoSave(true)
 })

@@ -162,6 +162,7 @@ describe('wait steps in the editor', () => {
     const original = StepSchema.parse({
       name: 'settle',
       wait: 2000,
+      tags: ['slow'],
       flags: { search: true },
       docs: 'The index catches up.'
     })
@@ -170,14 +171,13 @@ describe('wait steps in the editor', () => {
     expect(mergeIntoStep(original, state)).toEqual(original)
     expect(mergeIntoStep(original, { ...state, wait: ' 1500 ', name: '' })).toEqual({
       wait: 1500,
+      tags: ['slow'],
       flags: { search: true },
       docs: 'The index catches up.'
     })
-    expect(mergeIntoStep(original, { ...state, wait: '{{pause}}', docs: '' })).toEqual({
-      name: 'settle',
-      wait: '{{pause}}',
-      flags: { search: true }
-    })
+    expect(
+      mergeIntoStep(original, { ...state, wait: '{{pause}}', docs: '', tags: [], flags: {} })
+    ).toEqual({ name: 'settle', wait: '{{pause}}' })
     // What is no wait yet leaves the step's as it was, rather than write a file that will not load.
     expect(mergeIntoStep(original, { ...state, wait: '2s' })).toEqual(original)
     expect(mergeIntoStep(original, { ...state, wait: '' })).toEqual(original)

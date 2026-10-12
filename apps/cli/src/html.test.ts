@@ -417,6 +417,12 @@ describe('htmlReport', () => {
         status: 'error',
         error: { phase: 'wait', message: 'Wait cancelled after 1.2 s of 2 s', code: 'ABORTED' },
         durationMs: 1200
+      }),
+      wait({
+        request: { method: 'WAIT', url: '{{pause}}', headers: [], body: null },
+        status: 'error',
+        error: { phase: 'wait', message: 'wait: {{pause}} is "soon", not a whole number' },
+        durationMs: 0
       })
     )
     expect(page).toContain(
@@ -426,6 +432,8 @@ describe('htmlReport', () => {
       '<p class="wait-note">Waited 2 s before the next step. Nothing was sent.</p>'
     )
     expect(page).toContain('<span class="c-failed">stopped after 1.20 s</span>')
+    // One whose {{variable}} was no wait never began.
+    expect(page).toContain('<span class="c-failed">did not wait</span>')
     expect(page).toContain(
       '<section class="sub problem"><h3>Wait Error</h3><pre>Wait cancelled after 1.2 s of 2 s</pre></section>'
     )

@@ -291,6 +291,16 @@ describe('editing a step', () => {
     expect(serialize(applyStepEdits(file, 0, file.data.steps[0]!))).toBe(source)
   })
 
+  it('puts a key added to a wait step after its wait, as after a method', () => {
+    const file = parseCollection('id: orders\nsteps:\n  - wait: 500\n')
+    const output = serialize(
+      applyStepEdits(file, 0, { name: 'settle', wait: 500, flags: { search: true }, docs: 'Why.' })
+    )
+    expect(output).toBe(
+      'id: orders\nsteps:\n  - name: settle\n    wait: 500\n    flags:\n      search: true\n    docs: Why.\n'
+    )
+  })
+
   it('rejects an edit that would break the schema', () => {
     const file = parseCollection(read(path.join('collections', 'status-codes.yml')))
     expect(() => applyStepEdits(file, 0, { ...file.data.steps[0]!, POST: 'http://x' })).toThrow(

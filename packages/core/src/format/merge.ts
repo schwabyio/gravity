@@ -220,6 +220,7 @@ export const STEP_KEY_ORDER = [
   'use',
   'with',
   ...HTTP_METHODS,
+  'wait',
   'connection',
   'forEach',
   'tags',

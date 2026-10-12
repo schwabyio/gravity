@@ -53,6 +53,20 @@ beforeAll(async () => {
     path.join(tmp, 'requests', 'pause.yml'),
     ['id: pause', 'params: {}', 'steps:', '  - wait: 10', ''].join('\n')
   )
+  // A file whose wait comes first, before anything has asked for its params.
+  await fs.writeFile(
+    path.join(tmp, 'requests', 'settle-then-read.yml'),
+    [
+      'id: settle-then-read',
+      'params:',
+      '  ms: { required: true }',
+      'steps:',
+      "  - wait: '{{params.ms}}'",
+      '  - name: read',
+      `    GET: "${origin}/orders/1"`,
+      ''
+    ].join('\n')
+  )
 })
 
 afterAll(async () => {
@@ -301,5 +315,52 @@ describe('a wait step', () => {
       request: { method: 'WAIT', url: '5 ms' },
       status: 'pass'
     })
+  })
+
+  it('sent on its own, resolves its {{variable}} from the collection, or has none to resolve', async () => {
+    const collection = CollectionSchema.parse({
+      id: 'orders',
+      vars: { pause: 15 },
+      steps: [{ wait: '{{pause}}' }]
+    })
+    const step = collection.steps[0]!
+    const context = { collectionPath, env: {}, dataRow: null, collectionVars: collection.vars! }
+    expect(await runRequest({ step, collection, itemPath: collectionPath, context })).toMatchObject(
+      { request: { url: '15 ms' }, status: 'pass' }
+    )
+    // With no collection to read, there is no value for it.
+    expect(await runRequest({ step })).toMatchObject({
+      status: 'error',
+      error: { phase: 'interpolate' }
+    })
+  })
+
+  it('in reusable requests run on their own, waits as long as a param’s default says', async () => {
+    const set = {
+      id: 'settle',
+      params: { ms: 12 },
+      steps: [{ wait: '{{params.ms}}' }]
+    }
+    // Opened and run, as the app's Run all runs it: on its params' defaults.
+    const { summary } = await suite(set)
+    expect(summary.results[0]).toMatchObject({ request: { url: '12 ms' }, status: 'pass' })
+    // Sent on its own: its params read from the file there and then.
+    const collection = CollectionSchema.parse({ ...set, params: { ms: 7 } })
+    expect(await runRequest({ step: collection.steps[0]!, collection })).toMatchObject({
+      request: { url: '7 ms' },
+      status: 'pass'
+    })
+  })
+
+  it('first in reusable requests whose values cannot be resolved, fails as the use does', async () => {
+    const { summary } = await suite({
+      steps: [{ use: 'settle-then-read', with: { ms: '{{nowhere}}' } }]
+    })
+    expect(seen).toEqual([])
+    expect(summary.results.map((result) => [result.status, result.error?.phase])).toEqual([
+      ['error', 'use'],
+      ['error', 'use']
+    ])
+    expect(summary.results[0]!.error!.message).toMatch(/^use: settle-then-read — /)
   })
 })
