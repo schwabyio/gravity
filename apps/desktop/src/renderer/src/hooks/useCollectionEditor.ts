@@ -490,8 +490,12 @@ export function useCollectionEditor({
       if (openPath && openPath !== summary.path && autoSave.enabled) void flush(openPath)
 
       const path = summary.path
-      const existing = latest.current[path]
+      // A save of it in progress — closing it starts one — changes its base: judge the
+      // disk against what that save made, as a change on disk is judged. Taken before
+      // it lands, its edits looked like edits the disk had overtaken: a false conflict.
+      await inFlight.current.get(path)?.catch(() => undefined)
       const read = await load(path)
+      const existing = latest.current[path]
       const fresh = (): Session => ({
         summary,
         projectId: project.id,

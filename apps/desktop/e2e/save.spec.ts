@@ -218,6 +218,39 @@ test('an edit is never written over a change made outside the app', async () => 
   await expect(url()).toHaveValue('http://127.0.0.1:1/orders', { timeout: 15_000 })
 })
 
+test('a collection closed while it saves, and opened again at once, is no conflict', async () => {
+  // Its save answers late, as on a slow runner: the file is written well before the answer.
+  await app.evaluate(({ ipcMain }) => {
+    type Handler = (...args: unknown[]) => unknown
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })
+      ._invokeHandlers
+    const save = handlers.get('collection:applyEdits')!
+    ;(globalThis as { savedHandler?: Handler }).savedHandler = save
+    handlers.set('collection:applyEdits', async (...args: unknown[]) => {
+      const answer = await save(...args)
+      await new Promise((resolve) => setTimeout(resolve, 800))
+      return answer
+    })
+  })
+  await url().fill('http://127.0.0.1:1/orders?closed=1')
+  // Closing saves it; it is opened again once the disk has the edit, before the answer.
+  await page.getByRole('button', { name: 'Close the collection' }).click()
+  await expect.poll(onDisk).toContain('/orders?closed=1')
+  await page.locator('.collection-row').click()
+  await expect(url()).toHaveValue('http://127.0.0.1:1/orders?closed=1')
+  await page.waitForTimeout(1000)
+  await expect(status()).toHaveText('Saved')
+
+  await app.evaluate(({ ipcMain }) => {
+    type Handler = (...args: unknown[]) => unknown
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })
+      ._invokeHandlers
+    handlers.set('collection:applyEdits', (globalThis as { savedHandler?: Handler }).savedHandler!)
+  })
+  reset()
+  await expect(url()).toHaveValue('http://127.0.0.1:1/orders', { timeout: 15_000 })
+})
+
 test('closing with unsaved edits asks, and Save writes them', async () => {
   await setAutoSave(false)
   await url().fill('http://127.0.0.1:1/orders?at-close=1')
