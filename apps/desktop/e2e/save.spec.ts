@@ -172,13 +172,25 @@ test('steps can be added, renamed, duplicated, moved and deleted', async () => {
     .poll(() => onDisk().indexOf('- name: remove'))
     .toBeLessThan(onDisk().indexOf('- name: list'))
 
-  // On the bottom half, after it: the only way to the end of the list.
+  // On the bottom half, after it.
   const last = await step('create').boundingBox()
   await step('remove').dragTo(step('create'), { targetPosition: { x: 40, y: last!.height - 4 } })
   await expect(stepNames()).toHaveText(['list', 'search', 'create', 'remove'])
   await expect
     .poll(() => onDisk().indexOf('- name: remove'))
     .toBeGreaterThan(onDisk().indexOf('- name: create'))
+
+  // Anywhere below the last step, after it too: overshooting the end still lands there.
+  const column = page.locator('.steps-column')
+  const below = (await step('remove').boundingBox())!
+  const top = (await column.boundingBox())!.y
+  await step('list').dragTo(column, {
+    targetPosition: { x: 40, y: below.y + below.height + 30 - top }
+  })
+  await expect(stepNames()).toHaveText(['search', 'create', 'remove', 'list'])
+  await expect
+    .poll(() => onDisk().indexOf('- name: list'))
+    .toBeGreaterThan(onDisk().indexOf('- name: remove'))
 
   // The list's + adds to its end, wherever the selection is. Reusable requests wait for a
   // file of them, and say so.
@@ -188,7 +200,7 @@ test('steps can be added, renamed, duplicated, moved and deleted', async () => {
     'No reusable requests yet'
   )
   await page.getByRole('menuitem', { name: 'Add step', exact: true }).click()
-  await expect(stepNames()).toHaveText(['list', 'search', 'create', 'remove', 'New step'])
+  await expect(stepNames()).toHaveText(['search', 'create', 'remove', 'list', 'New step'])
 
   reset()
   await expect(stepNames()).toHaveText(['list', 'create', 'remove'], { timeout: 15_000 })

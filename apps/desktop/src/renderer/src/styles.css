@@ -1733,10 +1733,17 @@ button:disabled {
 
 .steps-column {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: auto;
   border-right: 1px solid var(--border);
   background: var(--surface);
+}
+
+/* Each as tall as its content, the column scrolling past them. */
+.steps-column > * {
+  flex-shrink: 0;
 }
 
 .step-detail {
@@ -6027,6 +6034,17 @@ section[aria-labelledby='project-eol-title'] button {
 
 .step-section + .step-section {
   border-top: 1px solid var(--border);
+}
+
+/* The last list fills the column: a step dragged anywhere below its end drops there. */
+.step-section:last-child {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.step-section:last-child > .step-list-wrap {
+  flex-grow: 1;
 }
 
 /* A list's name, and beside it the + that adds to its end, as the docs' pencil sits. */

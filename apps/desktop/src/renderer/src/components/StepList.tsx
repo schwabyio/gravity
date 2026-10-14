@@ -15,7 +15,7 @@ import type { RequestSetView } from '@shared/ipc.js'
 import { resolveSet } from '../reuse.js'
 import type { FlagState } from '../flagState.js'
 import { STEP_CHANGE_WORDS, type StepChange } from '../stepChanges.js'
-import { movedTo, type StepDrop } from '../stepDrop.js'
+import { dropAtHeight, movedTo, type StepDrop } from '../stepDrop.js'
 import {
   MARK_GLYPHS,
   MARK_NAMES,
@@ -161,7 +161,35 @@ export default function StepList(props: Props) {
   }
 
   return (
-    <div className="step-list-wrap">
+    // The whole list takes a drop, the space below its last step too: after it.
+    <div
+      className="step-list-wrap"
+      onDragOver={(event) => {
+        if (dragging === null) return
+        event.preventDefault()
+        const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('li[data-step]')].map(
+          (row) => {
+            const { top, bottom } = row.getBoundingClientRect()
+            return { index: Number(row.dataset.step), top, bottom }
+          }
+        )
+        const at = dropAtHeight(rows, event.clientY)
+        if (at?.index !== dropAt?.index || at?.after !== dropAt?.after) setDropAt(at)
+      }}
+      onDragLeave={(event) => {
+        // Out of the list, a drop would not land here: no line saying it would.
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropAt(null)
+      }}
+      onDrop={(event) => {
+        event.preventDefault()
+        if (dragging !== null && dropAt) {
+          const to = movedTo(dragging, dropAt)
+          if (to !== dragging) props.onMove(dragging, to)
+        }
+        setDragging(null)
+        setDropAt(null)
+      }}
+    >
       <ol
         className="step-list"
         aria-label={props.list === 'steps' ? 'Steps' : `${props.list} steps`}
@@ -235,28 +263,12 @@ export default function StepList(props: Props) {
             <li
               key={index}
               className={classes.join(' ')}
+              data-step={index}
               draggable={renaming === null}
               onDragStart={(event) => {
                 setDragging(index)
                 event.dataTransfer.effectAllowed = 'move'
                 event.dataTransfer.setData('text/plain', String(index))
-              }}
-              onDragOver={(event) => {
-                if (dragging === null) return
-                event.preventDefault()
-                // The lower half of a step drops after it: the only way to the end of the list.
-                const { top, height } = event.currentTarget.getBoundingClientRect()
-                const after = event.clientY > top + height / 2
-                if (dropAt?.index !== index || dropAt.after !== after) setDropAt({ index, after })
-              }}
-              onDrop={(event) => {
-                event.preventDefault()
-                if (dragging !== null && dropAt) {
-                  const to = movedTo(dragging, dropAt)
-                  if (to !== dragging) props.onMove(dragging, to)
-                }
-                setDragging(null)
-                setDropAt(null)
               }}
               onDragEnd={() => {
                 setDragging(null)
