@@ -837,6 +837,7 @@ them. Any other key is an error.
 | `maxEvents`       | integer ≥ 0          | `0`     | Stop reading an event stream after this many events; `0` means no limit.                               |
 | `streamTimeout`   | number ≥ 0           | `0`     | Stop reading an event stream this many milliseconds after its headers; `0` means no limit.             |
 | `untilEvent`      | string               | none    | Stop reading an event stream after the first event of this name, its `event:` line.                    |
+| `untilTestsPass`  | boolean              | `true`  | Stop reading an event stream once the step's tests pass, tried after each event; see below.            |
 
 **HTTP versions.** `httpVersion` takes `2` and `1.1` written plain or quoted.
 
@@ -862,6 +863,7 @@ Events) is read as it arrives, whatever the method, and checked as a list of eve
 - `maxEvents` events have arrived
 - `streamTimeout` milliseconds have passed since its headers arrived
 - the first event named `untilEvent` has arrived
+- the step's tests pass on the events so far, with `untilTestsPass` (below)
 - 1,000 events or 10 MB, a limit no setting lifts
 
 ```yaml
@@ -882,10 +884,43 @@ Events) is read as it arrives, whatever the method, and checked as a list of eve
   that arrived. A check that wanted more fails with the path it missed.
 - Stopped at a number of events, the body ends with the last one.
 - Cancel, or a connection that drops mid-stream, is an error, as for any request.
-- `maxEvents`, `streamTimeout` and `untilEvent` do nothing to any other response.
+- `maxEvents`, `streamTimeout`, `untilEvent` and `untilTestsPass` do nothing to any
+  other response.
 - In the desktop app, the events show as they arrive, and Stop ends the reading as
   these do, so the checks run on what came.
 - A step that keeps its stream open for later steps is a connection (§2.11).
+
+**Waiting on the tests.** With `untilTestsPass`, on unless set to `false`, the step's
+tests are tried after each event on the events so far, and reading stops at the first
+event they all pass on. That is how to wait for one event among many of the same name,
+picked by what it holds:
+
+```yaml
+- name: job finishes
+  GET: '{{baseUrl}}/jobs/{{jobId}}/events'
+  settings:
+    streamTimeout: 30000 # fail if it has not finished in 30 s
+  tests: |
+    gta.test('done', () => assert.equal(res.body.at(-1).data.state, 'done'))
+```
+
+- Reading stops on the event that made the tests pass, so that event is the last one,
+  `res.body.at(-1)`.
+- The tests pass when they make at least one check and every check passes. Tests that
+  never look at the events are not waited on, as they would pass the same on every
+  event: only a body check, strict validation, or reading `res.body`, `res.text` or
+  `res.stream` looks at them. A step whose tests check only the status is read as if
+  `untilTestsPass` were off.
+- A try changes nothing. What it sets, captures or logs is dropped, and so is a
+  `gta.skipRest`. Once the reading stops, the tests run as usual on the events it kept,
+  and only that run counts.
+- Anything else that stops the reading first ends it as usual, and the tests fail on
+  what came. Set `streamTimeout`, or a stream that stays open waits for ever for an event
+  that never comes.
+- Every try runs the tests in full, so a slow `gta.test` slows each event.
+- Turn it off for a check that must see the whole stream, such as no `error` event in
+  5 seconds. With it on, such a check passes on the first event, and the reading stops
+  there.
 
 **Resuming.** A stream is never reconnected: the server closing it ends the step. To
 test that a stream resumes, capture the last event's id and send it as `Last-Event-ID`
@@ -1339,22 +1374,27 @@ steps:
   - name: order created
     connection: orders # no method key: reads the connection
     settings:
-      untilEvent: order.created
-      streamTimeout: 5000
+      streamTimeout: 5000 # read until the tests pass, for up to 5 s
     tests: |
-      gta.expectResponseBodyToHaveProperty('[0].event', 'order.created')
-      gta.test('the order placed', () => assert.equal(res.body[0].data.id, gta.get('orderId')))
+      gta.test('the order placed', () => {
+        const last = res.body.at(-1)
+        assert.equal(last.event, 'order.created')
+        assert.equal(last.data.id, gta.get('orderId'))
+      })
 ```
 
 - **Opening.** The step sends its request and reads the stream as any step does, until
-  its `maxEvents`, `streamTimeout` or `untilEvent`. Then, rather than closing it, it
-  keeps reading in the background, holding the events that arrive for the next step
-  that reads the connection. With none of the three set, it reads no events and goes
-  straight on.
+  its `maxEvents`, `streamTimeout` or `untilEvent`, or its tests pass. Then, rather than
+  closing it, it keeps reading in the background, holding the events that arrive for
+  the next step that reads the connection. With none of the three set, it reads no
+  events and goes straight on: `untilTestsPass` alone does not make it wait.
 - **Reading.** A reading step takes the events held since the last step read them,
-  then waits for more, until its `maxEvents`, `streamTimeout` or `untilEvent`, or the
-  server closes the stream. With none of the three set, it takes what is held and ends
-  without waiting, as `held`.
+  then waits for more, until its `maxEvents`, `streamTimeout` or `untilEvent`, its tests
+  pass, or the server closes the stream. With none of the three set, it takes what is
+  held and ends without waiting, as `held`, or sooner, as `testsPassed`, at the event
+  its tests pass on.
+- **What a step leaves.** The events after the one a step stopped at stay held for the
+  next step that reads the connection.
 - **What a reading step sees.** Its body is the events it took (§3). Its status and
   headers are those of the response that opened the connection, `req` is that request,
   and `res.stream.at` counts from that response's headers.
@@ -1698,8 +1738,8 @@ military zone letter (`U` is -08:00, not UTC).
 `res.stream` has the rest, and is absent for any other response:
 
 - `endedBy`: what stopped the reading: `close`, `maxEvents`, `streamTimeout`,
-  `untilEvent`, `limit`, `stopped` (the desktop app's Stop button), or `held` (a step on
-  a connection that waited for nothing, §2.11)
+  `untilEvent`, `testsPassed` (`untilTestsPass`), `limit`, `stopped` (the desktop app's
+  Stop button), or `held` (a step on a connection that waited for nothing, §2.11)
 - `at`: for each event, the milliseconds from the response headers to its arrival
 - `connection`: for a step that opens or reads a connection, `{ name, open }`: its name,
   and whether it was still open when the step ended

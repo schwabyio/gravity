@@ -95,6 +95,10 @@ const ENDED_BY: Record<EventStreamRead['endedBy'], { short: string; long: string
     short: 'until event reached',
     long: 'Reading stopped at the event the Until event setting names.'
   },
+  testsPassed: {
+    short: 'tests passed',
+    long: 'Reading stopped once the tests passed on the events so far, as Until tests pass asks.'
+  },
   limit: {
     short: 'safety limit reached',
     long: 'Reading stopped at the safety limit: 1,000 events or 10 MB.'

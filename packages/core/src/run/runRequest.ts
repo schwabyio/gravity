@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { CheckSession } from '../assert/session.js'
-import { readConnection, sendHttpRequest, type SendOutcome } from '../http/client.js'
+import { readConnection, sendHttpRequest, type SendOutcome, type SoFar } from '../http/client.js'
 import type { OpenStream, StreamWatch } from '../http/stream.js'
 import type { Body, Collection, Step, VarValue } from '../model/documents.js'
 import {
@@ -41,7 +41,13 @@ import type { ProjectTrust } from '../workspace/projectTls.js'
 import { findEndpoint, placeholdersOf } from '../model/endpoints.js'
 import { foldLayers, requestLayers, type LayerKind } from '../model/layers.js'
 import { buildScope, type ScopeContext } from '../vars/resolve.js'
-import { InterpolationError, OverlayScope, ParamsScope, VariableScope } from '../vars/scope.js'
+import {
+  InterpolationError,
+  OverlayScope,
+  ParamsScope,
+  TrialScope,
+  VariableScope
+} from '../vars/scope.js'
 import { interpolateToString } from '../vars/interpolate.js'
 import { resolveSettings, toSentRequest } from './buildRequest.js'
 import { fileRootsOf, resolveParams } from './plan.js'
@@ -408,6 +414,93 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   }
 
   const settings = resolveSettings(collection?.settings, step.settings)
+
+  /**
+   * Every layer's tests on a response, feeding one session; what they set,
+   * log or skip goes to `into`. `looked` is whether they read the body: a
+   * check of it, strict validation, or, on a try, `res.body`, `res.text` or
+   * `res.stream`.
+   */
+  const checkResponse = async (
+    request: SentRequest,
+    response: ReceivedResponse,
+    into: { scope: VariableScope; logs: LogEntry[]; control: StepControl; trying?: boolean }
+  ) => {
+    const session = new CheckSession({ response, scope: into.scope })
+    const seen = { events: false }
+    let error: RunError | null = null
+    try {
+      for (const [index, layer] of layers.entries()) {
+        const code = layer.tests
+        if (!code || error) continue
+        const pending: Promise<unknown>[] = []
+        const filename = filenameOf(layer, 'tests')
+        const run = () =>
+          session.madeBy(
+            layer.script,
+            filename,
+            () =>
+              runScript(code, {
+                phase: 'tests',
+                filename,
+                logs: into.logs,
+                ...(checks ? { checks } : {}),
+                pending: () => pending,
+                globals: (adopt) => {
+                  const res = responseView(response, adopt)
+                  return {
+                    ...shared(adopt, index),
+                    gta: testsGta({
+                      session,
+                      scope: into.scope,
+                      pending,
+                      control: into.control,
+                      warn: (message) => into.logs.push({ level: 'warn', phase: 'tests', message })
+                    }),
+                    req: requestView(request, adopt),
+                    res: into.trying ? noting(res, () => (seen.events = true)) : res
+                  }
+                }
+              }),
+            (checks ?? []).map((file) => file.filename)
+          )
+        // An endpoint base's checks are defaults: the step's own replace them.
+        const scriptError = layer.defaults ? await session.asDefaults(run) : await run()
+        if (scriptError) error = { ...scriptError, script: layer.script }
+      }
+    } catch (cause) {
+      // A bug in evaluation is reported as one, never as a passing step.
+      error = {
+        phase: 'tests',
+        message: cause instanceof Error ? cause.message : String(cause),
+        ...(cause instanceof Error && cause.stack ? { stack: cause.stack } : {})
+      }
+    }
+    const checked = session.finish()
+    return { checked, error, looked: seen.events || session.bodyRead }
+  }
+
+  /**
+   * With `untilTestsPass` (SPEC.md §2.3): whether the tests pass on the
+   * events an event stream has brought so far. A try changes nothing: what
+   * it sets, logs or skips is dropped. Tests that never look at the events
+   * pass or fail the same on every one, so they are not waited on.
+   */
+  const passes = layers.some((layer) => layer.tests)
+    ? async ({ request, response, open }: SoFar): Promise<boolean> => {
+        const { checked, error, looked } = await checkResponse(
+          request,
+          withConnection(response, step, input.connections, open),
+          { scope: new TrialScope(scope), logs: [], control: newStepControl(), trying: true }
+        )
+        return (
+          looked &&
+          checked.assertions.length > 0 &&
+          deriveStatus(checked.assertions, error, true) === 'pass'
+        )
+      }
+    : undefined
+
   /** Build the request, then send it: what goes wrong building it is the step's result. */
   const send = async (): Promise<SendOutcome | RunResult> => {
     let spec: SentRequest
@@ -438,6 +531,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       ...(signal ? { signal } : {}),
       ...(tls && tls.ca.length > 0 ? { ca: tls.ca } : {}),
       ...(input.watch ? { watch: input.watch } : {}),
+      ...(passes ? { passes } : {}),
       ...(opens !== undefined
         ? {
             keep: (stream: OpenStream) => {
@@ -452,7 +546,8 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
     ? await readConnection(reading, {
         settings,
         ...(signal ? { signal } : {}),
-        ...(input.watch ? { watch: input.watch } : {})
+        ...(input.watch ? { watch: input.watch } : {}),
+        ...(passes ? { passes } : {})
       })
     : await send()
 
@@ -480,53 +575,11 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
   }
 
   const response = withConnection(outcome.response, step, input.connections)
-  const session = new CheckSession({ response, scope })
-  let testsError: RunError | null = null
-  try {
-    for (const [index, layer] of layers.entries()) {
-      const code = layer.tests
-      if (!code || testsError) continue
-      const pending: Promise<unknown>[] = []
-      const filename = filenameOf(layer, 'tests')
-      const run = () =>
-        session.madeBy(
-          layer.script,
-          filename,
-          () =>
-            runScript(code, {
-              phase: 'tests',
-              filename,
-              logs,
-              ...(checks ? { checks } : {}),
-              pending: () => pending,
-              globals: (adopt) => ({
-                ...shared(adopt, index),
-                gta: testsGta({
-                  session,
-                  scope,
-                  pending,
-                  control,
-                  warn: (message) => logs.push({ level: 'warn', phase: 'tests', message })
-                }),
-                req: requestView(outcome.request, adopt),
-                res: responseView(response, adopt)
-              })
-            }),
-          (checks ?? []).map((file) => file.filename)
-        )
-      // An endpoint base's checks are defaults: the step's own replace them.
-      const scriptError = layer.defaults ? await session.asDefaults(run) : await run()
-      if (scriptError) testsError = { ...scriptError, script: layer.script }
-    }
-  } catch (cause) {
-    // A bug in evaluation is reported as one, never as a passing step.
-    testsError = {
-      phase: 'tests',
-      message: cause instanceof Error ? cause.message : String(cause),
-      ...(cause instanceof Error && cause.stack ? { stack: cause.stack } : {})
-    }
-  }
-  const checked = session.finish()
+  const { checked, error: testsError } = await checkResponse(outcome.request, response, {
+    scope,
+    logs,
+    control
+  })
 
   return {
     item,
@@ -637,15 +690,38 @@ async function waitOf(expression: string, input: RunStepInput): Promise<number> 
 function withConnection(
   response: ReceivedResponse,
   step: Step,
-  connections: Connections | undefined
+  connections: Connections | undefined,
+  /** Whether it is open, when it is not yet kept: a try of the tests while it is read. */
+  open?: boolean
 ): ReceivedResponse {
   const name = step.connection
   if (name === undefined || !response.stream) return response
-  const kept = connections?.get(name)
   return {
     ...response,
-    stream: { ...response.stream, connection: { name, open: kept?.pump.end === null } }
+    stream: {
+      ...response.stream,
+      connection: { name, open: open ?? connections?.get(name)?.pump.end === null }
+    }
   }
+}
+
+/**
+ * `res` for a try of the tests on an event stream's events so far, noting
+ * whether the script reads them: `body`, `text` or `stream`.
+ */
+function noting<T extends object>(view: T, read: () => void): T {
+  const noted = { ...view }
+  for (const key of ['body', 'text', 'stream']) {
+    const value = (view as Record<string, unknown>)[key]
+    Object.defineProperty(noted, key, {
+      enumerable: true,
+      get: () => {
+        read()
+        return value
+      }
+    })
+  }
+  return noted
 }
 
 /** What a `before.script` sees of the request, and may change: `req`. */

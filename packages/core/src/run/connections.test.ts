@@ -148,6 +148,56 @@ describe('a connection across steps', () => {
     await streamClosed
   })
 
+  it('stops a reading step at the event its tests want, holding the rest for the next', async () => {
+    const order = (name: string) => ({
+      POST: `${origin}/orders`,
+      tests: `gta.expectResponseBodyToHaveProperty('id', '${name}', 'setAsCollectionVariable')`
+    })
+    const summary = await runSuite({
+      collection: collection({
+        id: 'orders',
+        steps: [
+          {
+            GET: `${origin}/orders/events`,
+            connection: 'orders',
+            settings: { untilEvent: 'subscribed' }
+          },
+          order('first'),
+          order('second'),
+          order('third'),
+          {
+            name: 'second order created',
+            connection: 'orders',
+            settings: { streamTimeout: 5000 },
+            tests: [
+              "gta.expectResponseBodyToHaveProperty('[0].event', 'order.created')",
+              "gta.test('the second order', () => assert.equal(res.body.at(-1).data.id, Number(gta.get('second'))))",
+              "gta.test('still open', () => assert.equal(res.stream.connection.open, true))"
+            ].join('\n')
+          },
+          {
+            name: 'the rest',
+            connection: 'orders',
+            settings: { streamTimeout: 5000 },
+            tests:
+              "gta.test('the third order', () => assert.equal(res.body[0].data.id, Number(gta.get('third'))))"
+          }
+        ]
+      })
+    })
+    expect(failures(summary.results)).toEqual([])
+    const [second, rest] = summary.results.slice(-2)
+    expect(second!.response?.stream).toMatchObject({
+      endedBy: 'testsPassed',
+      at: [expect.any(Number), expect.any(Number)]
+    })
+    expect(rest!.response?.stream).toMatchObject({
+      endedBy: 'testsPassed',
+      at: [expect.any(Number)]
+    })
+    await streamClosed
+  })
+
   it('reports a connection that is not open, without sending anything', async () => {
     const summary = await runSuite({
       collection: collection({

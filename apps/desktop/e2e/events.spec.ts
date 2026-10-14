@@ -59,6 +59,7 @@ test.beforeAll(async () => {
       `    GET: "${origin}/prices"`,
       '    settings:',
       '      maxEvents: 3',
+      '      untilTestsPass: false',
       '    tests: |',
       '      gta.expectResponseStatusCodeToBe(200)',
       "      gta.expectResponseBodyToHaveProperty('[0].event', 'subscribed')",
@@ -69,8 +70,16 @@ test.beforeAll(async () => {
       `      json: '{ "prompt": "Ada" }'`,
       '  - name: ticker',
       `    GET: "${origin}/prices"`,
+      '    settings:',
+      '      untilTestsPass: false',
       '    tests: |',
       "      gta.expectResponseBodyToHaveProperty('[0].event', 'subscribed')",
+      '  - name: price 102',
+      `    GET: "${origin}/prices"`,
+      '    settings:',
+      '      streamTimeout: 5000',
+      '    tests: |',
+      "      gta.test('price 102', () => assert.equal(res.body.at(-1).data.price, 102))",
       ''
     ].join('\n')
   )
@@ -126,12 +135,13 @@ test('Max events and Stream timeout are settings, saved and honoured like the ot
   await page.locator('.request-pane .tabs button', { hasText: 'Settings' }).click()
   await expect(used('Max events')).toHaveText('3step')
   await expect(used('Stream timeout')).toHaveText('0 msdefault')
+  await expect(used('Until tests pass')).toHaveText('Offstep')
 
   await page.getByLabel('Max events for this step').fill('')
   await page.getByLabel('Stream timeout for this step').fill('120')
   await expect
     .poll(onDisk, { timeout: 5_000 })
-    .toContain('    settings:\n      streamTimeout: 120\n')
+    .toContain('    settings:\n      untilTestsPass: false\n      streamTimeout: 120\n')
   expect(onDisk()).not.toContain('maxEvents')
 
   await page.getByRole('button', { name: 'Send' }).click()
@@ -160,4 +170,14 @@ test('an open stream shows its events as they come, and Stop ends it so its chec
   await live.getByRole('button', { name: 'Stop' }).click()
   await expect(streamMetric()).toContainText('stopped')
   await expect(page.locator('.test-results .test-results-summary')).toHaveText('All 1 passed')
+})
+
+test('a stream stops once its tests pass, as Until tests pass does unless turned off', async () => {
+  await page.locator('.step-open', { hasText: 'price 102' }).click()
+  await page.getByRole('button', { name: 'Send' }).click()
+  // subscribed, then prices 100, 101 and 102: the tests pass on the fourth.
+  await expect(streamMetric()).toHaveText('4 events · tests passed')
+  await expect(page.locator('.test-results .test-results-summary')).toHaveText('All 1 passed')
+  await expect(line('"price": 102')).toHaveCount(1)
+  await expect(line('"price": 103')).toHaveCount(0)
 })

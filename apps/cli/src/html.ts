@@ -478,6 +478,7 @@ const ENDED_BY: Record<EventStreamRead['endedBy'], string> = {
   maxEvents: 'stopped at maxEvents',
   streamTimeout: 'stopped at streamTimeout',
   untilEvent: 'stopped at untilEvent',
+  testsPassed: 'stopped once the tests passed',
   limit: 'stopped at the safety limit',
   stopped: 'stopped by hand',
   held: 'took the events held'

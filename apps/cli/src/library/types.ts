@@ -28,7 +28,15 @@ export interface SentRequest {
 
 /** How an event stream was read (SPEC.md §2.3). */
 export interface EventStreamRead {
-  endedBy: 'close' | 'maxEvents' | 'streamTimeout' | 'untilEvent' | 'limit' | 'stopped' | 'held'
+  endedBy:
+    | 'close'
+    | 'maxEvents'
+    | 'streamTimeout'
+    | 'untilEvent'
+    | 'testsPassed'
+    | 'limit'
+    | 'stopped'
+    | 'held'
   /** Milliseconds from the response headers to each event, in order. */
   at: number[]
   /** For a step that opens or reads a connection (SPEC.md §2.11). */

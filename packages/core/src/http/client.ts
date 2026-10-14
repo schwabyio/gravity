@@ -21,7 +21,8 @@ import {
   readStream,
   waitsForEvents,
   type StreamRead,
-  type StreamWatch
+  type StreamWatch,
+  type TestsPass
 } from './stream.js'
 import {
   clearSecureContexts,
@@ -60,6 +61,20 @@ export interface SendOptions {
    * its events: later steps do.
    */
   keep?: (stream: OpenStream) => void
+  /**
+   * For an event stream with `untilTestsPass` (SPEC.md §2.3): whether the
+   * step's tests pass on what it has read so far, asked after each event.
+   * Reading stops, as `testsPassed`, once they do.
+   */
+  passes?: (soFar: SoFar) => Promise<boolean>
+}
+
+/** An event stream as a step has read it so far: what its tests would see if it stopped now. */
+export interface SoFar {
+  request: SentRequest
+  response: ReceivedResponse
+  /** Whether the stream is still open. */
+  open: boolean
 }
 
 export interface SendFailure {
@@ -285,7 +300,8 @@ export async function sendHttpRequest(
           // A step opening a connection waits only for what it says to; later steps read the rest.
           wait: !options.keep || waitsForEvents(settings),
           signal,
-          ...streamWatching(options.watch, received)
+          ...streamWatching(options.watch, received),
+          ...trying(options.passes, sent, received, { startedAt, ttfbMs, startedHr })
         })
       } catch (cause) {
         pump.close()
@@ -359,6 +375,28 @@ function streamWatching(
   return { watch, ...(stop ? { stop } : {}) }
 }
 
+/** `passes` for `readStream`: the events read so far, as the step's response. */
+function trying(
+  passes: SendOptions['passes'],
+  request: SentRequest,
+  head: Parameters<typeof eventsResponse>[0],
+  started: { startedAt: number; ttfbMs: number; startedHr: number }
+): { passes?: TestsPass } {
+  if (!passes) return {}
+  const { startedAt, ttfbMs, startedHr } = started
+  return {
+    passes: (read, open) =>
+      passes({
+        request,
+        response: {
+          ...eventsResponse(head, read),
+          timings: { startedAt, ttfbMs, totalMs: performance.now() - startedHr }
+        },
+        open
+      })
+  }
+}
+
 /** A response whose body is the events a step read. */
 function eventsResponse(
   head: Omit<ReceivedResponse, 'body' | 'bodyKind' | 'sizeBytes' | 'timings' | 'stream'>,
@@ -383,7 +421,7 @@ function eventsResponse(
  */
 export async function readConnection(
   stream: OpenStream,
-  options: { settings?: Settings; signal?: AbortSignal; watch?: StreamWatch } = {}
+  options: Pick<SendOptions, 'settings' | 'signal' | 'watch' | 'passes'> = {}
 ): Promise<SendOutcome> {
   const settings = { ...SETTINGS_DEFAULTS, ...options.settings }
   const startedAt = Date.now()
@@ -392,7 +430,8 @@ export async function readConnection(
     const read = await readStream(stream.pump, settings, {
       wait: waitsForEvents(settings),
       ...(options.signal ? { signal: options.signal } : {}),
-      ...streamWatching(options.watch, stream.head)
+      ...streamWatching(options.watch, stream.head),
+      ...trying(options.passes, stream.request, stream.head, { startedAt, ttfbMs: 0, startedHr })
     })
     return {
       ok: true,

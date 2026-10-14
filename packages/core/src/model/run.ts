@@ -31,15 +31,17 @@ export type BodyKind = z.infer<typeof BodyKindSchema>
 
 /**
  * What stopped a step's reading of an event stream (SPEC.md §2.3, §2.11): the
- * server closing it; `maxEvents`, `streamTimeout` or `untilEvent`; the safety
- * limit; Stop in the app; or, for a step on a connection that sets none of
- * the three, nothing to wait for, so it took the events already held.
+ * server closing it; `maxEvents`, `streamTimeout` or `untilEvent`; the step's
+ * tests passing, with `untilTestsPass`; the safety limit; Stop in the app; or,
+ * for a step on a connection that sets none of the first three, nothing to
+ * wait for, so it took the events already held.
  */
 export const StreamEndSchema = z.enum([
   'close',
   'maxEvents',
   'streamTimeout',
   'untilEvent',
+  'testsPassed',
   'limit',
   'stopped',
   'held'

@@ -173,7 +173,7 @@ export class VariableScope {
 export class OverlayScope extends VariableScope {
   constructor(
     private readonly run: VariableScope,
-    private readonly own: Map<string, VarValue>,
+    protected readonly own: Map<string, VarValue>,
     /** Where these names come from, for diagnostics. */
     private readonly origin: string
   ) {
@@ -211,6 +211,25 @@ export class OverlayScope extends VariableScope {
 
   override all(): Record<string, VarValue> {
     return { ...this.run.all(), ...Object.fromEntries(this.own) }
+  }
+}
+
+/**
+ * A step's scope while its tests are tried on the events an event stream has
+ * brought so far (SPEC.md §2.3, `untilTestsPass`). What they set, they see,
+ * and nothing reaches the run's scope: only the run that counts sets anything.
+ */
+export class TrialScope extends OverlayScope {
+  constructor(run: VariableScope) {
+    super(run, new Map(), 'tests')
+  }
+
+  override set(name: string, value: VarValue): void {
+    this.own.set(name, value)
+  }
+
+  override setForRun(name: string, value: VarValue): void {
+    this.own.set(name, value)
   }
 }
 

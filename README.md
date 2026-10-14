@@ -65,7 +65,8 @@ Both run on macOS, Windows and Linux.
 - HTTP/1.1 and HTTP/2, including HTTP/2 in the clear (h2c). Every result says which
   version it went out on and whether its connection was new or reused.
 - Server-Sent Events: an event stream is read as it arrives and checked as a list of
-  events. Reading stops at a number of events, a time limit or a named event.
+  events. Reading stops at a number of events, a time limit, a named event, or the
+  first event the tests pass on.
 - A stream can stay open as a connection, so a later step checks the events that the
   steps in between caused.
 - `forEach` sends a request once for each item of a list, such as ids an earlier step

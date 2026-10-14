@@ -32,6 +32,8 @@ export class CheckSession {
   private parsed: { ok: true; body: unknown } | { ok: false; message: string } | undefined
   private sorted: unknown
   private bodyFailureReported = false
+  /** Whether a check has read the body: one on an event stream changes as its events come. */
+  bodyRead = false
   /** While true, checks recorded are defaults: an endpoint base's (SPEC.md §2.6). */
   private recordingDefaults = false
   private readonly defaults = new Set<AssertionResult>()
@@ -264,6 +266,7 @@ export class CheckSession {
    * not parse is reported once, not once per check that wanted it.
    */
   private body_(): unknown {
+    this.bodyRead = true
     this.parsed ??= bodyAsObject(this.context.response)
     if (!this.parsed.ok) {
       if (!this.bodyFailureReported) {

@@ -158,10 +158,17 @@ export interface StreamRead {
 }
 
 /**
+ * Whether a step's tests pass on the events it has read so far, and whether
+ * the stream is still open: asked after each event, with `untilTestsPass`.
+ */
+export type TestsPass = (read: StreamRead, open: boolean) => Promise<boolean>
+
+/**
  * Take events from a stream for one step, until whichever comes first: the
- * stream ends, `maxEvents` events, the event `untilEvent` names,
- * `streamTimeout` milliseconds, the safety limit, or `stop`. Each is a
- * normal end. With `wait: false` it takes only the events already held.
+ * stream ends, `maxEvents` events, the event `untilEvent` names, `passes`
+ * with `untilTestsPass`, `streamTimeout` milliseconds, the safety limit, or
+ * `stop`. Each is a normal end. With `wait: false` it takes only the events
+ * already held.
  *
  * Anything else that ends it — Cancel, a dropped connection — throws, once
  * the events held before it are taken.
@@ -169,7 +176,13 @@ export interface StreamRead {
 export async function readStream(
   pump: EventStreamPump,
   settings: Required<Settings>,
-  options: { wait: boolean; signal?: AbortSignal; stop?: AbortSignal; watch?: StreamWatch }
+  options: {
+    wait: boolean
+    signal?: AbortSignal
+    stop?: AbortSignal
+    watch?: StreamWatch
+    passes?: TestsPass
+  }
 ): Promise<StreamRead> {
   const maxEvents =
     settings.maxEvents > 0
@@ -222,6 +235,13 @@ export async function readStream(
           return { text, at, endedBy: 'untilEvent' }
         }
         if (bytes >= EVENT_STREAM_LIMITS.bytes) return { text, at, endedBy: 'limit' }
+        if (
+          settings.untilTestsPass &&
+          options.passes &&
+          (await options.passes({ text, at: [...at], endedBy: 'testsPassed' }, pump.end === null))
+        ) {
+          return { text, at, endedBy: 'testsPassed' }
+        }
         continue
       }
       const end = pump.end

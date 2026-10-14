@@ -164,7 +164,9 @@ export const SettingsSchema = z.strictObject({
   /** Stop reading an event stream this many milliseconds after its headers; 0 means no limit. */
   streamTimeout: z.number().nonnegative().optional(),
   /** Stop reading an event stream after the first event of this name: its `event:` line. */
-  untilEvent: z.string().min(1).optional()
+  untilEvent: z.string().min(1).optional(),
+  /** Stop reading an event stream once the step's tests pass, tried after each event. */
+  untilTestsPass: z.boolean().optional()
 })
 export type Settings = z.infer<typeof SettingsSchema>
 
@@ -183,7 +185,8 @@ export const SETTINGS_DEFAULTS = {
   maxEvents: 0,
   streamTimeout: 0,
   /** None: a name is never empty. */
-  untilEvent: ''
+  untilEvent: '',
+  untilTestsPass: true
 } as const satisfies Required<Settings>
 
 /* -------------------------------------------------------------- variables -- */

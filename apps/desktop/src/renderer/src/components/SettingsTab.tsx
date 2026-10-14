@@ -85,6 +85,12 @@ const ROWS: Array<{
     label: 'Until event',
     help: 'For an event stream: stop reading after the first event with this name, its event: line.',
     kind: 'text'
+  },
+  {
+    key: 'untilTestsPass',
+    label: 'Until tests pass',
+    help: 'For an event stream: try the tests after each event, and stop reading once they all pass. Tests that only check the status or headers are not waited on. Off reads on whatever they say.',
+    kind: 'boolean'
   }
 ]
 
