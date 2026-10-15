@@ -78,6 +78,7 @@ import { stepsToRunAll } from './tagFilter.js'
 import { fromStep } from './requestState.js'
 import { changesSince } from './stepChanges.js'
 import { findingsOf, projectFile } from './ruleFindings.js'
+import { currentRepo, repositories } from './repos.js'
 import { TestsRuleContext, type TestsRule } from './testsRule.js'
 
 const NO_TAGS: string[] = []
@@ -254,6 +255,8 @@ export default function App() {
 
   const collectionPath = open?.summary.path ?? null
   const activeProject = ws.project(open?.projectId)
+  /** The workspace's repositories, each once: the status bar's way into their Changes. */
+  const repos = useMemo(() => repositories(ws.projects), [ws.projects])
   const {
     rows: rowResults,
     stages: stageResults,
@@ -1832,6 +1835,11 @@ export default function App() {
               collectionOpen: collectionPath !== null,
               onClear: clearRuntime,
               onCopy: copyVariable
+            }}
+            repos={{
+              repos,
+              current: currentRepo(repos, activeProject),
+              onOpen: (repo) => setChangesFor({ projectId: repo.projects[0]!.id, tab: 'changes' })
             }}
           />
 

@@ -129,6 +129,9 @@ test.afterAll(async () => {
 })
 
 const project = (name: string) => page.getByRole('region', { name: `Project ${name}`, exact: true })
+/** A repository two or more of the workspace's projects are in, with them under its heading. */
+const repository = (name: string) =>
+  page.getByRole('region', { name: `Repository ${name}`, exact: true })
 
 /** Open a collection from the sidebar so its steps show in the main pane. */
 const openCollection = async (projectName: string, collectionName: string) => {
@@ -212,11 +215,49 @@ test('selecting a collection shows its steps and the first step together', async
   await expect(page.getByLabel('Request URL')).toHaveValue('http://127.0.0.1:1/create-session')
 })
 
-test('shows the branch and reflects a checkout made outside the app', async () => {
-  // Two projects in one monorepo share its git state.
-  await expect(project('auth').locator('.repo-branch')).toHaveText('main')
-  await expect(project('users').locator('.repo-branch')).toHaveText('main')
+test('a monorepo’s projects sit under its repository, which says its git once', async () => {
+  const platform = repository('platform')
+  const head = platform.locator('.repo-group-head')
+  await expect(head.locator('.repo-name')).toHaveText('platform')
+  await expect(head.locator('.repo-branch')).toHaveText('main')
+  await expect(head.getByRole('button', { name: 'Fetch' })).toBeVisible()
+  // Its projects under it, in the order they were added, with no branch or Fetch of their own.
+  await expect(platform.locator('.project .repo-name')).toHaveText(['auth', 'users'])
+  await expect(project('auth').locator('.repo-branch')).toHaveCount(0)
+  await expect(project('auth').getByRole('button', { name: 'Fetch' })).toHaveCount(0)
+  // A repository with one project in the workspace is that project's heading, as it was.
+  await expect(repository('payments-api')).toHaveCount(0)
+  await expect(project('payments-api').locator('.repo-branch')).toHaveText('main')
 
+  // A change in one project: a ● on its own heading, and on the repository's.
+  const file = path.join(monorepo, 'services', 'users', 'collections', 'users.yml')
+  const before = fs.readFileSync(file, 'utf8')
+  fs.writeFileSync(file, `${before}# changed\n`)
+  const users = project('users').getByRole('button', { name: 'Review changes in users' })
+  await expect(users).toBeVisible({ timeout: 15_000 })
+  await expect(head.getByRole('button', { name: 'Review changes', exact: true })).toBeVisible()
+  await expect(project('auth').getByRole('button', { name: /^Review changes/ })).toHaveCount(0)
+  fs.writeFileSync(file, before)
+  await expect(users).toHaveCount(0, { timeout: 15_000 })
+
+  // Its ⋯ menu has its Changes; a project's under it does not.
+  await project('auth').getByRole('button', { name: 'Project actions for auth' }).click()
+  await expect(page.getByRole('menuitem', { name: 'New collection' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Changes and commit' })).toHaveCount(0)
+  await head.getByRole('button', { name: 'Repository actions for platform' }).click()
+  await page.getByRole('menuitem', { name: 'Changes and commit' }).click()
+  const drawer = page.getByRole('dialog', { name: 'Changes' })
+  await expect(drawer.locator('.drawer-head h2')).toContainText('platform')
+  await drawer.getByRole('button', { name: 'Close' }).click()
+
+  // It collapses, its projects with it.
+  await head.locator('.repo-toggle').click()
+  await expect(project('auth')).toHaveCount(0)
+  await head.locator('.repo-toggle').click()
+  await expect(project('auth').locator('.collection-row')).toHaveCount(2)
+})
+
+test('shows the branch and reflects a checkout made outside the app', async () => {
   const branch = project('payments-api').locator('.repo-branch')
   await expect(branch).toHaveText('main')
 
@@ -225,6 +266,29 @@ test('shows the branch and reflects a checkout made outside the app', async () =
 
   git(singleRepo, 'checkout', 'main')
   await expect(branch).toHaveText('main', { timeout: 15_000 })
+})
+
+test('the status bar names the open collection’s repository, and opens any one’s Changes', async () => {
+  const bar = page.locator('.status-bar')
+  // checkout, in payments-api, is open.
+  await expect(bar.getByRole('button', { name: 'Git: payments-api, branch main' })).toBeVisible()
+  await openCollection('auth', 'auth')
+  const git = bar.getByRole('button', { name: 'Git: platform, branch main' })
+  await expect(git).toBeVisible()
+
+  // Two repositories in the workspace: a list of them, each once, to pick from.
+  await git.click()
+  const items = bar.getByRole('menu').getByRole('menuitem')
+  await expect(items).toHaveCount(2)
+  await expect(items.first()).toHaveAccessibleName('payments-api, branch main')
+  await expect(items.nth(1)).toHaveAccessibleName('platform, branch main')
+  await items.first().click()
+  const drawer = page.getByRole('dialog', { name: 'Changes' })
+  await expect(drawer.locator('.drawer-head h2')).toContainText('payments-api')
+  await drawer.getByRole('button', { name: 'Close' }).click()
+
+  await openCollection('payments-api', 'checkout')
+  await expect(bar.getByRole('button', { name: 'Git: payments-api, branch main' })).toBeVisible()
 })
 
 test('a project heading collapses and expands its collections', async () => {
@@ -428,6 +492,8 @@ test('workspaces each hold their own projects', async () => {
   await page.keyboard.press('Enter')
   await expect(switcher.locator('option:checked')).toHaveText('Payments team')
   await expect(page.locator('.sidebar')).toContainText('No projects in this workspace yet')
+  // No repository in it, so no git in the status bar.
+  await expect(page.locator('.status-bar').getByRole('button', { name: /^Git:/ })).toHaveCount(0)
 
   await switcher.selectOption({ label: 'My workspace' })
   await expect(project('payments-api')).toBeVisible()

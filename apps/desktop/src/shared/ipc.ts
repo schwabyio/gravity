@@ -168,6 +168,12 @@ export interface GitStatusView {
   projectFiles: Record<string, ChangeKindView>
   /** Why the last background fetch failed, or null. */
   fetchProblem: string | null
+  /**
+   * Which read of git this is, counted from the app's start. A monorepo's projects
+   * are each read when their own folders change, so of their views of the
+   * repository, the latest read says how it is now.
+   */
+  read: number
 }
 
 /** Mirrors core's `ChangeKind`. */

@@ -1,15 +1,21 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { ProjectView } from '@shared/ipc.js'
-import { pullState, pushState } from '../gitActions.js'
 import { findingsLabel } from '../ruleFindings.js'
 import ChevronIcon from './ChevronIcon.js'
 import MenuIcon, { type MenuIconName } from './MenuIcon.js'
+import { GitState, repoChanges, SyncButtons } from './RepoGit.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 import { joinPath, useExternalEditor } from '../externalEditor.js'
 
 interface Props {
   project: ProjectView
+  /**
+   * Under its repository's heading, with other projects of the same repository:
+   * the branch, Fetch, Pull and Push are the repository's, there, and this says
+   * only what changed in its own folder.
+   */
+  inRepo?: boolean
   open: boolean
   onToggle: () => void
   onFetch: () => void
@@ -39,15 +45,12 @@ interface Props {
  * Pull and Push are quiet icon buttons, so the collections below stay the thing
  * the eye lands on. The branch and the dirty dot open the Changes drawer, where
  * commits are made. Creating things and the project's settings are in its ⋯ menu.
- * A scratch pad says so beside its name.
+ * A scratch pad says so beside its name. Under its repository's heading — a
+ * monorepo's services in one workspace — only its own changes show.
  */
 export default function ProjectHeading(props: Props) {
-  const { project, open } = props
+  const { project, open, inRepo = false } = props
   const { git, gitNote, busy } = project
-  const ahead = git?.ahead ?? 0
-  const behind = git?.behind ?? 0
-  const pull = git ? pullState(git, busy) : null
-  const push = git ? pushState(git, busy, null) : null
   const [menu, setMenu] = useState(false)
   const editor = useExternalEditor()
 
@@ -162,45 +165,29 @@ export default function ProjectHeading(props: Props) {
         <Tooltip text="Loading: reading its files and asking git">
           <span className="loading-spinner" role="img" aria-label={`Loading ${project.name}`} />
         </Tooltip>
-      ) : git ? (
-        <span className="repo-git">
-          <Tooltip
-            text={`${git.upstream ? `Tracks ${git.upstream}` : 'No upstream'}: open Changes and branches`}
-          >
-            <button
-              type="button"
-              className="repo-branch"
-              onClick={() => props.onChanges('changes')}
-              aria-label={`Branch ${git.detached ? 'detached' : (git.branch ?? 'none')}: open Changes`}
-            >
-              {git.detached ? 'detached' : (git.branch ?? '—')}
-            </button>
-          </Tooltip>
-          {!git.clean && (
-            <Tooltip
-              text={`${git.projectChanges} changed here, ${git.changed + git.untracked + git.conflicted} in the repository: review and commit`}
-            >
+      ) : git && inRepo ? (
+        git.projectChanges > 0 && (
+          <span className="repo-git">
+            <Tooltip text={`${git.projectChanges} changed here: review and commit`}>
               <button
                 type="button"
                 className="dirty"
                 onClick={() => props.onChanges('changes')}
-                aria-label="Review changes"
+                aria-label={`Review changes in ${project.name}`}
               >
                 ●
               </button>
             </Tooltip>
-          )}
-          {behind > 0 && <span title={`${behind} behind`}>↓{behind}</span>}
-          {ahead > 0 && <span title={`${ahead} ahead`}>↑{ahead}</span>}
-          {git.fetchProblem && (
-            <Tooltip text={`The background fetch failed: ${git.fetchProblem}`}>
-              <span className="fetch-problem" role="img" aria-label="Background fetch failed">
-                !
-              </span>
-            </Tooltip>
-          )}
-        </span>
+          </span>
+        )
+      ) : git ? (
+        <GitState
+          git={git}
+          changedTip={`${git.projectChanges} changed here, ${repoChanges(git)} in the repository: review and commit`}
+          onChanges={() => props.onChanges('changes')}
+        />
       ) : (
+        !inRepo &&
         gitNote && (
           <span className="repo-git muted" title={gitNote}>
             no git
@@ -209,36 +196,14 @@ export default function ProjectHeading(props: Props) {
       )}
 
       <span className="repo-actions">
-        {git && pull && push && (
-          <>
-            <Tooltip text="Fetch from the remote">
-              <button type="button" onClick={props.onFetch} disabled={busy} aria-label="Fetch">
-                ↻
-              </button>
-            </Tooltip>
-            <Tooltip text={pull.tooltip}>
-              <button
-                type="button"
-                onClick={props.onPull}
-                disabled={!pull.enabled}
-                aria-label="Pull"
-              >
-                ↓
-              </button>
-            </Tooltip>
-            {git.remotes.length > 0 && !git.detached && !git.unborn && (
-              <Tooltip text={push.tooltip}>
-                <button
-                  type="button"
-                  onClick={props.onPush}
-                  disabled={!push.enabled}
-                  aria-label="Push"
-                >
-                  ↑
-                </button>
-              </Tooltip>
-            )}
-          </>
+        {git && !inRepo && (
+          <SyncButtons
+            git={git}
+            busy={busy}
+            onFetch={props.onFetch}
+            onPull={props.onPull}
+            onPush={props.onPush}
+          />
         )}
         <span className="project-menu-wrap">
           <button
@@ -265,7 +230,8 @@ export default function ProjectHeading(props: Props) {
               {!project.rules.rules.layout.bases &&
                 item('new', 'New base collection', props.onNewBase)}
               <div className="menu-divider" role="separator" />
-              {git && (
+              {/* Under its repository's heading, git is in that heading's menu. */}
+              {git && !inRepo && (
                 <>
                   {item('commit', 'Changes and commit', () => props.onChanges('changes'))}
                   {item('history', 'History', () => props.onChanges('history'))}

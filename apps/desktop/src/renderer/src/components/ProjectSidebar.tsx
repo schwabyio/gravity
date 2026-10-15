@@ -18,6 +18,8 @@ import { useExternalEditor } from '../externalEditor.js'
 import CollectionList, { type CollectionActions, type FolderDrag } from './CollectionList.js'
 import NameForm from './NameForm.js'
 import ProjectHeading from './ProjectHeading.js'
+import RepoHeading from './RepoHeading.js'
+import { sidebarEntries, type RepoView } from '../repos.js'
 import RuleMark from './RuleMark.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
@@ -150,13 +152,19 @@ export default function ProjectSidebar(props: Props) {
   const workspaceMenus = useMenuDismiss(workspaceMenu, () => setWorkspaceMenu(false))
 
   const toggle = (id: string) => setCollapsed((current) => ({ ...current, [id]: !current[id] }))
-  /** Every project of the workspace collapsed: the button then opens them all again. */
-  const allCollapsed =
-    props.projects.length > 0 && props.projects.every((project) => collapsed[project.id])
+  /** Each project on its own, or under its repository's heading with others of that repository. */
+  const entries = sidebarEntries(props.projects)
+  /** What collapses: each project, and each repository heading. */
+  const collapsible = [
+    ...props.projects.map((project) => project.id),
+    ...entries.flatMap((entry) => (entry.kind === 'repo' ? [repoKey(entry.repo)] : []))
+  ]
+  /** Everything in the workspace collapsed: the button then opens it all again. */
+  const allCollapsed = props.projects.length > 0 && collapsible.every((id) => collapsed[id])
   const collapseAll = () =>
     setCollapsed((current) => ({
       ...current,
-      ...Object.fromEntries(props.projects.map((project) => [project.id, !allCollapsed]))
+      ...Object.fromEntries(collapsible.map((id) => [id, !allCollapsed]))
     }))
   const done = (message: string | null) => {
     if (message === null) setNaming(null)
@@ -177,6 +185,235 @@ export default function ProjectSidebar(props: Props) {
       {label}
     </button>
   )
+
+  /** A project's heading and what is in it; under its repository's heading when `inRepo`. */
+  const projectSection = (project: ProjectView, inRepo: boolean) => {
+    const open = !collapsed[project.id]
+    const query = filters[project.id] ?? ''
+    const setQuery = (value: string) =>
+      setFilters((current) => ({ ...current, [project.id]: value }))
+    const libraries = (
+      [
+        [
+          'Reusable requests',
+          'requests',
+          project.requestSets.map((set) => ({ ...set, stepCount: set.steps.length }))
+        ],
+        ['Endpoints', 'endpoints', project.endpointFiles],
+        ['Bases', 'bases', project.bases]
+      ] as const
+    ).map(([title, home, files]) => ({
+      title,
+      home,
+      all: files.length,
+      files: files.filter((file) => keepsFile(query, file))
+    }))
+    const shown = filterCollections(project.collections, project.directories, query)
+    const marks = gitMarks(project)
+    const total = project.collections.length + libraries.reduce((n, l) => n + l.all, 0)
+    const found = shown.collections.length + libraries.reduce((n, l) => n + l.files.length, 0)
+    const nothingFound = filtering(query) && found === 0 && shown.directories.length === 0
+    return (
+      <section key={project.id} className="project" aria-label={`Project ${project.name}`}>
+        {/* The project's heading takes a dragged collection to the root of its collections/. */}
+        <div
+          className={`project-drop${dragFor(project).over === null ? ' drop-target' : ''}`}
+          {...dragFor(project).zone(null)}
+        >
+          <ProjectHeading
+            project={project}
+            inRepo={inRepo}
+            open={open}
+            onToggle={() => toggle(project.id)}
+            onFetch={() => props.onFetch(project.id)}
+            onPull={() => props.onPull(project.id)}
+            onPush={() => props.onPush(project.id)}
+            onChanges={(tab) => props.onChanges(project.id, tab)}
+            onRemove={() => {
+              if (!project.scratch) return props.onRemoveProject(project.id)
+              const count = project.collections.length
+              const what =
+                count === 0 ? '' : ` and its ${count} collection${count === 1 ? '' : 's'}`
+              if (
+                window.confirm(
+                  `Delete the scratch pad “${project.name}”${what}? Its folder goes to the Trash.`
+                )
+              ) {
+                props.onRemoveProject(project.id)
+              }
+            }}
+            onNewCollection={() => setNaming({ kind: 'collection', projectId: project.id })}
+            onNewDirectory={() => setNaming({ kind: 'directory', projectId: project.id })}
+            onNewSet={() => setNaming({ kind: 'set', projectId: project.id })}
+            onNewEndpoints={() => setNaming({ kind: 'endpoints', projectId: project.id })}
+            onNewBase={() => setNaming({ kind: 'base', projectId: project.id })}
+            onSettings={() => props.onProjectSettings(project.id)}
+            onRules={() => props.onProjectSettings(project.id, 'rules')}
+            onReveal={() => props.onReveal(project.path)}
+            onRename={() => setNaming({ kind: 'rename-scratch', projectId: project.id })}
+          />
+        </div>
+
+        {naming?.kind === 'rename-scratch' && naming.projectId === project.id && (
+          <NameForm
+            label={`New name for ${project.name}`}
+            placeholder="Scratch pad name"
+            initial={project.name}
+            submitLabel="Rename"
+            onSubmit={async (name) => done(await props.onRenameScratchPad(project.id, name))}
+            onCancel={() => setNaming(null)}
+          />
+        )}
+
+        {naming?.kind === 'directory' && naming.projectId === project.id && (
+          <NameForm
+            label="New folder name"
+            placeholder="Folder name"
+            submitLabel="Create"
+            onSubmit={async (name) => done(await props.onCreateDirectory(project.id, name))}
+            onCancel={() => setNaming(null)}
+          />
+        )}
+        {(naming?.kind === 'set' || naming?.kind === 'endpoints' || naming?.kind === 'base') &&
+          naming.projectId === project.id && (
+            <NameForm
+              label={`New ${LIBRARY_NAMES[naming.kind]} id`}
+              placeholder={`${capitalise(LIBRARY_NAMES[naming.kind])} id, its file name`}
+              submitLabel="Create"
+              onSubmit={async (name) =>
+                done(await props.onCreateCollection(project.id, null, name, naming.kind))
+              }
+              onCancel={() => setNaming(null)}
+            />
+          )}
+        {naming?.kind === 'collection' && naming.projectId === project.id && (
+          <NewCollectionForm
+            key={naming.folder ?? ''}
+            project={project}
+            folder={naming.folder ?? ''}
+            onSubmit={async (directory, name) =>
+              done(await props.onCreateCollection(project.id, directory, name))
+            }
+            onCancel={() => setNaming(null)}
+          />
+        )}
+
+        {/* Only where there is enough to look through — and never hiding a filter in use. */}
+        {open && project.available && (total >= FILTER_FROM || filtering(query)) && (
+          <div className="project-filter" role="search">
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setQuery('')
+              }}
+              placeholder="Filter collections"
+              aria-label={`Filter ${project.name}`}
+              spellCheck={false}
+            />
+            {filtering(query) && (
+              <span className="filter-count" aria-live="polite">
+                {found} of {total}
+              </span>
+            )}
+          </div>
+        )}
+        {open && project.available && nothingFound && (
+          <p className="hint filter-empty">Nothing matches “{query.trim()}”.</p>
+        )}
+        {open &&
+          !nothingFound &&
+          (!project.available ? (
+            <p className="hint unavailable">Folder is missing — it may have been moved.</p>
+          ) : project.loading &&
+            project.collections.length === 0 &&
+            project.directories.length === 0 ? (
+            // Not read yet, rather than empty.
+            <p className="hint project-loading">Loading…</p>
+          ) : !project.hasCollections ? (
+            <p className="hint shared-project">
+              A shared project, with no collections of its own.
+              {usersOf(project, props.projects).length > 0 &&
+                ` Used by ${usersOf(project, props.projects).join(', ')}.`}
+            </p>
+          ) : project.collections.length === 0 && project.directories.length === 0 ? (
+            <p className="hint project-empty">
+              No collections yet.{' '}
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setNaming({ kind: 'collection', projectId: project.id })}
+              >
+                New collection
+              </button>
+              {' · '}
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setNaming({ kind: 'directory', projectId: project.id })}
+              >
+                New folder
+              </button>
+            </p>
+          ) : (
+            <CollectionList
+              collections={shown.collections}
+              directories={shown.directories}
+              selectedPath={props.selectedRoot}
+              onSelect={(collection) => props.onSelectCollection(project, collection)}
+              expanded={filtering(query)}
+              folders={project.directories}
+              drag={dragFor(project)}
+              marks={marks}
+              findings={project.findings}
+              actions={{
+                ...props.collectionActions,
+                onRenameFolder: (folder, name) => props.onRenameFolder(project.id, folder, name),
+                onDeleteFolder: (folder) => props.onDeleteFolder(project.id, folder),
+                onNewCollectionIn: (folder) =>
+                  setNaming({ kind: 'collection', projectId: project.id, folder }),
+                targets: props.projects.filter(
+                  (other) => other.id !== project.id && other.available && other.hasCollections
+                )
+              }}
+            />
+          ))}
+        {open &&
+          project.available &&
+          libraries.map(
+            ({ title, home, files }) =>
+              files.length > 0 && (
+                <div
+                  key={home}
+                  className="request-sets"
+                  role="group"
+                  aria-label={`${title} of ${project.name}`}
+                >
+                  <div className="request-sets-head">{title}</div>
+                  {files.map((file) => (
+                    <LibraryRow
+                      key={file.path}
+                      file={file}
+                      home={home}
+                      // A shared one's changes are its global project's, marked there.
+                      mark={file.source === 'project' ? marks.file(file.path) : null}
+                      // Rules check a project's own files; a shared one's are its global project's.
+                      findings={
+                        file.source === 'project'
+                          ? findingsOf(project.findings, `${home}/${file.name}.yml`)
+                          : NO_FINDINGS
+                      }
+                      selected={file.path === props.selectedRoot}
+                      onSelect={() => props.onSelectCollection(project, summaryOfFile(file, home))}
+                    />
+                  ))}
+                </div>
+              )
+          )}
+      </section>
+    )
+  }
 
   return (
     <aside className="sidebar">
@@ -373,235 +610,26 @@ export default function ProjectSidebar(props: Props) {
           </p>
         )}
 
-        {props.projects.map((project) => {
-          const open = !collapsed[project.id]
-          const query = filters[project.id] ?? ''
-          const setQuery = (value: string) =>
-            setFilters((current) => ({ ...current, [project.id]: value }))
-          const libraries = (
-            [
-              [
-                'Reusable requests',
-                'requests',
-                project.requestSets.map((set) => ({ ...set, stepCount: set.steps.length }))
-              ],
-              ['Endpoints', 'endpoints', project.endpointFiles],
-              ['Bases', 'bases', project.bases]
-            ] as const
-          ).map(([title, home, files]) => ({
-            title,
-            home,
-            all: files.length,
-            files: files.filter((file) => keepsFile(query, file))
-          }))
-          const shown = filterCollections(project.collections, project.directories, query)
-          const marks = gitMarks(project)
-          const total = project.collections.length + libraries.reduce((n, l) => n + l.all, 0)
-          const found = shown.collections.length + libraries.reduce((n, l) => n + l.files.length, 0)
-          const nothingFound = filtering(query) && found === 0 && shown.directories.length === 0
+        {entries.map((entry) => {
+          if (entry.kind === 'project') return projectSection(entry.project, false)
+          const { repo } = entry
+          const key = repoKey(repo)
+          const open = !collapsed[key]
+          // Its projects' git is the repository's: every call names the first of them.
+          const first = repo.projects[0]!
           return (
-            <section key={project.id} className="project" aria-label={`Project ${project.name}`}>
-              {/* The project's heading takes a dragged collection to the root of its collections/. */}
-              <div
-                className={`project-drop${dragFor(project).over === null ? ' drop-target' : ''}`}
-                {...dragFor(project).zone(null)}
-              >
-                <ProjectHeading
-                  project={project}
-                  open={open}
-                  onToggle={() => toggle(project.id)}
-                  onFetch={() => props.onFetch(project.id)}
-                  onPull={() => props.onPull(project.id)}
-                  onPush={() => props.onPush(project.id)}
-                  onChanges={(tab) => props.onChanges(project.id, tab)}
-                  onRemove={() => {
-                    if (!project.scratch) return props.onRemoveProject(project.id)
-                    const count = project.collections.length
-                    const what =
-                      count === 0 ? '' : ` and its ${count} collection${count === 1 ? '' : 's'}`
-                    if (
-                      window.confirm(
-                        `Delete the scratch pad “${project.name}”${what}? Its folder goes to the Trash.`
-                      )
-                    ) {
-                      props.onRemoveProject(project.id)
-                    }
-                  }}
-                  onNewCollection={() => setNaming({ kind: 'collection', projectId: project.id })}
-                  onNewDirectory={() => setNaming({ kind: 'directory', projectId: project.id })}
-                  onNewSet={() => setNaming({ kind: 'set', projectId: project.id })}
-                  onNewEndpoints={() => setNaming({ kind: 'endpoints', projectId: project.id })}
-                  onNewBase={() => setNaming({ kind: 'base', projectId: project.id })}
-                  onSettings={() => props.onProjectSettings(project.id)}
-                  onRules={() => props.onProjectSettings(project.id, 'rules')}
-                  onReveal={() => props.onReveal(project.path)}
-                  onRename={() => setNaming({ kind: 'rename-scratch', projectId: project.id })}
-                />
-              </div>
-
-              {naming?.kind === 'rename-scratch' && naming.projectId === project.id && (
-                <NameForm
-                  label={`New name for ${project.name}`}
-                  placeholder="Scratch pad name"
-                  initial={project.name}
-                  submitLabel="Rename"
-                  onSubmit={async (name) => done(await props.onRenameScratchPad(project.id, name))}
-                  onCancel={() => setNaming(null)}
-                />
-              )}
-
-              {naming?.kind === 'directory' && naming.projectId === project.id && (
-                <NameForm
-                  label="New folder name"
-                  placeholder="Folder name"
-                  submitLabel="Create"
-                  onSubmit={async (name) => done(await props.onCreateDirectory(project.id, name))}
-                  onCancel={() => setNaming(null)}
-                />
-              )}
-              {(naming?.kind === 'set' ||
-                naming?.kind === 'endpoints' ||
-                naming?.kind === 'base') &&
-                naming.projectId === project.id && (
-                  <NameForm
-                    label={`New ${LIBRARY_NAMES[naming.kind]} id`}
-                    placeholder={`${capitalise(LIBRARY_NAMES[naming.kind])} id, its file name`}
-                    submitLabel="Create"
-                    onSubmit={async (name) =>
-                      done(await props.onCreateCollection(project.id, null, name, naming.kind))
-                    }
-                    onCancel={() => setNaming(null)}
-                  />
-                )}
-              {naming?.kind === 'collection' && naming.projectId === project.id && (
-                <NewCollectionForm
-                  key={naming.folder ?? ''}
-                  project={project}
-                  folder={naming.folder ?? ''}
-                  onSubmit={async (directory, name) =>
-                    done(await props.onCreateCollection(project.id, directory, name))
-                  }
-                  onCancel={() => setNaming(null)}
-                />
-              )}
-
-              {/* Only where there is enough to look through — and never hiding a filter in use. */}
-              {open && project.available && (total >= FILTER_FROM || filtering(query)) && (
-                <div className="project-filter" role="search">
-                  <input
-                    type="search"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape') setQuery('')
-                    }}
-                    placeholder="Filter collections"
-                    aria-label={`Filter ${project.name}`}
-                    spellCheck={false}
-                  />
-                  {filtering(query) && (
-                    <span className="filter-count" aria-live="polite">
-                      {found} of {total}
-                    </span>
-                  )}
-                </div>
-              )}
-              {open && project.available && nothingFound && (
-                <p className="hint filter-empty">Nothing matches “{query.trim()}”.</p>
-              )}
-              {open &&
-                !nothingFound &&
-                (!project.available ? (
-                  <p className="hint unavailable">Folder is missing — it may have been moved.</p>
-                ) : project.loading &&
-                  project.collections.length === 0 &&
-                  project.directories.length === 0 ? (
-                  // Not read yet, rather than empty.
-                  <p className="hint project-loading">Loading…</p>
-                ) : !project.hasCollections ? (
-                  <p className="hint shared-project">
-                    A shared project, with no collections of its own.
-                    {usersOf(project, props.projects).length > 0 &&
-                      ` Used by ${usersOf(project, props.projects).join(', ')}.`}
-                  </p>
-                ) : project.collections.length === 0 && project.directories.length === 0 ? (
-                  <p className="hint project-empty">
-                    No collections yet.{' '}
-                    <button
-                      type="button"
-                      className="link-button"
-                      onClick={() => setNaming({ kind: 'collection', projectId: project.id })}
-                    >
-                      New collection
-                    </button>
-                    {' · '}
-                    <button
-                      type="button"
-                      className="link-button"
-                      onClick={() => setNaming({ kind: 'directory', projectId: project.id })}
-                    >
-                      New folder
-                    </button>
-                  </p>
-                ) : (
-                  <CollectionList
-                    collections={shown.collections}
-                    directories={shown.directories}
-                    selectedPath={props.selectedRoot}
-                    onSelect={(collection) => props.onSelectCollection(project, collection)}
-                    expanded={filtering(query)}
-                    folders={project.directories}
-                    drag={dragFor(project)}
-                    marks={marks}
-                    findings={project.findings}
-                    actions={{
-                      ...props.collectionActions,
-                      onRenameFolder: (folder, name) =>
-                        props.onRenameFolder(project.id, folder, name),
-                      onDeleteFolder: (folder) => props.onDeleteFolder(project.id, folder),
-                      onNewCollectionIn: (folder) =>
-                        setNaming({ kind: 'collection', projectId: project.id, folder }),
-                      targets: props.projects.filter(
-                        (other) =>
-                          other.id !== project.id && other.available && other.hasCollections
-                      )
-                    }}
-                  />
-                ))}
-              {open &&
-                project.available &&
-                libraries.map(
-                  ({ title, home, files }) =>
-                    files.length > 0 && (
-                      <div
-                        key={home}
-                        className="request-sets"
-                        role="group"
-                        aria-label={`${title} of ${project.name}`}
-                      >
-                        <div className="request-sets-head">{title}</div>
-                        {files.map((file) => (
-                          <LibraryRow
-                            key={file.path}
-                            file={file}
-                            home={home}
-                            // A shared one's changes are its global project's, marked there.
-                            mark={file.source === 'project' ? marks.file(file.path) : null}
-                            // Rules check a project's own files; a shared one's are its global project's.
-                            findings={
-                              file.source === 'project'
-                                ? findingsOf(project.findings, `${home}/${file.name}.yml`)
-                                : NO_FINDINGS
-                            }
-                            selected={file.path === props.selectedRoot}
-                            onSelect={() =>
-                              props.onSelectCollection(project, summaryOfFile(file, home))
-                            }
-                          />
-                        ))}
-                      </div>
-                    )
-                )}
+            <section key={key} className="repo-group" aria-label={`Repository ${repo.name}`}>
+              <RepoHeading
+                repo={repo}
+                open={open}
+                onToggle={() => toggle(key)}
+                onFetch={() => props.onFetch(first.id)}
+                onPull={() => props.onPull(first.id)}
+                onPush={() => props.onPush(first.id)}
+                onChanges={(tab) => props.onChanges(first.id, tab)}
+                onReveal={() => props.onReveal(repo.root)}
+              />
+              {open && repo.projects.map((project) => projectSection(project, true))}
             </section>
           )
         })}
@@ -691,7 +719,13 @@ function LibraryRow(props: {
   )
 }
 
-/** The sidebar's rows, top to bottom: project headings, folders, collections, library files. */
+/** What a repository heading's open or closed is kept under, beside the projects' ids. */
+const repoKey = (repo: RepoView) => `repo:${repo.root}`
+
+/**
+ * The sidebar's rows, top to bottom: repository and project headings, folders,
+ * collections, library files.
+ */
 const ROWS = '.repo-toggle, .row'
 /** The rows that open something, as a click on them does. */
 const OPENS = '.collection-row, .set-row'

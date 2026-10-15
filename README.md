@@ -172,7 +172,9 @@ Both run on macOS, Windows and Linux.
   clone a repository. Filter a project's collections by name, folder or tag.
 - Scratch pads, for requests that belong in no repository.
 - Git is built in, with nothing to install: clone, branches, history, diff, commit,
-  discard, fetch, pull and push. Changed files are marked in the sidebar.
+  discard, fetch, pull and push. Changed files are marked in the sidebar, a monorepo's
+  projects sit under one heading for their repository, and the status bar shows the
+  open collection's branch.
 - Picks up changes made on disk by an editor, an agent or git.
 
 **The `gta` CLI**

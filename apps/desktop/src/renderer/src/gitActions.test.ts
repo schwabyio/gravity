@@ -19,6 +19,7 @@ const git = (over: Partial<GitStatusView> = {}): GitStatusView => ({
   projectChanges: 0,
   projectFiles: {},
   fetchProblem: null,
+  read: 1,
   ...over
 })
 

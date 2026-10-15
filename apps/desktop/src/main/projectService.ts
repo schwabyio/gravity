@@ -198,6 +198,8 @@ export class ProjectService {
   /** When each repository was last fetched in the background. */
   private readonly lastFetched = new Map<string, number>()
   private readonly autoFetchTimers = new Map<string, NodeJS.Timeout>()
+  /** How many times git has been asked for a repository's status: each read is numbered by it. */
+  private gitReads = 0
   private readonly watcher = new DirectoryWatcher(
     (id, told) => this.rescan(id, told),
     undefined,
@@ -1263,7 +1265,12 @@ export class ProjectService {
     if (!repo) return { git: null, gitNote: null }
 
     try {
-      return { git: await this.statusView(repo, await repo.status(), projectPath), gitNote: null }
+      // Numbered as it is asked: one asked later sees the repository as it was later.
+      const read = ++this.gitReads
+      return {
+        git: await this.statusView(repo, await repo.status(), projectPath, read),
+        gitNote: null
+      }
     } catch (cause) {
       return { git: null, gitNote: cause instanceof Error ? cause.message : String(cause) }
     }
@@ -1273,7 +1280,8 @@ export class ProjectService {
   private async statusView(
     repo: GitRepo,
     status: GitStatus,
-    projectPath: string | null
+    projectPath: string | null,
+    read = ++this.gitReads
   ): Promise<GitStatusView> {
     return {
       branch: status.branch,
@@ -1293,7 +1301,8 @@ export class ProjectService {
         ? status.files.filter((file) => isInside(projectPath, repo.absolute(file.path))).length
         : 0,
       projectFiles: projectPath ? projectFiles(repo, status, projectPath) : {},
-      fetchProblem: this.fetchProblems.get(this.repoKey(repo.root)) ?? null
+      fetchProblem: this.fetchProblems.get(this.repoKey(repo.root)) ?? null,
+      read
     }
   }
 

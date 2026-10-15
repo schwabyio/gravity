@@ -104,7 +104,8 @@ test('adding a monorepo says how far along it is, and each project that git has 
     timeout: 30_000
   })
   await expect(page.locator('.sidebar .loading-spinner')).toHaveCount(0, { timeout: 30_000 })
+  // Once git has answered, its three projects sit under the one repository they share.
   await expect(
-    page.getByRole('region', { name: 'Project auth', exact: true }).locator('.repo-branch')
+    page.getByRole('region', { name: 'Repository platform', exact: true }).locator('.repo-branch')
   ).toHaveText('main')
 })

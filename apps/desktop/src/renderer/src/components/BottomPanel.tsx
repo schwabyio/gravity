@@ -6,6 +6,7 @@ import { usePaneWidth } from '../hooks/usePaneWidth.js'
 import { useStoredFlag } from '../hooks/useStoredFlag.js'
 import ConsoleIcon from './ConsoleIcon.js'
 import ConsolePanel from './ConsolePanel.js'
+import RepoStatus, { type RepoStatusProps } from './RepoStatus.js'
 import Tooltip from './Tooltip.js'
 import VariablesIcon from './VariablesIcon.js'
 import VariablesPanel, { type RuntimeVariablesProps } from './VariablesPanel.js'
@@ -25,7 +26,8 @@ type Tab = 'console' | 'variables'
 /**
  * The status bar along the bottom of the window, and the panel its buttons
  * open above it, across the whole window: the Console, and the Variables the
- * open collection's Sends and runs set, each a tab of it. The app's version
+ * open collection's Sends and runs set, each a tab of it. Beside their buttons,
+ * the open collection's repository and branch, a click from its Changes. The app's version
  * sits at its right, so which build is running is never a question — and
  * beside it, when the app is not running its own git, which git it runs
  * instead and why.
@@ -39,6 +41,7 @@ export default function BottomPanel(props: {
   message?: string | null
   onDismissMessage?: () => void
   variables: RuntimeVariablesProps
+  repos: RepoStatusProps
 }) {
   const log = useConsoleLog()
   const [open, setOpen] = useStoredFlag('console.open')
@@ -145,6 +148,7 @@ export default function BottomPanel(props: {
             {set > 0 && <span className="status-count set">{set}</span>}
           </button>
         </Tooltip>
+        <RepoStatus {...props.repos} />
         {props.message && (
           <span className="status-message" role="alert">
             {props.message}
