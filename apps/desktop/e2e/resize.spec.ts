@@ -134,6 +134,33 @@ test('double-clicking a divider resets it', async () => {
   expect(await widthOf(stepsColumn())).toBe(320)
 })
 
+test('the steps pane drags as far right as the step’s panes leave room for', async () => {
+  const room = () => widthOf(page.locator('.collection-body'))
+  const stepsWidth = () => widthOf(stepsColumn())
+  // The request editor, the response and the scripts each keep their least: 120, 120, 260.
+  await drag(stepsHandle(), 3000)
+  const widest = await stepsWidth()
+  expect(widest).toBeCloseTo((await room()) - 500, -1)
+  expect(widest).toBeGreaterThan(560)
+  expect(Number(await stepsHandle().getAttribute('aria-valuemax'))).toBeCloseTo(widest, -1)
+
+  // Less room narrows it, and it is back at its width when the room is.
+  await drag(sidebarHandle(), 100)
+  await expect.poll(stepsWidth).toBeCloseTo(widest - 100, -1)
+  await drag(sidebarHandle(), -100)
+  await expect.poll(stepsWidth).toBeCloseTo(widest, -1)
+
+  // The collections pane hidden, it goes further.
+  await page.getByRole('button', { name: 'Hide the collections pane' }).click()
+  await drag(stepsHandle(), 3000)
+  await expect.poll(stepsWidth).toBeCloseTo((await room()) - 500, -1)
+  await page.getByRole('button', { name: 'Show the collections pane' }).click()
+  await expect.poll(stepsWidth).toBeCloseTo(widest, -1)
+
+  await stepsHandle().dblclick()
+  expect(await stepsWidth()).toBe(320)
+})
+
 test('a release the window never hears still ends the drag', async () => {
   const before = await widthOf(sidebar())
   const box = (await sidebarHandle().boundingBox())!

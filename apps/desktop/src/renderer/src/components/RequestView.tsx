@@ -64,6 +64,9 @@ const STRIP = 28
 /** The least the scripts pane is given, however wide it was dragged. */
 const SCRIPTS_LEAST = 260
 
+/** The least the three panes need, all of them open: what the steps pane leaves them. */
+export const PANES_LEAST = 2 * PANE_LEAST + SCRIPTS_LEAST
+
 interface Props {
   request: EditorState
   /** The step's flags and forEach, as chips on its bar beside Send. */

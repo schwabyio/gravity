@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   isReadStep,
   isUseStep,
@@ -30,6 +30,7 @@ import DocsPanel from './DocsPanel.js'
 import OpenInEditor from './OpenInEditor.js'
 import GearIcon from './GearIcon.js'
 import Resizer from './Resizer.js'
+import { PANES_LEAST } from './RequestView.js'
 import StepList, { type AddAction } from './StepList.js'
 import StepSectionHead from './StepSectionHead.js'
 import TagEditor from './TagEditor.js'
@@ -152,6 +153,12 @@ interface Props {
   children: React.ReactNode
 }
 
+/** The least the steps pane is given, however narrow it was dragged. */
+const STEPS_LEAST = 180
+
+/** How wide the steps pane can be dragged in `room`: all of it but what the step's panes need. */
+const stepsMax = (room: number): number => Math.max(STEPS_LEAST, room - PANES_LEAST)
+
 /**
  * A collection and the step being edited, side by side.
  *
@@ -198,13 +205,28 @@ export default function CollectionView(props: Props) {
   const editingDocs = editingDocsOf === props.relativePath
   const setEditingDocs = (editing: boolean) => setEditingDocsOf(editing ? props.relativePath : null)
   const { summary } = props
-  // Wide enough for a name beside its status, time and verdict.
-  const steps = usePaneWidth('pane.steps', 320, 180, 560)
+  // Wide enough for a name beside its status, time and verdict — and as wide as the room
+  // lets it be: all of it but what the step's panes need beside it.
+  const bodyEl = useRef<HTMLDivElement>(null)
+  const [room, setRoom] = useState(0)
+  const measureStepsMax = useCallback(() => stepsMax(bodyEl.current?.clientWidth ?? room), [room])
+  const steps = usePaneWidth('pane.steps', 320, STEPS_LEAST, stepsMax(room), measureStepsMax)
   const setupSteps = stepsOf(props.collection, 'setup')
   const teardownSteps = stepsOf(props.collection, 'teardown')
   const hasStages = setupSteps.length > 0 || teardownSteps.length > 0
   const stepsTitle = props.library === 'endpoints' ? 'Endpoints' : 'Steps'
   const anySteps = STEP_LISTS.some((list) => stepsOf(props.collection, list).length > 0)
+  // Measured before the first paint, or the steps pane would show at its least until it was;
+  // again once there are steps, the first of them bringing the pane.
+  useLayoutEffect(() => {
+    const element = bodyEl.current
+    if (!element) return
+    const measure = () => setRoom(element.clientWidth)
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    measure()
+    return () => observer.disconnect()
+  }, [anySteps])
   // Only a collection has setup and teardown: not a request set, a base or endpoints.
   const canHaveStages = props.library === null && !props.collection.params
   // Only a collection runs in a group; library files are run through others.
@@ -677,7 +699,11 @@ export default function CollectionView(props: Props) {
           )}
         </div>
       ) : (
-        <div className="collection-body" style={{ gridTemplateColumns: `${steps.width}px 1fr` }}>
+        <div
+          className="collection-body"
+          ref={bodyEl}
+          style={{ gridTemplateColumns: `${steps.width}px 1fr` }}
+        >
           {/* Outside the scrolling column: a divider inside it would scroll
               away with the steps and only be as tall as their content. */}
           <Resizer pane={steps} label="Resize the steps pane" offset={steps.width} />
