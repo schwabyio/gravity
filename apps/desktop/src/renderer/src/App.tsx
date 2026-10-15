@@ -59,6 +59,7 @@ import { idsOf, stepsOf, useCollectionEditor } from './hooks/useCollectionEditor
 import { useEnvironmentEditor } from './hooks/useEnvironmentEditor.js'
 import { usePaneWidth } from './hooks/usePaneWidth.js'
 import { useSettings } from './hooks/useSettings.js'
+import { useStoredFlag } from './hooks/useStoredFlag.js'
 import { ExternalEditorContext, type ExternalEditor } from './externalEditor.js'
 import { openInLabel } from '@shared/settings.js'
 import { useProjects } from './hooks/useProjects.js'
@@ -89,6 +90,12 @@ const NO_BASES: LibraryFileView[] = []
 const NO_CHECK_FILES: CheckFileView[] = []
 const NO_CONNECTIONS: ConnectionView[] = []
 const NO_FINDINGS: RuleFinding[] = []
+
+/** The collections pane hidden: a strip as wide as a hidden pane's elsewhere. */
+const SIDEBAR_STRIP = 28
+
+/** ⌘ on a Mac, Ctrl elsewhere: Ctrl+B on a Mac is a text field's own. */
+const MAC = navigator.userAgent.includes('Mac')
 
 /** A failed call's message, or null — what the sidebar's name forms show. */
 const messageOf = (result: { ok: boolean }) =>
@@ -143,6 +150,7 @@ function withoutStages(doc: Collection): Collection {
 export default function App() {
   const ws = useProjects()
   const sidebar = usePaneWidth('pane.sidebar', 300, 200, 560)
+  const [sidebarHidden, setSidebarHidden] = useStoredFlag('pane.sidebar.hidden')
   const { settings, loaded: settingsLoaded, change: changeSettings } = useSettings()
 
   // "Open in …" everywhere: the editor App settings name, and what went wrong opening a file.
@@ -1168,7 +1176,7 @@ export default function App() {
     if (runningAll && (doc?.teardown?.length ?? 0) > 0) setStoppingAll(true)
   }
 
-  // Cmd/Ctrl+Enter sends, Cmd/Ctrl+S saves.
+  // Cmd/Ctrl+Enter sends, Cmd/Ctrl+S saves, Cmd/Ctrl+B hides and shows the collections pane.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey)) return
@@ -1181,11 +1189,21 @@ export default function App() {
       } else if (event.key === ',') {
         event.preventDefault()
         setSettingsOpen(true)
+      } else if (
+        event.key.toLowerCase() === 'b' &&
+        (MAC ? event.metaKey : event.ctrlKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        // Bold, in the docs editor.
+        !event.defaultPrevented
+      ) {
+        event.preventDefault()
+        setSidebarHidden(!sidebarHidden)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [send, save])
+  }, [send, save, sidebarHidden, setSidebarHidden])
 
   /** Results by list and position, for the lists: they are kept by step id. */
   const resultsByIndex = useMemo(() => {
@@ -1509,9 +1527,27 @@ export default function App() {
             />
           )}
 
-          <div className="layout" style={{ gridTemplateColumns: `${sidebar.width}px 1fr` }}>
+          <div
+            className="layout"
+            style={{
+              gridTemplateColumns: `${sidebarHidden ? SIDEBAR_STRIP : sidebar.width}px 1fr`
+            }}
+          >
+            {sidebarHidden && (
+              <button
+                type="button"
+                className={`pane-strip sidebar-strip${ws.error ? ' failed' : ''}`}
+                onClick={() => setSidebarHidden(false)}
+                aria-label="Show the collections pane"
+              >
+                {/* What went wrong there would otherwise wait unseen. */}
+                <span>{ws.error ? 'Collections · error ▸' : 'Collections ▸'}</span>
+              </button>
+            )}
             <ProjectSidebar
               resizer={<Resizer pane={sidebar} label="Resize the collections pane" />}
+              hidden={sidebarHidden}
+              onHide={() => setSidebarHidden(true)}
               workspaces={ws.state.workspaces}
               active={ws.active}
               projects={ws.projects}

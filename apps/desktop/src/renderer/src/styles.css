@@ -688,6 +688,11 @@ button:disabled {
   background: var(--surface);
 }
 
+/* Hidden for the main pane's room, kept as it was: the strip in its place brings it back. */
+.sidebar[hidden] {
+  display: none;
+}
+
 .sidebar-head {
   display: flex;
   align-items: center;
@@ -2658,7 +2663,8 @@ button.info-tip.pinned {
   border-right: none;
 }
 
-.scripts-strip.failed {
+.scripts-strip.failed,
+.sidebar-strip.failed {
   color: var(--client);
 }
 
@@ -4463,7 +4469,8 @@ button.tag.filter.on {
   padding: 2px 8px;
 }
 
-.collapse-all-button {
+.collapse-all-button,
+.sidebar-hide-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4473,7 +4480,8 @@ button.tag.filter.on {
   color: var(--text-dim);
 }
 
-.collapse-all-button:hover:not(:disabled) {
+.collapse-all-button:hover:not(:disabled),
+.sidebar-hide-button:hover {
   color: var(--text);
 }
 
@@ -5506,8 +5514,10 @@ button.tag.filter.on {
   font-weight: 700;
 }
 
+/* A long path breaks where it must, rather than pushing Dismiss out of the pane. */
 .sidebar-error {
   white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .sidebar-status {

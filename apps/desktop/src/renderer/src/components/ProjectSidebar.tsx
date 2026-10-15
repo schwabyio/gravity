@@ -21,14 +21,21 @@ import ProjectHeading from './ProjectHeading.js'
 import RepoHeading from './RepoHeading.js'
 import { sidebarEntries, type RepoView } from '../repos.js'
 import RuleMark from './RuleMark.js'
+import SidebarIcon from './SidebarIcon.js'
 import Tooltip from './Tooltip.js'
 import { onRightClick, useMenuDismiss } from '../hooks/useMenuDismiss.js'
 
 const NO_FINDINGS: RuleFinding[] = []
 
+/** What hides the pane and brings it back, as the platform has it. */
+const HIDE_KEYS = navigator.userAgent.includes('Mac') ? '⌘B' : 'Ctrl+B'
+
 interface Props {
   /** The divider between this pane and the main one. */
   resizer: React.ReactNode
+  /** Hidden, for the main pane's room: kept as it was, to come back to. */
+  hidden: boolean
+  onHide: () => void
   workspaces: WorkspaceSummary[]
   active: WorkspaceSummary | undefined
   /** The active workspace's projects. */
@@ -416,7 +423,7 @@ export default function ProjectSidebar(props: Props) {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" hidden={props.hidden}>
       {props.resizer}
       <div className="sidebar-head workspace-head">
         {naming?.kind === 'workspace' || naming?.kind === 'rename-workspace' ? (
@@ -508,6 +515,16 @@ export default function ProjectSidebar(props: Props) {
                 </div>
               )}
             </span>
+            <Tooltip text={`Hide the collections pane for more room (${HIDE_KEYS})`}>
+              <button
+                type="button"
+                className="sidebar-hide-button"
+                aria-label="Hide the collections pane"
+                onClick={props.onHide}
+              >
+                <SidebarIcon />
+              </button>
+            </Tooltip>
           </>
         )}
       </div>
