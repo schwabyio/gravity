@@ -141,7 +141,6 @@ test('the steps pane drags as far right as the step’s panes leave room for', a
   await drag(stepsHandle(), 3000)
   const widest = await stepsWidth()
   expect(widest).toBeCloseTo((await room()) - 500, -1)
-  expect(widest).toBeGreaterThan(560)
   expect(Number(await stepsHandle().getAttribute('aria-valuemax'))).toBeCloseTo(widest, -1)
 
   // Less room narrows it, and it is back at its width when the room is.
@@ -150,10 +149,13 @@ test('the steps pane drags as far right as the step’s panes leave room for', a
   await drag(sidebarHandle(), -100)
   await expect.poll(stepsWidth).toBeCloseTo(widest, -1)
 
-  // The collections pane hidden, it goes further.
+  // The collections pane hidden, it goes further — past where it once stopped, at 560, in
+  // the smallest window: how far it goes with the pane shown, the window decides, and Linux
+  // CI's is narrower (run 38822181172).
   await page.getByRole('button', { name: 'Hide the collections pane' }).click()
   await drag(stepsHandle(), 3000)
   await expect.poll(stepsWidth).toBeCloseTo((await room()) - 500, -1)
+  expect(await stepsWidth()).toBeGreaterThan(560)
   await page.getByRole('button', { name: 'Show the collections pane' }).click()
   await expect.poll(stepsWidth).toBeCloseTo(widest, -1)
 
