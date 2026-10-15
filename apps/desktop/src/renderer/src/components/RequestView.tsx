@@ -650,6 +650,7 @@ export default function RequestView(props: Props) {
                       value={request.bodyText}
                       onChange={(bodyText) => props.onChange({ bodyText })}
                       previews={props.previews}
+                      onCopy={props.onCopyVariable}
                       placeholder={
                         request.bodyMode === 'form'
                           ? 'one name=value pair per line'

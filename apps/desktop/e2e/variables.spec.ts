@@ -93,9 +93,11 @@ test.beforeAll(async () => {
     'id: trace',
     'steps:',
     '  - name: make trace',
-    '    GET: "{{baseUrl}}/trace"',
+    '    POST: "{{baseUrl}}/trace"',
     '    headers:',
     '      X-Trace-Id: "{{traceId}}"',
+    '    body:',
+    '      json: \'{ "trace": "{{traceId}}" }\'',
     '    before:',
     "      script: gta.set('traceId', 'trace-' + Date.now())"
   ])
@@ -275,4 +277,21 @@ test('after a run, a variable its step’s own script sets shows the value it la
   // What it went out with last; the next Send sets it again.
   await expect(card().locator('.var-card-value')).toHaveText(/^trace-\d+$/)
   await expect(card().locator('.var-card-origin')).toHaveText('set by make trace · pre-request')
+})
+
+test('the request body’s variables have the same card, the value a run set in it', async () => {
+  const pane = page.locator('.request-pane')
+  await pane.getByRole('button', { name: /^Body/ }).click()
+  const variable = pane.locator('.cm-var', { hasText: '{{traceId}}' })
+  await expect(variable).toHaveClass(/(^| )resolved( |$)/)
+  await page.mouse.move(0, 0)
+  await variable.hover()
+  await expect(card().locator('.var-card-name')).toHaveText('traceId')
+  await expect(card().locator('.var-card-value')).toHaveText(/^trace-\d+$/)
+  await expect(card().locator('.var-card-origin')).toHaveText('set by make trace · pre-request')
+  await expect(card().getByRole('button', { name: 'Copy the value of traceId' })).toBeVisible()
+
+  // Off it, the card goes.
+  await page.mouse.move(0, 0)
+  await expect(card()).toHaveCount(0)
 })

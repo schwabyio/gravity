@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { VariablePreview, VariablePreviews } from '@schwabyio/gravity-core/model'
-import CopyButton from './CopyButton.js'
+import VariableCard from './VariableCard.js'
 
 interface Props {
   value: string
@@ -132,8 +132,6 @@ export default function VariableInput({
     closeTimer.current = setTimeout(() => setHovered(null), 200)
   }
 
-  const preview = hovered ? previews[hovered.name] : undefined
-
   return (
     <div className={`var-input ${className}`} onMouseLeave={scheduleClose} onMouseMove={hoverAt}>
       <div className="var-mirror" ref={mirrorRef} aria-hidden="true">
@@ -166,38 +164,12 @@ export default function VariableInput({
       />
 
       {hovered && (
-        <div className="var-card" role="tooltip" style={{ left: Math.max(0, hovered.left) }}>
-          <div className="var-card-name">{hovered.name}</div>
-
-          {/* The copy icon beside the value it copies, not beside where it came from. */}
-          <div className="var-card-value-row">
-            {preview === undefined ? (
-              <div className="var-card-value unresolved">Not defined in this environment</div>
-            ) : preview.kind === 'dynamic' ? (
-              <div className="var-card-value muted">Generated for each request</div>
-            ) : preview.kind === 'runtime' ? (
-              <div className="var-card-value muted">Not set until that step runs</div>
-            ) : preview.kind === 'secret' ? (
-              <div className="var-card-value muted">Secret — hidden here, but it can be copied</div>
-            ) : (
-              <div className="var-card-value">
-                {preview.value === '' ? '(empty)' : preview.value}
-              </div>
-            )}
-            {preview !== undefined && preview.kind !== 'dynamic' && preview.kind !== 'runtime' && (
-              <CopyButton
-                // Another variable's card starts with the copy icon, not a tick.
-                key={hovered.name}
-                what={`the value of ${hovered.name}`}
-                onCopy={() => onCopy(hovered.name)}
-              />
-            )}
-          </div>
-
-          <div className="var-card-foot">
-            <span className="var-card-origin">{preview?.origin ?? 'unresolved'}</span>
-          </div>
-        </div>
+        <VariableCard
+          name={hovered.name}
+          preview={previews[hovered.name]}
+          onCopy={onCopy}
+          style={{ left: Math.max(0, hovered.left) }}
+        />
       )}
     </div>
   )

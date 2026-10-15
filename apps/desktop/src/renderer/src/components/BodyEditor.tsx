@@ -1,4 +1,5 @@
-import { useEffect, useRef, type MutableRefObject } from 'react'
+import { useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { Compartment, EditorState, Prec, StateEffect } from '@codemirror/state'
 import {
@@ -15,6 +16,7 @@ import { basicSetup } from 'codemirror'
 import type { VariablePreviews } from '@schwabyio/gravity-core/model'
 import { bodyLanguage } from '../bodyLanguage.js'
 import { codeTheme } from './CodeEditor.js'
+import VariableCard from './VariableCard.js'
 import { variableState } from './VariableInput.js'
 
 interface Props {
@@ -24,6 +26,8 @@ interface Props {
   onChange: (text: string) => void
   /** What each `{{variable}}` resolves to now: one that resolves to nothing is shown so. */
   previews: VariablePreviews
+  /** Copies a variable's value from its card; main resolves it so secrets stay out of here. */
+  onCopy?: (name: string) => Promise<boolean>
   placeholder: string
   ariaLabel: string
   /** The editor, for Beautify to edit the body as typing does. */
@@ -36,9 +40,10 @@ interface Props {
 
 /**
  * A request body's text, in CodeMirror: JSON and XML coloured, `{{variables}}`
- * marked as the URL marks them, ⌘F (Ctrl+F) to find and replace in it, and the
- * code editor's lines, folding and brackets. Controlled from outside as the
- * scripts' editor is: switching steps replaces the text, typing reports it up.
+ * marked as the URL marks them and explained on hover by the same card, ⌘F
+ * (Ctrl+F) to find and replace in it, and the code editor's lines, folding and
+ * brackets. Controlled from outside as the scripts' editor is: switching steps
+ * replaces the text, typing reports it up.
  */
 export default function BodyEditor(props: Props) {
   const host = useRef<HTMLDivElement>(null)
@@ -51,6 +56,9 @@ export default function BodyEditor(props: Props) {
   previewsRef.current = props.previews
   const language = useRef(new Compartment())
   const hint = useRef(new Compartment())
+  /** The variable under the pointer, and where in the window its card goes. */
+  const [hovered, setHovered] = useState<CardPlace | null>(null)
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
     const editor = new EditorView({
@@ -118,7 +126,87 @@ export default function BodyEditor(props: Props) {
     view.current?.dispatch({ effects: refreshVariables.of(null) })
   }, [props.previews])
 
-  return <div className="code-editor body-code" ref={host} />
+  /* A variable's card: open while the pointer is on the variable or the card, and a
+     moment after, to travel from one to the other; gone as the body is edited or
+     anything scrolls, which would leave it beside nothing. */
+  const scheduleClose = () => {
+    clearTimeout(closeTimer.current)
+    closeTimer.current = setTimeout(() => setHovered(null), 200)
+  }
+  useEffect(() => () => clearTimeout(closeTimer.current), [])
+  useEffect(() => setHovered(null), [props.value])
+  useEffect(() => {
+    if (!hovered) return
+    const close = () => setHovered(null)
+    window.addEventListener('scroll', close, true)
+    return () => window.removeEventListener('scroll', close, true)
+  }, [hovered !== null])
+
+  /** Over a variable, its card; anywhere else, none, a moment later. Not while selecting. */
+  const hoverAt = (event: React.MouseEvent) => {
+    if (event.buttons !== 0) return
+    const mark = (event.target as HTMLElement).closest<HTMLElement>('.cm-var')
+    const name = mark?.dataset.name
+    if (!mark || !name) return scheduleClose()
+    clearTimeout(closeTimer.current)
+    const place = cardPlace(name, mark.getBoundingClientRect())
+    if (
+      hovered?.name !== place.name ||
+      hovered.left !== place.left ||
+      hovered.top !== place.top ||
+      hovered.bottom !== place.bottom
+    ) {
+      setHovered(place)
+    }
+  }
+
+  return (
+    <>
+      <div
+        className="code-editor body-code"
+        ref={host}
+        onMouseMove={hoverAt}
+        onMouseLeave={scheduleClose}
+      />
+      {hovered &&
+        createPortal(
+          <VariableCard
+            name={hovered.name}
+            preview={props.previews[hovered.name]}
+            onCopy={props.onCopy}
+            style={{
+              position: 'fixed',
+              left: hovered.left,
+              top: hovered.top ?? 'auto',
+              bottom: hovered.bottom ?? 'auto'
+            }}
+            onMouseEnter={() => clearTimeout(closeTimer.current)}
+            onMouseLeave={scheduleClose}
+          />,
+          document.body
+        )}
+    </>
+  )
+}
+
+/** Where a variable's card goes in the window: under the variable, or over it near the bottom. */
+interface CardPlace {
+  name: string
+  left: number
+  top?: number
+  bottom?: number
+}
+
+/** The card's widest (styles.css), and the room it is given below a variable before it goes above. */
+const CARD_WIDTH = 420
+const CARD_ROOM = 140
+const CARD_GAP = 6
+
+function cardPlace(name: string, box: DOMRect): CardPlace {
+  const left = Math.max(8, Math.min(box.left, window.innerWidth - CARD_WIDTH - 8))
+  return box.bottom + CARD_GAP + CARD_ROOM <= window.innerHeight
+    ? { name, left, top: box.bottom + CARD_GAP }
+    : { name, left, bottom: window.innerHeight - box.top + CARD_GAP }
 }
 
 /* ------------------------------------------------------------- variables -- */
@@ -130,7 +218,11 @@ function variables(previews: () => VariablePreviews) {
   const matcher = new MatchDecorator({
     regexp: /\{\{\s*([^{}\s]+)\s*\}\}/g,
     decoration: (match) =>
-      Decoration.mark({ class: `cm-var ${variableState(previews()[match[1]!])}` })
+      Decoration.mark({
+        class: `cm-var ${variableState(previews()[match[1]!])}`,
+        // Which variable, for its card on hover.
+        attributes: { 'data-name': match[1]! }
+      })
   })
   return ViewPlugin.fromClass(
     class {
