@@ -1120,168 +1120,6 @@ button:disabled {
   min-width: 0;
 }
 
-/* ---------- environment picker ---------- */
-
-.env-picker {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-right: 4px;
-}
-
-.env-picker select {
-  padding: 3px 6px;
-  font-size: 12px;
-  min-width: 140px;
-}
-
-/* No environment chosen while the collection offers some: {{variables}} cannot
-   resolve, so the control says so rather than looking settled. */
-.env-picker.unset select {
-  border-color: var(--redirect);
-  color: var(--redirect);
-}
-
-/* ---------- variable highlighting ----------
-   The value is drawn twice: the input keeps the real text (transparent, so the
-   caret, selection and every native editing behaviour still work) and the mirror
-   on top paints the coloured copy. Both must share identical metrics or the two
-   copies drift apart as you type. */
-
-.var-input {
-  position: relative;
-  display: block;
-  min-width: 0;
-}
-
-.var-field,
-.var-mirror {
-  /* Every metric here has to match in both layers. */
-  box-sizing: border-box;
-  width: 100%;
-  padding: 7px 9px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  font: inherit;
-  font-family: var(--mono);
-  line-height: 20px;
-  letter-spacing: normal;
-  white-space: pre;
-}
-
-.var-field {
-  position: relative;
-  z-index: 1;
-  border-color: var(--border);
-  background: var(--surface);
-  color: transparent;
-  caret-color: var(--text);
-}
-
-/* Selected text is painted by the input, under the mirror, so give it a real
-   colour or a selection would look like an empty highlight. */
-.var-field::selection {
-  color: var(--text);
-  background: color-mix(in srgb, var(--accent) 35%, transparent);
-}
-
-.var-field::placeholder {
-  color: var(--text-dim);
-}
-
-.var-mirror {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  overflow: hidden;
-  color: var(--text);
-  /* Clicks fall through to the input; only tokens capture the pointer. */
-  pointer-events: none;
-}
-
-.var-token {
-  pointer-events: auto;
-  border-radius: 3px;
-  cursor: help;
-}
-
-.var-token.resolved,
-.var-token.secret {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
-/* Unresolved: present in the text, but it will not become anything. */
-.var-token.unresolved {
-  color: var(--text-dim);
-  background: color-mix(in srgb, var(--text-dim) 12%, transparent);
-  text-decoration: underline dotted;
-  text-underline-offset: 3px;
-}
-
-.var-input.url .var-field:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
-
-/* ---------- variable tooltip ---------- */
-
-.var-card {
-  position: absolute;
-  top: calc(100% + 6px);
-  z-index: 20;
-  min-width: 220px;
-  max-width: 420px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
-  font-family: system-ui, sans-serif;
-  font-size: 12px;
-}
-
-.var-card-name {
-  font-family: var(--mono);
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.var-card-value {
-  margin-top: 4px;
-  font-family: var(--mono);
-  word-break: break-all;
-  white-space: pre-wrap;
-}
-
-.var-card-value.unresolved {
-  color: var(--client);
-}
-
-.var-card-value.muted {
-  color: var(--text-dim);
-  font-style: italic;
-}
-
-.var-card-foot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-}
-
-.var-card-origin {
-  flex: 1;
-  color: var(--text-dim);
-  font-family: var(--mono);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .kv .var-input .var-field,
 .kv .var-input .var-mirror {
   padding: 5px 7px;
@@ -1392,14 +1230,14 @@ button:disabled {
   z-index: 2;
   overflow: hidden;
   color: var(--text);
-  /* Clicks fall through to the input; only tokens capture the pointer. */
+  /* Every click and drag falls through to the input, on a variable too, so the pointer
+     is the input's I-beam throughout: VariableInput finds the variable under it by
+     where it is. */
   pointer-events: none;
 }
 
 .var-token {
-  pointer-events: auto;
   border-radius: 3px;
-  cursor: help;
 }
 
 .var-token.resolved,

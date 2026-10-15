@@ -123,7 +123,8 @@ const token = (name: string) => page.locator('.var-token', { hasText: `{{${name}
 const card = () => page.locator('.var-card')
 const hover = async (name: string) => {
   await page.mouse.move(0, 0)
-  await token(name).hover()
+  // Forced: the field under the variable takes the pointer, and finds the variable by position.
+  await token(name).hover({ force: true })
   await expect(card().locator('.var-card-name')).toHaveText(name)
 }
 

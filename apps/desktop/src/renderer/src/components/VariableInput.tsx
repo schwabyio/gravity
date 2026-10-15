@@ -48,9 +48,10 @@ export const variableState = (preview: VariablePreview | undefined): string =>
  * A plain input cannot colour part of its own text, so the value is drawn twice:
  * the input holds the real text with `color: transparent` and keeps the caret,
  * selection and every editing behaviour a browser already gets right, and a
- * mirror layer on top paints the coloured copy. The mirror ignores pointer
- * events except on the tokens themselves, so hovering a variable works while
- * clicking anywhere else still lands in the input.
+ * mirror layer on top paints the coloured copy. The mirror lets every pointer
+ * event through, so a click or a drag lands in the input wherever it is — inside
+ * a `{{variable}}` too — and the variable under the pointer is found by where
+ * the pointer is.
  */
 export default function VariableInput({
   value,
@@ -94,9 +95,28 @@ export default function VariableInput({
     }
   }, [value, hovered])
 
-  const openTooltip = (name: string, element: HTMLElement) => {
+  /**
+   * Open the card of the variable under the pointer, if there is one. Moving off
+   * it onto plain text leaves the card open, as leaving the field closes it; nor
+   * does a drag selecting text open one.
+   */
+  const hoverAt = (event: React.MouseEvent) => {
     clearTimeout(closeTimer.current)
-    setHovered({ name, left: element.offsetLeft - (mirrorRef.current?.scrollLeft ?? 0) })
+    if (event.buttons !== 0 || (event.target as HTMLElement).closest('.var-card')) return
+    const mirror = mirrorRef.current
+    for (const token of mirror?.querySelectorAll<HTMLElement>('.var-token') ?? []) {
+      const box = token.getBoundingClientRect()
+      const over =
+        event.clientX >= box.left &&
+        event.clientX <= box.right &&
+        event.clientY >= box.top &&
+        event.clientY <= box.bottom
+      if (!over) continue
+      const name = token.dataset.name ?? ''
+      const left = token.offsetLeft - (mirror?.scrollLeft ?? 0)
+      if (hovered?.name !== name || hovered.left !== left) setHovered({ name, left })
+      return
+    }
   }
 
   /**
@@ -115,11 +135,7 @@ export default function VariableInput({
   const preview = hovered ? previews[hovered.name] : undefined
 
   return (
-    <div
-      className={`var-input ${className}`}
-      onMouseLeave={scheduleClose}
-      onMouseEnter={() => clearTimeout(closeTimer.current)}
-    >
+    <div className={`var-input ${className}`} onMouseLeave={scheduleClose} onMouseMove={hoverAt}>
       <div className="var-mirror" ref={mirrorRef} aria-hidden="true">
         {tokenize(value).map((segment, index) =>
           segment.name === undefined ? (
@@ -128,7 +144,7 @@ export default function VariableInput({
             <span
               key={index}
               className={`var-token ${variableState(previews[segment.name])}`}
-              onMouseEnter={(event) => openTooltip(segment.name as string, event.currentTarget)}
+              data-name={segment.name}
             >
               {segment.text}
             </span>

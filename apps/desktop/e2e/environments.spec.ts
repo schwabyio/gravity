@@ -4,7 +4,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { AddressInfo } from 'node:net'
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import { launchApp } from './launch'
 import { DEFAULT_WINDOW, sizeWindow } from './window'
 import { addProject } from './addProject'
@@ -144,6 +144,20 @@ test('the chosen environment survives a restart', async () => {
 /* ------------------------------------------------ variable highlighting -- */
 
 const token = (name: string) => page.locator('.var-token', { hasText: `{{${name}}}` }).first()
+/**
+ * Point at a variable. Forced: the input under it takes the pointer, so a click
+ * there lands in the field, and the field finds the variable by where the pointer is.
+ *
+ * The pointer moves away first, until any card has closed: one left open from the
+ * test before could sit over the variable and take the pointer instead. And the
+ * pointer has not moved since then, so a hover onto the same coordinates would
+ * dispatch no mouse event at all.
+ */
+async function hover(locator: Locator) {
+  await page.mouse.move(0, 0)
+  await expect(page.locator('.var-card')).toHaveCount(0)
+  await locator.hover({ force: true })
+}
 
 test('colours resolved variables and greys out unresolved ones', async () => {
   await page.getByLabel('Environment', { exact: true }).selectOption('local')
@@ -167,8 +181,7 @@ test('an unresolved variable becomes resolved when the environment supplies it',
 
 test('hovering a resolved variable shows its value and where it came from', async () => {
   await page.getByLabel('Request URL').fill('{{baseUrl}}/v{{apiVersion}}/sessions')
-  await page.mouse.move(0, 0)
-  await token('baseUrl').hover()
+  await hover(token('baseUrl'))
 
   const card = page.locator('.var-card')
   await expect(card).toBeVisible()
@@ -179,8 +192,7 @@ test('hovering a resolved variable shows its value and where it came from', asyn
 
 test('hovering an unresolved variable says so instead of showing a value', async () => {
   await page.getByLabel('Request URL').fill('{{baseUrl}}/{{notAThing}}')
-  await page.mouse.move(0, 0)
-  await token('notAThing').hover()
+  await hover(token('notAThing'))
 
   const card = page.locator('.var-card')
   await expect(card.locator('.var-card-value')).toHaveText('Not defined in this environment')
@@ -188,12 +200,39 @@ test('hovering an unresolved variable says so instead of showing a value', async
   await expect(card.getByRole('button', { name: 'Copy' })).toHaveCount(0)
 })
 
+test('a click inside a variable puts the caret there, as anywhere in the field', async () => {
+  const url = page.getByLabel('Request URL')
+  await url.fill('{{baseUrl}}/v{{apiVersion}}/sessions')
+  await url.evaluate((input) => input.blur())
+  const box = (await token('baseUrl').boundingBox())!
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2]
+  // The field itself is what is under the pointer there, not the variable drawn over it.
+  const hit = await url.evaluate(
+    (input, [px, py]) => {
+      // Run in the page, where `globalThis` is its window.
+      const { document } = globalThis as unknown as {
+        document: { elementFromPoint: (x: number, y: number) => unknown }
+      }
+      return document.elementFromPoint(px!, py!) === input
+    },
+    [x, y]
+  )
+  expect(hit).toBe(true)
+
+  await page.mouse.click(x, y)
+  await expect(url).toBeFocused()
+  const caret = await url.evaluate(
+    (input) => (input as unknown as { selectionStart: number | null }).selectionStart ?? -1
+  )
+  expect(caret).toBeGreaterThan(0)
+  expect(caret).toBeLessThan('{{baseUrl}}'.length)
+  // And the card still opens for it.
+  await expect(page.locator('.var-card .var-card-name')).toHaveText('baseUrl')
+})
+
 test('copying a variable puts its value on the clipboard', async () => {
   await page.getByLabel('Request URL').fill('{{baseUrl}}/v{{apiVersion}}/sessions')
-  // Move the pointer away first: it has not moved since the previous test, so a
-  // hover onto the same coordinates would dispatch no mouse event at all.
-  await page.mouse.move(0, 0)
-  await token('apiVersion').hover()
+  await hover(token('apiVersion'))
   await page
     .locator('.var-card')
     .getByRole('button', { name: 'Copy the value of apiVersion' })
@@ -215,8 +254,7 @@ test('collection variables resolve inside a header value too', async () => {
   const headerToken = requestPane.locator('.var-token', { hasText: '{{realm}}' })
   await expect(headerToken).toHaveClass(/resolved/)
 
-  await page.mouse.move(0, 0)
-  await headerToken.hover()
+  await hover(headerToken)
   // Scope to the pane: the URL bar's own card lingers briefly while the pointer
   // travels, so an unscoped locator can match two cards at once.
   const card = requestPane.locator('.var-card')
@@ -231,8 +269,7 @@ test('a generated variable is marked dynamic rather than previewed', async () =>
   const dynamicToken = requestPane.locator('.var-token', { hasText: '{{$uuid}}' })
   await expect(dynamicToken).toHaveClass(/resolved/)
 
-  await page.mouse.move(0, 0)
-  await dynamicToken.hover()
+  await hover(dynamicToken)
   const card = requestPane.locator('.var-card')
   await expect(card.locator('.var-card-value')).toHaveText('Generated for each request')
   await expect(card.getByRole('button', { name: 'Copy' })).toHaveCount(0)

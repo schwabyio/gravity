@@ -276,7 +276,8 @@ test('a use step’s request is shown as its file has it: its headers, body and 
   await expect(url).toHaveValue(/\/cart\/\{\{params\.item\}\}$/)
   await expect(url).toHaveAttribute('readonly', '')
   // Its params read as this step passes them; it passes none, so the default.
-  await page.locator('.use-child-bar .var-token').hover()
+  // Forced: the field under the variable takes the pointer, and finds the variable by position.
+  await page.locator('.use-child-bar .var-token').hover({ force: true })
   await expect(page.locator('.use-child-bar .var-card-value')).toHaveText('widget')
   await page.mouse.move(0, 0)
 

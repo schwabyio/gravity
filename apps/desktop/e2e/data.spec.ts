@@ -92,7 +92,8 @@ test('the row picker lists each row by its label, and a step runs with the row p
 
   // Variables show the picked row's values, and where they came from.
   await page.mouse.move(0, 0)
-  await page.locator('.var-token', { hasText: '{{userId}}' }).first().hover()
+  // Forced: the field under the variable takes the pointer, and finds the variable by position.
+  await page.locator('.var-token', { hasText: '{{userId}}' }).first().hover({ force: true })
   const card = page.locator('.var-card')
   await expect(card.locator('.var-card-value')).toHaveText('cat')
   await expect(card.locator('.var-card-origin')).toHaveText(/users\.csv row 3/)
