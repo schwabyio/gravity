@@ -289,11 +289,11 @@ global project's `settings.yml`, the project's, the environment variable, the fl
 
 **Running.** `gta` runs from the project folder:
 
-| Command               | Runs                                                        |
-| --------------------- | ----------------------------------------------------------- |
-| `gta get`             | Nothing. It lists what `gta all` would run.                 |
-| `gta all`             | Every collection, except those with `exclude: true` (§2.4). |
-| `gta smoke,checkout/` | The collections and folders named, in that order.           |
+| Command               | Runs                                                                 |
+| --------------------- | -------------------------------------------------------------------- |
+| `gta get`             | Nothing. It lists what `gta all` would run.                          |
+| `gta all`             | Every collection and step, except those with `exclude: true` (§2.4). |
+| `gta smoke,checkout/` | The collections and folders named, in that order.                    |
 
 `gta get` also reports each `use:` and `extends:` that would stop a run, and each file a
 body names that is in neither the project nor its global project (§2.2), in every
@@ -650,6 +650,7 @@ Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
 | `before`     | map          | no       | `script:` run before the request (§5).                                          |
 | `tests`      | string       | no       | The checks, as JavaScript: calls on `gta` (§3) and any other code (§5).         |
 | `tags`       | list of tags | no       | The step's own tags. Only with `stepTags: true` on the collection (§2.4).       |
+| `exclude`    | boolean      | no       | `true` leaves it out of group runs. Only on a step of `steps` (§2.4).           |
 | `flags`      | map          | no       | Feature flags the step needs (§2.9).                                            |
 | `forEach`    | string       | no       | In setup or teardown: send the request once for each item of a list (below).    |
 | `useTests`   | `true`       | no       | In a reusable requests file: the use step's `tests` check this response (§2.5). |
@@ -711,12 +712,13 @@ steps:
   `wait: '{{retryAfterMs}}'` with a value an earlier step's `tests` set with `gta.set`.
   What it comes to must be a whole number from 0 to 600000, or the step fails. A string
   that holds no `{{variable}}`, such as `2s`, is an error.
-- A wait step has `wait`, and may have `name`, `docs`, `flags` and `tags` (§2.4, §2.9).
+- A wait step has `wait`, and may have `name`, `docs`, `flags`, `tags` and `exclude` (§2.4,
+  §2.9).
   It has no method key, `use`, `connection`, `headers`, `body`, `settings`, `before`,
   `tests`, `forEach`, `useTests` or `base`. Its name defaults to how long it waits:
   `wait 2 s`, `wait 500 ms`, `wait {{retryAfterMs}}`.
 - No script runs for it, the collection's included: there is no request or response.
-  Its feature flags, `gta.skipRest`, `bail` and tags apply as to any step.
+  Its feature flags, `gta.skipRest`, `bail`, tags and `exclude` apply as to any step.
 - Its result has the method `WAIT`, no response and no checks, and passes once it has
   waited. A cancel, or `timeoutCollection`, stops it at once, as a failure; teardown
   then runs as §2.10 says.
@@ -1000,6 +1002,29 @@ was selected.
 tags, and a folder named to `gta`. Named on its own, it still runs. Use it for work in
 progress, a manual-only collection, or one waiting on a fix. `gta` lists what it left
 out, so a suite never shrinks without saying so.
+
+**`exclude: true` on a step** leaves just that step out of group runs. Its collection
+runs without it, and named on its own runs every step:
+
+```yaml
+id: orders
+steps:
+  - name: create order
+    POST: '{{baseUrl}}/orders'
+  - name: refund
+    POST: '{{baseUrl}}/orders/{{orderId}}/refund'
+    exclude: true # waiting on a fix; gta orders still runs it
+```
+
+- It is only on a step of `steps`. Setup and teardown run whenever their collection
+  does, and a reusable requests file's steps wherever it is used, so neither has it:
+  exclude the collection, or the use step, instead.
+- A step the tags would not pick is not run either way. `gta` lists each step it left
+  out as `orders › refund`.
+- A collection whose every step is excluded is left out of a group run, setup and
+  teardown too.
+- In the desktop app, Run all leaves it out too, and Send still sends it.
+- Leaving out a step can make later steps fail, such as one that uses a value it sets.
 
 ### 2.5 Reusable requests and `use:`
 
@@ -1894,8 +1919,9 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
   ignoring case.
 - There is no `name` key (use `id`).
 - A step has `tags` only if the collection has `stepTags: true`.
-- With `params`: no step is a use step, and there is no `vars`, `setup` or `teardown`.
-- A `setup` or `teardown` step has no `tags`.
+- With `params`: no step is a use step or has `exclude`, and there is no `vars`, `setup`
+  or `teardown`.
+- A `setup` or `teardown` step has no `tags` or `exclude`.
 - A data file, when present, reads (§2.8).
 
 **Steps**
@@ -1915,7 +1941,8 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - A step reading a connection has no `headers`, `body`, `base` or `forEach`. A step
   opening one has no `forEach`, and a use step has no `connection` (§2.11).
 - A wait step's `wait` is a whole number from 0 to 600000, or a string holding a
-  `{{variable}}`, and it holds nothing but `wait`, `name`, `docs`, `flags` and `tags`.
+  `{{variable}}`, and it holds nothing but `wait`, `name`, `docs`, `flags`, `tags` and
+  `exclude`.
   At run time its `{{variables}}` must come to a whole number from 0 to 600000 (§2.1).
 
 **Values**
@@ -1944,7 +1971,7 @@ it. Rules checked at run time fail the step, or the run, before anything is sent
 - A base collection (`bases/`) has no `steps`, `setup`, `teardown` or `params`, and no
   `extends`.
 - An endpoint (`endpoints/`) has a URL that is a path starting with `/`, and no use
-  steps or connections. An endpoints file has no `setup` or `teardown`.
+  steps, connections or `exclude`. An endpoints file has no `setup` or `teardown`.
 - A check file's name is a JavaScript identifier; if it isn't, the file is not loaded.
 - `collections/`, `requests/`, `endpoints/` and `bases/` hold files at most one folder
   down.

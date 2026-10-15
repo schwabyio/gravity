@@ -224,6 +224,7 @@ export const STEP_KEY_ORDER = [
   'connection',
   'forEach',
   'tags',
+  'exclude',
   'flags',
   'useTests',
   'base',

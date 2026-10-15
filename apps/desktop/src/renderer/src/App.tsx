@@ -73,7 +73,7 @@ import {
   summaryOfFile,
   summaryOfSet
 } from './reuse.js'
-import { filterSteps } from './tagFilter.js'
+import { stepsToRunAll } from './tagFilter.js'
 import { changesSince } from './stepChanges.js'
 import { findingsOf, projectFile } from './ruleFindings.js'
 import { TestsRuleContext, type TestsRule } from './testsRule.js'
@@ -1131,10 +1131,15 @@ export default function App() {
     } else setError(response.message)
   }
 
-  /** Run every step, or with a tag filter on, just the steps it shows. */
+  /**
+   * Run every step, or with a tag filter on, just the steps it shows; either
+   * way, less those excluded from group runs. Every step excluded, nothing runs.
+   */
   const runAll = useCallback(async () => {
     if (!open || !doc || runningId !== null) return
-    await runIndexesOf('steps', filterSteps(doc, tagFilter).indexes, true)
+    const { indexes, excluded } = stepsToRunAll(doc, tagFilter)
+    if (indexes.length === 0 && excluded > 0) return
+    await runIndexesOf('steps', indexes, true)
   }, [
     open,
     doc,
@@ -1620,6 +1625,10 @@ export default function App() {
                     const id = idsOf(open, list)[index]
                     if (id) editor.moveStep(id, to)
                   }}
+                  onExcludeStep={(list, index, exclude) => {
+                    const id = idsOf(open, list)[index]
+                    if (id) editor.patchStep(id, { exclude })
+                  }}
                   stepTags={request?.tags ?? NO_TAGS}
                   onStepTags={(tags) => editor.patch({ tags })}
                   stepUseTests={request?.useTests ?? false}
@@ -1673,6 +1682,8 @@ export default function App() {
                           flagValues={flagValues}
                           forEach={request.forEach}
                           onForEach={(forEach) => editor.patch({ forEach })}
+                          exclude={request.exclude}
+                          onExclude={(exclude) => editor.patch({ exclude })}
                           previews={shownPreviews}
                           onCopyVariable={copyVariable}
                         />
@@ -1703,6 +1714,8 @@ export default function App() {
                           flagValues={flagValues}
                           forEach={request.forEach}
                           onForEach={(forEach) => editor.patch({ forEach })}
+                          exclude={request.exclude}
+                          onExclude={(exclude) => editor.patch({ exclude })}
                           previews={shownPreviews}
                           onCopyVariable={copyVariable}
                         />

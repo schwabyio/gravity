@@ -135,7 +135,7 @@ Both run on macOS, Windows and Linux.
   teardown runs even after a failure, a cancel or a timeout.
   [SETUP-AND-TEARDOWN.md](./SETUP-AND-TEARDOWN.md) says when to use them, and when not.
 - Tags select whole collections, or single steps with `stepTags: true`.
-  `exclude: true` keeps work in progress out of group runs.
+  `exclude: true`, on a collection or a step, keeps work in progress out of group runs.
 - Feature flags: a collection or step runs only when its flags hold, and is otherwise
   reported as skipped, not failed. Values come from the environment, from a command
   that asks your flag service, or from overrides.

@@ -22,6 +22,8 @@ export type MenuIconName =
   | 'use'
   | 'read'
   | 'wait'
+  | 'exclude'
+  | 'include'
 
 /**
  * The icon at the start of a menu item: the app's own where it has one, the
@@ -120,6 +122,20 @@ const DRAWN: Record<
     <>
       <path d="M4.5 2h7M4.5 14h7" />
       <path d="M5.5 2v1.5C5.5 5 8 6.5 8 8s-2.5 3-2.5 4.5V14M10.5 2v1.5C10.5 5 8 6.5 8 8s2.5 3 2.5 4.5V14" />
+    </>
+  ),
+  // ⊘, as the sidebar marks a collection left out of group runs.
+  exclude: (
+    <>
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M4.1 11.9 11.9 4.1" />
+    </>
+  ),
+  // The same ring with a tick: back in group runs.
+  include: (
+    <>
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M5.5 8.2 7.2 9.9 10.5 6.3" />
     </>
   ),
   up: <path d="M8 13V3M4 7l4-4 4 4" />,

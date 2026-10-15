@@ -142,7 +142,7 @@ describe('a wait step', () => {
       return parsed.success ? [] : parsed.error.issues.map((issue) => issue.message)
     }
     expect(problems({ wait: 100, GET: '/orders' })).toEqual([
-      'a wait step only waits, so it cannot have GET; it holds wait, name, docs, flags and tags (SPEC.md §2.1)'
+      'a wait step only waits, so it cannot have GET; it holds wait, name, docs, flags, tags and exclude (SPEC.md §2.1)'
     ])
     for (const key of ['headers', 'body', 'settings', 'before', 'tests', 'forEach', 'use']) {
       const value =
@@ -154,7 +154,7 @@ describe('a wait step', () => {
               ? { text: 'x' }
               : {}
       expect(problems({ wait: 100, [key]: value })).toEqual([
-        `a wait step only waits, so it cannot have ${key}; it holds wait, name, docs, flags and tags (SPEC.md §2.1)`
+        `a wait step only waits, so it cannot have ${key}; it holds wait, name, docs, flags, tags and exclude (SPEC.md §2.1)`
       ])
     }
     expect(endpointProblem(CollectionSchema.parse({ steps: [{ wait: 100 }] }))).toBe(

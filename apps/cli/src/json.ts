@@ -1,7 +1,7 @@
 import type { RunResult } from '@schwabyio/gravity-core'
 import type { HtmlCollection, HtmlRun } from './html.js'
 import type { LoadedCollection } from '@schwabyio/gravity-core'
-import type { ListingProblem, RunTarget } from './select.js'
+import type { ExcludedStep, ListingProblem, RunTarget } from './select.js'
 import { unattempted, type StepRef } from './job.js'
 import { totalsOf } from './report.js'
 import type { Settings, SettingSources } from './settings.js'
@@ -59,7 +59,11 @@ export function jsonReport(run: HtmlRun, reports: ReportPaths): object {
       }
     },
     totals,
-    leftOut: { excluded: run.excluded, untagged: run.untagged },
+    leftOut: {
+      excluded: run.excluded,
+      excludedSteps: run.excludedSteps ?? [],
+      untagged: run.untagged
+    },
     reports,
     collections: run.collections.map(collectionOf)
   }
@@ -124,6 +128,8 @@ export function jsonListing(options: {
   notTags?: readonly string[]
   targets: readonly RunTarget[]
   excluded: readonly string[]
+  /** Steps with `exclude: true` left out of the collections listed (SPEC.md §2.4). */
+  excludedSteps: readonly ExcludedStep[]
   untagged: number
   /** Use steps and `extends:` a run would stop at, in any collection (SPEC.md Appendix A). */
   problems: readonly ListingProblem[]
@@ -152,7 +158,11 @@ export function jsonListing(options: {
       tags: target.collection.doc.tags ?? [],
       broken: target.broken
     })),
-    leftOut: { excluded: options.excluded, untagged: options.untagged },
+    leftOut: {
+      excluded: options.excluded,
+      excludedSteps: options.excludedSteps,
+      untagged: options.untagged
+    },
     problems: options.problems
   }
 }

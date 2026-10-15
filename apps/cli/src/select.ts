@@ -1,4 +1,9 @@
-import { DOC_EXTENSION, stepsForTags, type LoadedCollection } from '@schwabyio/gravity-core'
+import {
+  DOC_EXTENSION,
+  stepLabel,
+  stepsForTags,
+  type LoadedCollection
+} from '@schwabyio/gravity-core'
 import { UsageError } from './args.js'
 
 /**
@@ -11,13 +16,14 @@ import { UsageError } from './args.js'
  * directory, should a collection have the same id.
  *
  * A collection with `exclude: true` is left out of group runs — `all`, and a
- * directory — but runs when named on its own (SPEC.md §2.4).
+ * directory — but runs when named on its own (SPEC.md §2.4). So is a step with
+ * `exclude: true`: named on its own, its collection runs every step.
  */
 export interface RunTarget {
   /** Its id: the file name without `.yml`, unique in the project. */
   id: string
   collection: LoadedCollection
-  /** The steps a tag selection picked, in order; null for every step. */
+  /** The steps a tag selection picked, less those excluded, in order; null for every step. */
   steps: number[] | null
   /** Why the file cannot run, when it will not parse. It is reported, never dropped. */
   broken: string | null
@@ -27,8 +33,20 @@ export interface Selection {
   targets: RunTarget[]
   /** Collections left out because they say `exclude: true`, by id. */
   excluded: string[]
+  /** Steps left out because they say `exclude: true`, of the collections chosen, in order. */
+  excludedSteps: ExcludedStep[]
   /** How many collections `tags` / `notTags` left with nothing to run. */
   untagged: number
+}
+
+/** A step a group run left out, as `gta` lists it: `checkout › refund`. */
+export interface ExcludedStep {
+  /** Its collection's id. */
+  id: string
+  /** Its place in the collection's `steps`, from 0. */
+  step: number
+  /** Its name, or what it does when it has none. */
+  name: string
 }
 
 export type Request = { kind: 'all' } | { kind: 'list'; selectors: string[] }
@@ -99,6 +117,8 @@ export function selectCollections(
       return c.doc.exclude !== true
     })
 
+  /** Collections named on their own, which run every step, those excluded too. */
+  const named = new Set<LoadedCollection>()
   let chosen: LoadedCollection[]
   if (request.kind === 'list') {
     const unknown: string[] = []
@@ -106,6 +126,7 @@ export function selectCollections(
     for (const selector of request.selectors) {
       const { name } = normalize(selector)
       const exact = findCollection(collections, selector)
+      if (exact) named.add(exact)
       const inDirectory = collections.filter((c) => c.directory?.normalize('NFC') === name)
       const found = exact ? [exact] : inDirectory.length > 0 ? inGroup(inDirectory) : null
       if (found) chosen.push(...found.filter((c) => !chosen.includes(c)))
@@ -122,6 +143,7 @@ export function selectCollections(
   }
 
   const targets: RunTarget[] = []
+  const excludedSteps: ExcludedStep[] = []
   let untagged = 0
   for (const collection of chosen) {
     const id = idOf(collection)
@@ -130,18 +152,30 @@ export function selectCollections(
       targets.push({ id, collection, steps: null, broken })
       continue
     }
+    const { steps } = collection.doc
     const picked = stepsForTags(collection.doc, options.tags, options.notTags ?? [])
     if (picked.length === 0 && (options.tags.length > 0 || (options.notTags ?? []).length > 0)) {
       untagged++
       continue
     }
-    const all = picked.length === collection.doc.steps.length
-    targets.push({ id, collection, steps: all ? null : picked, broken: null })
+    // Of what the tags picked: a step they left out anyway was not excluded.
+    const left = named.has(collection)
+      ? []
+      : picked.filter((index) => steps[index]?.exclude === true)
+    excludedSteps.push(
+      ...left.map((index) => ({ id, step: index, name: stepLabel(steps[index]!) }))
+    )
+    const kept = left.length > 0 ? picked.filter((index) => !left.includes(index)) : picked
+    // Every step excluded: setup and teardown would run around nothing.
+    if (kept.length === 0 && left.length > 0) continue
+    const all = kept.length === steps.length
+    targets.push({ id, collection, steps: all ? null : kept, broken: null })
   }
   return {
     targets,
     // Named on its own, an excluded collection ran: it was not left out.
     excluded: [...excluded].filter((c) => !chosen.includes(c)).map(idOf),
+    excludedSteps,
     untagged
   }
 }

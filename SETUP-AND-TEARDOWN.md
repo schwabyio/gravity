@@ -51,8 +51,9 @@ This page is about what they are for.
   setup, after `bail` stops the run, and after a cancel or `timeoutCollection`. After a
   cancel or a timeout it has up to 60 seconds of its own. A run stopped before anything
   ran has nothing to clean up, so no teardown runs.
-- **Tags do not apply.** Setup and teardown steps have no tags. They run whenever the
-  collection does, whichever steps a tag filter picks.
+- **Tags and `exclude` do not apply.** Setup and teardown steps have neither. They run
+  whenever the collection does, whichever steps a tag filter picks or `exclude` leaves out.
+  A collection whose every step is left out does not run, so neither do they.
 - **The collection applies to them** as to any step: its headers, settings, `before`,
   `tests` and flags. Their steps can be `use:` steps
   ([below](#reusable-requests-in-setup-and-teardown)).
@@ -218,7 +219,7 @@ teardown:
 
 ## Limits
 
-- Setup and teardown steps have no `tags`.
+- Setup and teardown steps have no `tags` or `exclude`.
 - A reusable requests file, a base collection and an endpoints file have no setup or
   teardown.
 - After a cancel or a timeout teardown has 60 seconds. A cancel or a timeout while

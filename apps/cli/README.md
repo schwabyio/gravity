@@ -303,7 +303,7 @@ the project does not need a `settings.yml`.
 **`project.run(collection, options)`** runs a collection the way `gta` runs it: setup,
 then the steps once for each data row, then teardown. Name the collection by its id or
 its place in `collections/` (`checkout/sessions`). `tags` and `notTags` don't apply,
-since you name what runs, and a collection with `exclude: true` runs too. The options:
+since you name what runs, and a collection or step with `exclude: true` runs too. The options:
 
 | Option     | What it does                                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |

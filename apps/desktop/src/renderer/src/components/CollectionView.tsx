@@ -20,7 +20,7 @@ import {
 import type { ConnectionView, LibraryFileView, RequestSetView } from '@shared/ipc.js'
 import { stepsOf } from '../hooks/useCollectionEditor.js'
 import { usePaneWidth } from '../hooks/usePaneWidth.js'
-import { filterSteps, stepTagsIn } from '../tagFilter.js'
+import { filterSteps, stepsToRunAll, stepTagsIn } from '../tagFilter.js'
 import { conditionsState, showFlagValue, stepFlagState, type FlagState } from '../flagState.js'
 import type { IterationCounts } from '../dataGrid.js'
 import CollectionSettings, { type SettingsSection } from './CollectionSettings.js'
@@ -107,6 +107,8 @@ interface Props {
   onDeleteStep: (list: ListName, index: number) => void
   onDeleteSteps: (list: ListName, indexes: number[]) => void
   onMoveStep: (list: ListName, index: number, to: number) => void
+  /** Leave a step out of group runs, or put it back (SPEC.md §2.4). */
+  onExcludeStep: (list: ListName, index: number, excluded: boolean) => void
   /** The selected step's own tags, as the editor holds them. */
   stepTags: string[]
   onStepTags: (tags: string[]) => void
@@ -202,6 +204,8 @@ export default function CollectionView(props: Props) {
   const anySteps = STEP_LISTS.some((list) => stepsOf(props.collection, list).length > 0)
   // Only a collection has setup and teardown: not a request set, a base or endpoints.
   const canHaveStages = props.library === null && !props.collection.params
+  // Only a collection runs in a group; library files are run through others.
+  const runsInGroups = props.library === null && !props.relativePath.startsWith('requests/')
   const collectionTags = props.collection.tags ?? []
   const stepTagsOn = props.collection.stepTags === true
   const { onSettingsOpen } = props
@@ -329,13 +333,35 @@ export default function CollectionView(props: Props) {
         onDelete={(index) => props.onDeleteStep(list, index)}
         onDeleteMany={(indexes) => props.onDeleteSteps(list, indexes)}
         onMove={(index, to) => props.onMoveStep(list, index, to)}
+        // Setup and teardown run whenever the collection does; a request set wherever it is used.
+        canExclude={runsInGroups && canHaveStages && list === 'steps'}
+        onExclude={(index, excluded) => props.onExcludeStep(list, index, excluded)}
         flagStates={flagStatesOf(list)}
         findings={stepFindings(props.findings, list)}
       />
     )
   }
-  // Run all with a tag filter runs the steps it shows; setup and teardown come along.
-  const nothingToRun = visible.size === 0 && (filter.length > 0 || !hasStages)
+  // Run all runs the steps the tag filter shows, less those excluded from group runs;
+  // setup and teardown come along, unless every step is left out.
+  const toRun = stepsToRunAll(props.collection, props.tagFilter)
+  const nothingToRun =
+    toRun.indexes.length === 0 && (filter.length > 0 || toRun.excluded > 0 || !hasStages)
+  const runAllButton = (
+    <button
+      type="button"
+      className="send run-all"
+      onClick={props.onRunAll}
+      disabled={nothingToRun || props.busy}
+    >
+      {filter.length > 0
+        ? `▶ Run ${toRun.indexes.length} step${toRun.indexes.length === 1 ? '' : 's'}`
+        : '▶ Run all'}
+      {/* Says it runs every row, as gta does; sending one step uses the Row picker's. */}
+      {props.dataFile && props.dataFile.rows > 0
+        ? ` · ${props.dataFile.rows} ${props.dataFile.rows === 1 ? 'row' : 'rows'}`
+        : ''}
+    </button>
+  )
   const collectionFlags = Object.entries(props.collection.flags ?? {})
 
   return (
@@ -556,21 +582,18 @@ export default function CollectionView(props: Props) {
               {props.stoppingAll ? 'Stop teardown' : 'Stop'}
             </button>
           </Tooltip>
-        ) : (
-          <button
-            type="button"
-            className="send run-all"
-            onClick={props.onRunAll}
-            disabled={nothingToRun || props.busy}
+        ) : toRun.excluded > 0 ? (
+          <Tooltip
+            text={
+              toRun.indexes.length === 0
+                ? `Every step${filter.length > 0 ? ' shown' : ''} is excluded from group runs; Send still sends one`
+                : `Leaves out ${toRun.excluded} excluded step${toRun.excluded === 1 ? '' : 's'}, as gta all does; Send still sends one`
+            }
           >
-            {filter.length > 0
-              ? `▶ Run ${visible.size} step${visible.size === 1 ? '' : 's'}`
-              : '▶ Run all'}
-            {/* Says it runs every row, as gta does; sending one step uses the Row picker's. */}
-            {props.dataFile && props.dataFile.rows > 0
-              ? ` · ${props.dataFile.rows} ${props.dataFile.rows === 1 ? 'row' : 'rows'}`
-              : ''}
-          </button>
+            {runAllButton}
+          </Tooltip>
+        ) : (
+          runAllButton
         )}
         {/* In the header's top right corner, above Run all. */}
         <div className="collection-close-corner">
@@ -596,12 +619,7 @@ export default function CollectionView(props: Props) {
           onStepTags={props.onStepTagsEnabled}
           flagValues={props.flagValues}
           onFlags={props.onCollectionFlags}
-          // Only a collection runs in a group; library files are run through others.
-          onExcluded={
-            props.library === null && !props.relativePath.startsWith('requests/')
-              ? props.onCollectionExcluded
-              : null
-          }
+          onExcluded={runsInGroups ? props.onCollectionExcluded : null}
           onHeaders={props.onCollectionHeaders}
           onSettings={props.onCollectionSettings}
           onVars={props.onCollectionVars}

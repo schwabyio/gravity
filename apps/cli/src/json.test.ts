@@ -95,7 +95,7 @@ describe('jsonReport', () => {
         environment: 'staging',
         settings: { limitConcurrency: 4, timeoutCollection: 60000, bail: false, tags: ['smoke'] }
       },
-      leftOut: { excluded: ['legacy'], untagged: 1 },
+      leftOut: { excluded: ['legacy'], excludedSteps: [], untagged: 1 },
       reports: { json: '/r/json/results.json' }
     })
     const [a] = report.collections

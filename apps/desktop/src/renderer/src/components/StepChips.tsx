@@ -28,6 +28,9 @@ interface Props {
   /** Its `forEach`, as the editor holds it (SPEC.md §2.1). */
   forEach: string
   onForEach: (forEach: string) => void
+  /** Whether it is left out of group runs (SPEC.md §2.4), as the editor holds it. */
+  exclude: boolean
+  onExclude: (exclude: boolean) => void
   previews: VariablePreviews
   onCopyVariable: (name: string) => Promise<boolean>
 }
@@ -35,6 +38,7 @@ interface Props {
 /**
  * The selected step's feature flags and `forEach`, as chips on its request bar
  * beside Send: whether Send sends it, and how many times. Each opens its editor.
+ * Left out of group runs, it says so too; it is put there from the step's ⋯.
  */
 export default function StepChips(props: Props) {
   const steps = stepsOf(props.collection, props.list)
@@ -120,6 +124,35 @@ export default function StepChips(props: Props) {
                   up, such as every order the rows made. A list that comes out empty skips the step.
                 </>
               }
+            />
+          </div>
+        </StepChip>
+      )}
+      {props.exclude && (
+        <StepChip
+          key={`exclude:${place}`}
+          className="step-exclude-chip"
+          set
+          label="⊘ excluded"
+          tooltip="Left out of gta all, a run of its folder, and Run all here. Send still sends it, and gta runs it when its collection is named on its own"
+          title="Group runs"
+        >
+          <div className="setting-row">
+            <div className="setting-text">
+              <label htmlFor="step-exclude">Exclude from group runs</label>
+              <p>
+                Leave this step out of <code>gta all</code>, of a run of its folder, and of Run all
+                here. Send still sends it, and <code>gta</code> runs it when its collection is named
+                on its own.
+              </p>
+            </div>
+            <input
+              id="step-exclude"
+              type="checkbox"
+              role="switch"
+              className="switch"
+              checked={props.exclude}
+              onChange={(e) => props.onExclude(e.target.checked)}
             />
           </div>
         </StepChip>

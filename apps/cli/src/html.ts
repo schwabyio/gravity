@@ -38,6 +38,7 @@ import {
 } from '@schwabyio/gravity-core'
 import { iterationName, unattempted, type StepRef } from './job.js'
 import type { JUnitCollection, JUnitRun } from './junit.js'
+import type { ExcludedStep } from './select.js'
 import type { CollectionTally } from './report.js'
 
 /**
@@ -84,6 +85,8 @@ export interface HtmlRun extends JUnitRun {
   bail: boolean
   /** Collections left out with `exclude: true`, by id. */
   excluded: readonly string[]
+  /** Steps left out with `exclude: true`, of the collections run. */
+  excludedSteps?: readonly ExcludedStep[]
   /** How many collections a tag selection left with nothing to run. */
   untagged: number
   /** Where each feature flag value came from, and the command run for them (SPEC.md §2.9). */
@@ -148,7 +151,8 @@ function summaryPage(run: HtmlRun): string {
   const count = (status: Status) => statuses.filter((s) => s === status).length
   const passed = count('failed') === 0
   const none = '<span class="dim">none</span>'
-  const leftOut = (n: number) => `<a href="#not-run">${plural(n, 'collection')} ↓</a>`
+  const leftOut = (n: number, word = 'collection') => `<a href="#not-run">${plural(n, word)} ↓</a>`
+  const excludedSteps = run.excludedSteps ?? []
 
   const settings: Array<[string, string]> = [
     ['Environment', run.environment ? escape(run.environment) : none],
@@ -164,6 +168,9 @@ function summaryPage(run: HtmlRun): string {
       : []),
     ...(run.bail ? ([['Bail', 'on']] as Array<[string, string]>) : []),
     ['Excluded', run.excluded.length > 0 ? leftOut(run.excluded.length) : none],
+    ...(excludedSteps.length > 0
+      ? ([['Excluded Steps', leftOut(excludedSteps.length, 'step')]] as Array<[string, string]>)
+      : []),
     ...(run.untagged > 0
       ? ([['Left Out By Tags', leftOut(run.untagged)]] as Array<[string, string]>)
       : [])
@@ -178,13 +185,17 @@ function summaryPage(run: HtmlRun): string {
     .join('\n')
 
   const notRun =
-    run.excluded.length > 0 || run.untagged > 0
+    run.excluded.length > 0 || excludedSteps.length > 0 || run.untagged > 0
       ? card(
           'Not Run',
           [
             run.excluded.length > 0
               ? `<h3 class="group-h">Excluded <span class="dim">· ${run.excluded.length} · <code>exclude: true</code> in the collection file</span></h3>
 <ul class="excluded">${run.excluded.map((id) => `<li>${escape(id)}</li>`).join('')}</ul>`
+              : '',
+            excludedSteps.length > 0
+              ? `<h3 class="group-h">Excluded steps <span class="dim">· ${excludedSteps.length} · <code>exclude: true</code> on the step</span></h3>
+<ul class="excluded">${excludedSteps.map((step) => `<li>${escape(step.id)} › ${escape(step.name)}</li>`).join('')}</ul>`
               : '',
             run.untagged > 0
               ? `<h3 class="group-h">Left out by tags <span class="dim">· ${plural(run.untagged, 'collection')}</span></h3>`

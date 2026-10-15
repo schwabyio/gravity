@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { parseCollection } from '../format/index.js'
 import { applyCollectionEdits, editSource } from './collectionEdits.js'
+import { endpointProblem } from './library.js'
 
 const SOURCE = [
   '# A collection with comments everywhere.',
@@ -334,6 +335,75 @@ describe('editSource: step tags', () => {
     expect(block(next, 'three')).toBe(
       '  - name: three\n    GET: "http://x/three"\n    tags: [smoke, auth]'
     )
+  })
+})
+
+describe('editSource: step exclude', () => {
+  it('writes a step’s exclude after its tags and before its flags, and removes it cleanly', () => {
+    const next = editSource(SOURCE, [
+      { type: 'editCollection', key: 'stepTags', value: true },
+      {
+        type: 'editStep',
+        index: 2,
+        step: {
+          name: 'three',
+          GET: 'http://x/three',
+          flags: { beta: true },
+          exclude: true,
+          tags: ['smoke']
+        }
+      }
+    ])
+    expect(block(next, 'three')).toBe(
+      '  - name: three\n    GET: "http://x/three"\n    tags: [smoke]\n    exclude: true\n    flags:\n      beta: true'
+    )
+    const removed = editSource(next, [
+      { type: 'editStep', index: 2, step: { name: 'three', GET: 'http://x/three' } },
+      { type: 'editCollection', key: 'stepTags', value: undefined }
+    ])
+    expect(removed).toBe(SOURCE)
+  })
+
+  it('is refused where a group run does not pick steps: setup, teardown, reusable requests, endpoints', () => {
+    expect(
+      () =>
+        parseCollection('id: c\nsetup:\n  - GET: /x\n    exclude: true\nsteps: []\n', 'c.yml').data
+    ).toThrow(
+      'a setup step runs whenever its collection does, so it has no exclude; exclude the collection instead (SPEC.md §2.4)'
+    )
+    // Not even false: it means nothing there.
+    expect(
+      () =>
+        parseCollection('id: c\nsteps: []\nteardown:\n  - GET: /x\n    exclude: false\n', 'c.yml')
+          .data
+    ).toThrow('a teardown step runs whenever its collection does, so it has no exclude')
+    expect(
+      () =>
+        parseCollection('id: c\nparams: {}\nsteps:\n  - GET: /x\n    exclude: true\n', 'c.yml').data
+    ).toThrow("a reusable requests file's steps run wherever it is used, so they have no exclude")
+    expect(
+      endpointProblem(parseCollection('id: e\nsteps:\n  - GET: /x\n    exclude: true\n').data)
+    ).toBe('an endpoint is not run on its own, so it has no exclude')
+  })
+
+  it('is taken on a use step, a wait step and a step reading a connection', () => {
+    const doc = parseCollection(
+      [
+        'id: c',
+        'steps:',
+        '  - GET: /events',
+        '    connection: feed',
+        '  - use: login',
+        '    exclude: true',
+        '  - wait: 100',
+        '    exclude: true',
+        '  - connection: feed',
+        '    exclude: true',
+        ''
+      ].join('\n'),
+      'c.yml'
+    ).data
+    expect(doc.steps.map((step) => step.exclude)).toEqual([undefined, true, true, true])
   })
 })
 

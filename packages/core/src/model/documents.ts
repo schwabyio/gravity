@@ -289,6 +289,12 @@ export const StepSchema = z
     base: z.literal(false).optional(),
     /** This step's own tags; only with `stepTags: true` on the collection. */
     tags: TagsSchema.optional(),
+    /**
+     * Left out of group runs — `gta all`, and a directory named to `gta` — while
+     * still run when its collection is named on its own (SPEC.md §2.4). Only on
+     * a step of a collection's `steps`: the collection checks where it is.
+     */
+    exclude: z.boolean().optional(),
     /** Feature flags this step needs; unmet, it is skipped (SPEC.md §2.9). */
     flags: FlagConditionsSchema.optional(),
     /**
@@ -353,7 +359,7 @@ export const StepSchema = z
         ctx.addIssue({
           code: 'custom',
           path: [key],
-          message: `a wait step only waits, so it cannot have ${key}; it holds wait, name, docs, flags and tags (SPEC.md §2.1)`
+          message: `a wait step only waits, so it cannot have ${key}; it holds wait, name, docs, flags, tags and exclude (SPEC.md §2.1)`
         })
       }
       const problem = waitProblem(step.wait)
@@ -442,6 +448,7 @@ const STEP_KEYS: ReadonlySet<string> = new Set([
   'before',
   'tests',
   'tags',
+  'exclude',
   'flags',
   'forEach',
   'useTests',
@@ -457,7 +464,7 @@ const USE_FORBIDDEN = ['headers', 'body', 'settings', 'before'] as const
 /** What a step reading a connection may not have: it sends no request. */
 const READ_FORBIDDEN = ['headers', 'body', 'base', 'forEach'] as const
 
-/** What a wait step may not have: everything but `wait`, `name`, `docs`, `flags` and `tags`. */
+/** What a wait step may not have: everything but `wait`, `name`, `docs`, `flags`, `tags` and `exclude`. */
 const WAIT_FORBIDDEN = [
   'use',
   'with',
@@ -702,6 +709,25 @@ export const CollectionSchema = z
             message: `a ${stage} step runs whenever its collection does, so it has no tags (SPEC.md §2.10)`
           })
         }
+        if (step.exclude !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [stage, index, 'exclude'],
+            message: `a ${stage} step runs whenever its collection does, so it has no exclude; exclude the collection instead (SPEC.md §2.4)`
+          })
+        }
+      })
+    }
+    // A reusable requests file runs wherever it is used: it is the use step that is left out.
+    if (collection.params) {
+      collection.steps.forEach((step, index) => {
+        if (step.exclude === undefined) return
+        ctx.addIssue({
+          code: 'custom',
+          path: ['steps', index, 'exclude'],
+          message:
+            "a reusable requests file's steps run wherever it is used, so they have no exclude; exclude the use step instead (SPEC.md §2.4)"
+        })
       })
     }
     // A test sends each of its requests once; a list of things to prepare or

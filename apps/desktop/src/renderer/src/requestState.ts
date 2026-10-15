@@ -62,6 +62,8 @@ export interface EditorState {
   docs: string
   /** The step's own tags; only used when the collection has `stepTags: true`. */
   tags: string[]
+  /** Left out of group runs (SPEC.md §2.4); only `true` is written. */
+  exclude: boolean
   /** Feature flags the step needs to run (SPEC.md §2.9); empty for none. */
   flags: FlagConditions
   /**
@@ -144,6 +146,7 @@ export const emptyRequest = (): EditorState => ({
   tests: '',
   docs: '',
   tags: [],
+  exclude: false,
   flags: {},
   forEach: '',
   useTests: false,
@@ -330,6 +333,7 @@ export function fromStep(step: Step): EditorState {
       name: step.name ?? '',
       docs: step.docs ?? '',
       tags: step.tags ?? [],
+      exclude: step.exclude === true,
       flags: step.flags ?? {},
       wait: String(step.wait)
     }
@@ -343,6 +347,7 @@ export function fromStep(step: Step): EditorState {
       tests: step.tests ?? '',
       docs: step.docs ?? '',
       tags: step.tags ?? [],
+      exclude: step.exclude === true,
       flags: step.flags ?? {},
       use: step.use,
       with: step.with ?? {}
@@ -356,6 +361,7 @@ export function fromStep(step: Step): EditorState {
       tests: step.tests ?? '',
       docs: step.docs ?? '',
       tags: step.tags ?? [],
+      exclude: step.exclude === true,
       flags: step.flags ?? {},
       useTests: step.useTests === true,
       settings: step.settings ?? {},
@@ -375,6 +381,7 @@ export function fromStep(step: Step): EditorState {
     tests: step.tests ?? '',
     docs: step.docs ?? '',
     tags: step.tags ?? [],
+    exclude: step.exclude === true,
     flags: step.flags ?? {},
     forEach: step.forEach ?? '',
     useTests: step.useTests === true,
@@ -398,6 +405,7 @@ function mergeIntoUseStep(_original: Step, edited: EditorState): Step {
   next['use'] = edited.use
   if (Object.keys(edited.with).length > 0) next['with'] = edited.with
   if (edited.tags.length > 0) next['tags'] = edited.tags
+  if (edited.exclude) next['exclude'] = true
   if (Object.keys(edited.flags).length > 0) next['flags'] = edited.flags
   if (edited.docs.trim() !== '') next['docs'] = edited.docs
   if (edited.tests.trim() !== '') next['tests'] = edited.tests
@@ -413,6 +421,7 @@ function mergeIntoReadStep(_original: Step, edited: EditorState): Step {
   if (edited.name.trim() !== '') next['name'] = edited.name
   next['connection'] = edited.reads
   if (edited.tags.length > 0) next['tags'] = edited.tags
+  if (edited.exclude) next['exclude'] = true
   if (Object.keys(edited.flags).length > 0) next['flags'] = edited.flags
   if (edited.useTests) next['useTests'] = true
   if (edited.docs.trim() !== '') next['docs'] = edited.docs
@@ -426,7 +435,7 @@ function mergeIntoReadStep(_original: Step, edited: EditorState): Step {
 }
 
 /**
- * A wait step (SPEC.md §2.1): how long, and its name, docs, flags and tags.
+ * A wait step (SPEC.md §2.1): how long, and its name, docs, flags, tags and exclude.
  * Milliseconds typed as digits are written as a number, and a `{{variable}}` as
  * typed. What is no wait yet — `2s`, or nothing — leaves the step's wait as it
  * was, so the file is never written with one, while the editor says what is wrong.
@@ -437,6 +446,7 @@ function mergeIntoWaitStep(original: Step, edited: EditorState): Step {
   const typed = waitValue(edited.wait ?? '')
   next['wait'] = typed !== '' && waitProblem(typed) === null ? typed : (original.wait ?? typed)
   if (edited.tags.length > 0) next['tags'] = edited.tags
+  if (edited.exclude) next['exclude'] = true
   if (Object.keys(edited.flags).length > 0) next['flags'] = edited.flags
   if (edited.docs.trim() !== '') next['docs'] = edited.docs
   return next as Step
@@ -493,6 +503,10 @@ export function mergeIntoStep(original: Step, edited: EditorState): Step {
 
   if (edited.tags.length === 0) delete next['tags']
   else next['tags'] = edited.tags
+
+  // An `exclude: false` written by hand stays as it is.
+  if (edited.exclude) next['exclude'] = true
+  else if (original.exclude === true) delete next['exclude']
 
   if (Object.keys(edited.flags).length === 0) delete next['flags']
   else next['flags'] = edited.flags

@@ -142,6 +142,7 @@ export async function main(argv: readonly string[], cli: CliContext): Promise<nu
             notTags: project.settings.notTags,
             targets: selection.targets,
             excluded: selection.excluded,
+            excludedSteps: selection.excludedSteps,
             untagged: selection.untagged,
             problems
           })
@@ -200,10 +201,16 @@ async function listingProblems(
   selection: Selection
 ): Promise<ListingProblem[]> {
   const listed = new Set(selection.targets.map((target) => target.id))
+  // Left out with every step excluded, a collection is excluded as much as one that says so.
+  const stepsExcluded = new Set(selection.excludedSteps.map((step) => step.id))
   const problems: ListingProblem[] = []
   for (const collection of project.collections) {
     const id = idOf(collection)
-    const leftOut = listed.has(id) ? null : collection.doc.exclude === true ? 'excluded' : 'tags'
+    const leftOut = listed.has(id)
+      ? null
+      : collection.doc.exclude === true || stepsExcluded.has(id)
+        ? 'excluded'
+        : 'tags'
     if (collection.problems.length > 0) {
       // A listed one is already shown as broken.
       const message = collection.problems.map((problem) => problem.message).join('; ')
@@ -283,8 +290,12 @@ function list(
     const where = `${problem.id}${problem.leftOut ? leftOut[problem.leftOut] : ''}${step}`
     ctx.out(`${p.red('broken')} ${where}: ${problem.message}`)
   }
-  if (selection.excluded.length > 0) {
-    ctx.out(field('Excluded', `${selection.excluded.join(', ')} ${p.dim('(exclude: true)')}`))
+  const excluded = [
+    ...selection.excluded,
+    ...selection.excludedSteps.map((step) => `${step.id} › ${step.name}`)
+  ]
+  if (excluded.length > 0) {
+    ctx.out(field('Excluded', `${excluded.join(', ')} ${p.dim('(exclude: true)')}`))
   }
   if (selection.untagged > 0) {
     ctx.out(field('By tags', `${selection.untagged} collection(s) left out by tags`))
@@ -351,8 +362,10 @@ async function run(
       field('Reports', reportNames.map((n) => `${settings.testResultsBasePath}/${n}`).join(', '))
     )
   }
+  const excludedSteps = selection.excludedSteps.length
   const leftOut = [
     selection.excluded.length > 0 ? `${selection.excluded.length} excluded` : '',
+    excludedSteps > 0 ? `${excludedSteps} ${excludedSteps === 1 ? 'step' : 'steps'} excluded` : '',
     selection.untagged > 0 ? `${selection.untagged} left out by tags` : ''
   ].filter(Boolean)
   ctx.out(
@@ -445,6 +458,7 @@ async function run(
     notTags: settings.notTags,
     bail: settings.bail,
     excluded: selection.excluded,
+    excludedSteps: selection.excludedSteps,
     untagged: selection.untagged,
     startedAt,
     durationMs,
@@ -543,11 +557,12 @@ export function usage(p: Paint): string {
     '    g, get          List the collections `gta all` would run, without running them.',
     '                    Exits 1 on a broken collection, or a use:, extends: or body',
     '                    file that would stop a run, in any collection.',
-    '    a, all          Run every collection, less those with exclude: true.',
+    '    a, all          Run every collection, less those and the steps with',
+    '                    exclude: true.',
     '    <list>          Run the collections and folders named, comma separated,',
     '                    in that order: smoke,checkout/sessions,payments',
-    '                    A folder leaves out its excluded collections;',
-    '                    one named on its own runs.',
+    '                    A folder leaves out its excluded collections and steps;',
+    '                    a collection named on its own runs every step.',
     '                    A collection called all, get, lint or rules: give it as all.yml.',
     '    lint            Check the project’s files against its rules: its rules.yml,',
     '                    over its global project’s. Exits 1 on a finding.',

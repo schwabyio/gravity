@@ -1714,12 +1714,14 @@ button:disabled {
   color: var(--text-dim);
 }
 
-.collection-header .run-all {
+.collection-header .run-all,
+.collection-header > .tooltip-trigger:has(> .run-all) {
   margin-left: auto;
 }
 
 .run-summary + .run-all,
-.run-summary + .cancel {
+.run-summary + .cancel,
+.run-summary + .tooltip-trigger:has(> .run-all) {
   margin-left: 0;
 }
 
@@ -5524,6 +5526,22 @@ button.tag.filter.on {
 /* A step its feature flags would skip: still editable, visibly not part of the run. */
 .step-list li.flag-skipped .step-name {
   color: var(--text-dim);
+}
+
+/* Excluded from group runs: still there, but visibly not part of the suite. */
+.step-list li.excluded .step-name {
+  color: var(--text-dim);
+}
+
+.step-excluded {
+  margin-left: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.step-chip-popover .setting-row {
+  padding: 0;
+  border-bottom: none;
 }
 
 .step-flag {

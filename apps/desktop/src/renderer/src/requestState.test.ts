@@ -118,6 +118,40 @@ describe('useTests in the editor', () => {
   })
 })
 
+describe('exclude in the editor', () => {
+  it('reads a step’s exclude, keeps it, and removes it when taken off', () => {
+    const original = StepSchema.parse({ GET: 'http://x/refund', exclude: true })
+    const state = fromStep(original)
+    expect(state.exclude).toBe(true)
+    expect(mergeIntoStep(original, state)).toEqual(original)
+    expect(mergeIntoStep(original, { ...state, exclude: false })).not.toHaveProperty('exclude')
+    const plain = StepSchema.parse({ GET: 'http://x/refund' })
+    expect(mergeIntoStep(plain, { ...fromStep(plain), exclude: true }).exclude).toBe(true)
+  })
+
+  it('leaves an exclude: false written by hand as it is', () => {
+    const original = StepSchema.parse({ GET: 'http://x/refund', exclude: false })
+    expect(mergeIntoStep(original, { ...fromStep(original), url: 'http://x/refunds' })).toEqual({
+      GET: 'http://x/refunds',
+      exclude: false
+    })
+  })
+
+  it('keeps it on a use step, a step reading a connection and a wait step', () => {
+    for (const step of [
+      { use: 'login', exclude: true },
+      { connection: 'orders', exclude: true },
+      { wait: 1000, exclude: true }
+    ]) {
+      const original = StepSchema.parse(step)
+      expect(mergeIntoStep(original, fromStep(original))).toEqual(original)
+      expect(mergeIntoStep(original, { ...fromStep(original), exclude: false })).not.toHaveProperty(
+        'exclude'
+      )
+    }
+  })
+})
+
 describe('connections in the editor', () => {
   it('reads and writes the connection a request opens, and removes an emptied one', () => {
     const original = StepSchema.parse({ GET: 'http://x/events', connection: 'orders' })

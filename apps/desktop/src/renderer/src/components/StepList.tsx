@@ -82,6 +82,9 @@ interface Props {
   /** Delete several steps of this list at once: those picked together. */
   onDeleteMany: (indexes: number[]) => void
   onMove: (index: number, to: number) => void
+  /** Whether a step here can be left out of group runs: one of a collection's `steps` (SPEC.md §2.4). */
+  canExclude: boolean
+  onExclude: (index: number, excluded: boolean) => void
   /** Per step: whether its feature flags skip it, or name a flag nobody declared. */
   flagStates?: Record<number, FlagState>
   /** Per step: where it breaks the project's rules (SPEC.md §1.4). */
@@ -234,9 +237,11 @@ export default function StepList(props: Props) {
             : props.results[index]
           const isRunning = props.runningIndex === index
           const flagState = props.flagStates?.[index] ?? null
+          const excluded = step.exclude === true
           const classes = [
             index === props.selectedIndex ? 'selected' : '',
             picked.has(index) ? 'picked' : '',
+            excluded ? 'excluded' : '',
             flagState?.kind === 'skip' ? 'flag-skipped' : '',
             flagState?.kind === 'error' ? 'flag-error' : '',
             dragging === index ? 'dragging' : '',
@@ -327,6 +332,15 @@ export default function StepList(props: Props) {
                           {flagState.kind === 'skip' ? 'skipped' : 'flag?'}
                         </span>
                       )}
+                      {excluded && (
+                        <span
+                          className="step-excluded"
+                          title="Excluded from group runs: gta all, a run of its folder and Run all leave it out"
+                          aria-label="excluded from group runs"
+                        >
+                          ⊘
+                        </span>
+                      )}
                       <RuleMark findings={props.findings?.[index] ?? NO_FINDINGS} />
                       {props.draftIndexes.has(index) && (
                         <span className="step-dirty" title="Unsaved changes">
@@ -380,6 +394,14 @@ export default function StepList(props: Props) {
                         label="Duplicate"
                         onClick={() => props.onDuplicate(index)}
                       />
+                      {/* Where it cannot be, it can still be taken off. */}
+                      {(props.canExclude || excluded) && (
+                        <MenuItem
+                          icon={excluded ? 'include' : 'exclude'}
+                          label={excluded ? 'Include in group runs' : 'Exclude from group runs'}
+                          onClick={() => props.onExclude(index, !excluded)}
+                        />
+                      )}
                       {/* What goes in after this step, where the list's own + adds to its end. */}
                       <div className="menu-divider" role="separator" />
                       {props.addsBelow(index).map((add) => (

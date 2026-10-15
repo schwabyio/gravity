@@ -172,6 +172,20 @@ describe('htmlReport', () => {
     )
   })
 
+  it('counts the excluded steps in Settings and lists them under Not Run', () => {
+    const summary = pages({
+      ...run(collection('orders', [result('create')])),
+      excluded: [],
+      excludedSteps: [{ id: 'orders', step: 1, name: 'refund <v2>' }]
+    }).get('summary.html')!
+    expect(summary).toContain('<dt>Excluded</dt><dd><span class="dim">none</span></dd>')
+    expect(summary).toContain('<dt>Excluded Steps</dt><dd><a href="#not-run">1 step ↓</a></dd>')
+    expect(summary).toContain(
+      '<h3 class="group-h">Excluded steps <span class="dim">· 1 · <code>exclude: true</code> on the step</span></h3>'
+    )
+    expect(summary).toContain('<ul class="excluded"><li>orders › refund &lt;v2&gt;</li></ul>')
+  })
+
   it('counts a skipped collection on its own, and rates what ran, rounding down', () => {
     const summary = pages(
       run(

@@ -301,6 +301,7 @@ export function endpointProblem(doc: Collection): string | undefined {
     }
     if (isWaitStep(step)) return 'an endpoint is a method and a path, not a wait: step'
     if (step.connection !== undefined) return 'an endpoint opens no connection'
+    if (step.exclude !== undefined) return 'an endpoint is not run on its own, so it has no exclude'
     const { method, url } = readRequestLine(step)
     if (!url.startsWith('/'))
       return `${method} ${url}: an endpoint's URL is its path, like /users/{id}`

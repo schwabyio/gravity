@@ -258,20 +258,23 @@ export function useCollectionEditor({
     [openPath, selectedId, update, baselineFor]
   )
 
-  /** Rename any step, selected or not. */
-  const rename = useCallback(
-    (id: string, name: string) => {
+  /** Change any step's editor state, selected or not: from its menu, say. */
+  const patchStep = useCallback(
+    (id: string, changes: Partial<EditorState>) => {
       if (!openPath) return
       update(openPath, (current) => {
         const step = locate(current, id)?.step
         if (!step) return current
         const base = current.drafts[id] ?? baselineFor(id, step)
-        return { ...current, drafts: { ...current.drafts, [id]: { ...base, name } } }
+        return { ...current, drafts: { ...current.drafts, [id]: { ...base, ...changes } } }
       })
       setEditVersion((v) => v + 1)
     },
     [openPath, update, baselineFor]
   )
+
+  /** Rename any step, selected or not. */
+  const rename = useCallback((id: string, name: string) => patchStep(id, { name }), [patchStep])
 
   /** The document as it will be once saved: what the list and a run should show. */
   const displayDoc: Collection | null = useMemo(() => {
@@ -864,6 +867,7 @@ export function useCollectionEditor({
     select: (id: string) => setSelectedId(id),
     request,
     patch,
+    patchStep,
     rename,
     setCollectionTags: (tags: string[]) => setCollectionField('tags', tags),
     setCollectionDocs: (docs: string) =>

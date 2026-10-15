@@ -99,6 +99,60 @@ describe('selectCollections', () => {
     expect(named.excluded).toEqual([])
   })
 
+  it('leaves an excluded step out of all and its directory, but runs it when its collection is named', () => {
+    const orders = loaded('checkout/orders.yml', {
+      steps: [
+        { name: 'create', GET: '/o' },
+        { name: 'refund', GET: '/r', exclude: true },
+        { name: 'cancel', GET: '/c', exclude: false }
+      ]
+    })
+    const withOrders = [...all, orders]
+    const stepsOf = (selection: ReturnType<typeof selectCollections>) =>
+      selection.targets.find((t) => t.id === 'orders')?.steps
+
+    const everything = selectCollections(withOrders, { kind: 'all' }, none)
+    expect(stepsOf(everything)).toEqual([0, 2])
+    expect(everything.excludedSteps).toEqual([{ id: 'orders', step: 1, name: 'refund' }])
+
+    const directory = selectCollections(withOrders, { kind: 'list', selectors: ['checkout'] }, none)
+    expect(stepsOf(directory)).toEqual([0, 2])
+    expect(directory.excludedSteps).toEqual([{ id: 'orders', step: 1, name: 'refund' }])
+
+    const named = selectCollections(
+      withOrders,
+      { kind: 'list', selectors: ['checkout', 'orders'] },
+      none
+    )
+    expect(stepsOf(named)).toBeNull()
+    expect(named.excludedSteps).toEqual([])
+  })
+
+  it('lists only the excluded steps tags picked, and leaves out a collection whose every step is excluded', () => {
+    const tagged = loaded('tagged.yml', {
+      stepTags: true,
+      steps: [
+        { GET: '/a', tags: ['smoke'], exclude: true },
+        { GET: '/b', exclude: true },
+        { GET: '/c', tags: ['smoke'] }
+      ]
+    })
+    const bySmoke = selectCollections([tagged], { kind: 'all' }, { tags: ['smoke'] })
+    expect(bySmoke.targets.map((t) => [t.id, t.steps])).toEqual([['tagged', [2]]])
+    expect(bySmoke.excludedSteps).toEqual([{ id: 'tagged', step: 0, name: 'GET /a' }])
+
+    // A step notTags drops is left out by tags, not excluded.
+    const notSmoke = selectCollections([tagged], { kind: 'all' }, { tags: [], notTags: ['smoke'] })
+    expect(notSmoke.targets.map((t) => [t.id, t.steps])).toEqual([])
+    expect(notSmoke.excludedSteps).toEqual([{ id: 'tagged', step: 1, name: 'GET /b' }])
+
+    const wip = loaded('wip.yml', { steps: [{ GET: '/a', exclude: true }] })
+    const everything = selectCollections([wip, smoke], { kind: 'all' }, none)
+    expect(ids(everything)).toEqual(['smoke'])
+    expect(everything.excludedSteps).toEqual([{ id: 'wip', step: 0, name: 'GET /a' }])
+    expect(everything.untagged).toBe(0)
+  })
+
   it('picks whole collections and tagged steps by tag', () => {
     const selection = selectCollections(all, { kind: 'all' }, { tags: ['smoke'] })
     expect(selection.targets.map((t) => [t.id, t.steps])).toEqual([

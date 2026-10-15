@@ -252,6 +252,73 @@ describe('gta', () => {
     expect(named.out).toContain('Collections:  1 total, 0 passed, 1 failed')
   })
 
+  it('leaves an excluded step out of all, and runs it when its collection is named', async () => {
+    const root = await project({
+      'collections/orders.yml': collection('orders', ['/ok', '/fail']).replace(
+        "GET: '{{baseUrl}}/fail'",
+        "GET: '{{baseUrl}}/fail'\n    exclude: true"
+      ),
+      'collections/wip.yml': collection('wip', ['/fail']).replace(
+        "GET: '{{baseUrl}}/fail'",
+        "GET: '{{baseUrl}}/fail'\n    exclude: true"
+      )
+    })
+    const listed = await gta(root, 'get')
+    expect(listed.code).toBe(EXIT.passed)
+    expect(listed.out).toContain(
+      'Excluded:     orders › get /fail, wip › get /fail (exclude: true)'
+    )
+    expect(listed.out).toMatch(/1 {2}orders +1\/2/)
+    expect(listed.out).toContain('1 collections, 1 steps')
+
+    const listedJson = JSON.parse((await gta(root, 'get', '--json')).out)
+    expect(listedJson.collections).toMatchObject([{ id: 'orders', steps: [0], stepCount: 2 }])
+    expect(listedJson.leftOut.excludedSteps).toEqual([
+      { id: 'orders', step: 1, name: 'get /fail' },
+      { id: 'wip', step: 0, name: 'get /fail' }
+    ])
+
+    const all = await gta(root, 'all')
+    expect(all.code).toBe(EXIT.passed)
+    expect(all.out).toContain('1 to run (2 steps excluded)')
+    expect(all.out).toContain('Steps:        1 total, 1 passed')
+
+    const json = JSON.parse((await gta(root, 'all', '--json')).out)
+    expect(json.leftOut).toEqual({
+      excluded: [],
+      excludedSteps: [
+        { id: 'orders', step: 1, name: 'get /fail' },
+        { id: 'wip', step: 0, name: 'get /fail' }
+      ],
+      untagged: 0
+    })
+
+    const named = await gta(root, 'orders')
+    expect(named.code).toBe(EXIT.failed)
+    expect(named.out).toContain('Collections:  1 total, 0 passed, 1 failed')
+  })
+
+  it('says get’s problem in a collection with every step excluded is in one left out', async () => {
+    const root = await project({
+      'collections/gone.yml': 'id: gone\nsteps:\n  - use: logon\n    exclude: true\n'
+    })
+    const listed = await gta(root, 'get')
+    expect(listed.code).toBe(EXIT.failed)
+    expect(listed.out).toContain('Excluded:     gone › logon (exclude: true)')
+    expect(listed.out).toContain(
+      'broken gone (excluded), step 1: use: logon — there is no logon.yml in requests/'
+    )
+    const json = JSON.parse((await gta(root, 'get', '--json')).out)
+    expect(json.problems).toEqual([
+      {
+        id: 'gone',
+        leftOut: 'excluded',
+        step: 0,
+        message: 'use: logon — there is no logon.yml in requests/'
+      }
+    ])
+  })
+
   it('checks every collection with get, those all leaves out too, and fails on a problem', async () => {
     const root = await project({
       'requests/login.yml': [
