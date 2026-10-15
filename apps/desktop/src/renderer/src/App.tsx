@@ -63,6 +63,7 @@ import { ExternalEditorContext, type ExternalEditor } from './externalEditor.js'
 import { openInLabel } from '@shared/settings.js'
 import { useProjects } from './hooks/useProjects.js'
 import {
+  checkedChild,
   childKey,
   childResultsOf,
   itemKey,
@@ -74,11 +75,13 @@ import {
   summaryOfSet
 } from './reuse.js'
 import { stepsToRunAll } from './tagFilter.js'
+import { fromStep } from './requestState.js'
 import { changesSince } from './stepChanges.js'
 import { findingsOf, projectFile } from './ruleFindings.js'
 import { TestsRuleContext, type TestsRule } from './testsRule.js'
 
 const NO_TAGS: string[] = []
+const NOTHING = (): void => {}
 const NO_SETS: RequestSetView[] = []
 const NO_ENDPOINTS: EndpointView[] = []
 const NO_BASES: LibraryFileView[] = []
@@ -117,8 +120,8 @@ interface CameFrom {
   projectId: string
   /** The step selected there: `step 3 (token)`. */
   step: string
-  /** The request of a use step shown there. */
-  child: number
+  /** The request of a use step shown there; null for the step itself. */
+  child: number | null
 }
 
 /** The step ids a run covers, per list, and the list a result with no `stage` is from. */
@@ -1231,23 +1234,57 @@ export default function App() {
     return byList
   }, [open, results])
 
-  // Which request of a use step the panes show; back to its first on another step.
-  const [shownChild, setShownChild] = useState(0)
+  // Which request of a use step is picked under it: null for the step itself, as on
+  // selecting another step.
+  const [shownChild, setShownChild] = useState<number | null>(null)
   /** A request asked for along with its step, shown once that step is selected. */
   const askedChild = useRef<number | null>(null)
   useEffect(() => {
-    setShownChild(askedChild.current ?? 0)
+    setShownChild(askedChild.current)
     askedChild.current = null
   }, [editor.selectedId])
 
+  // A use step's file: its request picked, shown in the step's place as written, or,
+  // for the step itself, the one its tests check, whose response it shows.
+  const useSet = request?.use != null ? resolveSet(sets, request.use) : null
+  const checked = useSet ? checkedChild(useSet) : 0
+  const childShown =
+    useSet && shownChild !== null && useSet.steps[shownChild]
+      ? { set: useSet, index: shownChild }
+      : null
+  const childStepShown = childShown?.set.steps[childShown.index]?.step
+  const childRequest = useMemo(
+    () => (childStepShown ? fromStep(childStepShown) : null),
+    [childStepShown]
+  )
+  // Its requests read `{{params.name}}`: the values this step passes, else the defaults.
+  const childPreviews = useMemo((): VariablePreviews => {
+    if (!childShown) return shownPreviews
+    const given = request?.with ?? {}
+    const params = Object.entries(childShown.set.params).map(([name, spec]) => {
+      const value = given[name] !== undefined ? given[name] : readParam(spec).default
+      return [
+        `params.${name}`,
+        {
+          value: value === undefined || value === null ? null : String(value),
+          origin: given[name] !== undefined ? 'with' : 'params',
+          kind: value === undefined ? 'dynamic' : 'static'
+        } satisfies VariablePreview
+      ] as const
+    })
+    return { ...shownPreviews, ...Object.fromEntries(params) }
+  }, [childShown?.set, shownPreviews, request?.with])
+
   /**
    * The response shown beside the step list belongs to the selected step: for
-   * a use step, the request of its set chosen; for a forEach step, the last item.
+   * a use step, the request of its set picked, else the one its tests check; for
+   * a forEach step, the last item.
    */
   const selectedResult =
     (editor.selectedId &&
       (request?.use !== null && request?.use !== undefined
-        ? (results[childKey(editor.selectedId, shownChild)] ?? results[editor.selectedId])
+        ? (results[childKey(editor.selectedId, shownChild ?? checked)] ??
+          results[editor.selectedId])
         : (itemResultsOf(results, editor.selectedId).at(-1) ?? results[editor.selectedId]))) ||
     null
   const selectedDocStep = doc ? stepsOf(doc, stepList)[stepIndex] : undefined
@@ -1276,9 +1313,11 @@ export default function App() {
     else if (base) void openCollection(project, summaryOfFile(base, 'bases'), here(path))
   }
 
-  const openSet = (set: RequestSetView) => {
+  /** Open a reusable requests file: at one of its requests, when one is named. */
+  const openSet = (set: RequestSetView, child?: number) => {
     const project = activeProject
     if (!project) return
+    if (child !== undefined) setStepWhenOpen({ path: set.path, list: 'steps', index: child })
     void openCollection(project, summaryOfSet(set), here(set.path))
   }
 
@@ -1556,7 +1595,11 @@ export default function App() {
                   summary={summary}
                   draftIndexes={editor.dirtyIndexes}
                   changes={sinceCommit}
-                  onSelect={selectStep}
+                  onSelect={(list, index) => {
+                    // The step itself, again: from one of its requests back to its own form.
+                    setShownChild(null)
+                    selectStep(list, index)
+                  }}
                   onRunAll={() => void runAll()}
                   onClose={closeCollection}
                   onCancel={cancel}
@@ -1702,36 +1745,43 @@ export default function App() {
                   )}
                   {stepIndex >= 0 && request && request.wait === null && (
                     <RequestView
-                      request={request}
+                      // A use step's request is shown, not edited: its editors are built so.
+                      key={childShown ? 'use-child' : 'step'}
+                      request={childRequest ?? request}
+                      child={childShown}
                       collection={doc}
                       chips={
-                        <StepChips
-                          collection={doc}
-                          list={stepList}
-                          index={stepIndex}
-                          flags={request.flags}
-                          onFlags={(flags) => editor.patch({ flags: flags ?? {} })}
-                          flagValues={flagValues}
-                          forEach={request.forEach}
-                          onForEach={(forEach) => editor.patch({ forEach })}
-                          exclude={request.exclude}
-                          onExclude={(exclude) => editor.patch({ exclude })}
-                          previews={shownPreviews}
-                          onCopyVariable={copyVariable}
-                        />
+                        childShown ? null : (
+                          <StepChips
+                            collection={doc}
+                            list={stepList}
+                            index={stepIndex}
+                            flags={request.flags}
+                            onFlags={(flags) => editor.patch({ flags: flags ?? {} })}
+                            flagValues={flagValues}
+                            forEach={request.forEach}
+                            onForEach={(forEach) => editor.patch({ forEach })}
+                            exclude={request.exclude}
+                            onExclude={(exclude) => editor.patch({ exclude })}
+                            previews={shownPreviews}
+                            onCopyVariable={copyVariable}
+                          />
+                        )
                       }
                       onEditCollectionHeaders={() => setCollectionSettingsOpen('headers')}
                       onEditCollectionScript={setCollectionSettingsOpen}
                       bases={activeProject?.bases ?? NO_BASES}
                       checkFiles={activeProject?.checkFiles ?? NO_CHECK_FILES}
                       stepPlace={
-                        collectionPath
-                          ? { path: collectionPath, list: stepList, index: stepIndex }
-                          : null
+                        childShown
+                          ? { path: childShown.set.path, list: 'steps', index: childShown.index }
+                          : collectionPath
+                            ? { path: collectionPath, list: stepList, index: stepIndex }
+                            : null
                       }
                       onOpenBase={openLibraryFile}
-                      onChange={editor.patch}
-                      previews={shownPreviews}
+                      onChange={childShown ? NOTHING : editor.patch}
+                      previews={childShown ? childPreviews : shownPreviews}
                       onCopyVariable={copyVariable}
                       onPickFile={pickUpload}
                       result={selectedResult}
@@ -1756,7 +1806,7 @@ export default function App() {
                       onReloadFromDisk={editor.reloadFromDisk}
                       onKeepMine={editor.keepMine}
                       sets={sets}
-                      shownChild={shownChild}
+                      shownChild={checked}
                       onOpenSet={openSet}
                       endpoints={
                         // An endpoints file's own steps are the endpoints, under no base.

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { RunResult } from '@schwabyio/gravity-core/model'
 import type { RequestSetView } from '@shared/ipc.js'
 import {
+  checkedChild,
   childKey,
   childResultsOf,
   itemKey,
@@ -44,7 +45,8 @@ const set = (name: string, source: RequestSetView['source']): RequestSetView => 
   source,
   title: name,
   params: {},
-  steps: [{ label: 'login', method: 'POST' }],
+  steps: [{ label: 'login', method: 'POST', step: { name: 'login', POST: '/login' } }],
+  layer: {},
   setters: []
 })
 
@@ -93,5 +95,22 @@ describe('request sets', () => {
         'bases'
       ).problems
     ).toEqual([{ path: 'bases/authed.yml', message: 'no' }])
+  })
+})
+
+describe('the request a use step’s tests check', () => {
+  const of = (...steps: RequestSetView['steps'][number]['step'][]) => ({
+    steps: steps.map((step) => ({ label: '', method: '', step }))
+  })
+
+  it('is the one marked useTests, else the last that sends something', () => {
+    expect(checkedChild(of({ GET: '/a' }, { GET: '/b', useTests: true }, { GET: '/c' }))).toBe(1)
+    expect(checkedChild(of({ GET: '/a' }, { GET: '/b' }))).toBe(1)
+    expect(checkedChild(of({ GET: '/a' }, { wait: 500 }))).toBe(0)
+  })
+
+  it('is the last, or the first, when nothing sends', () => {
+    expect(checkedChild(of({ wait: 1 }, { wait: 2 }))).toBe(1)
+    expect(checkedChild(of())).toBe(0)
   })
 })

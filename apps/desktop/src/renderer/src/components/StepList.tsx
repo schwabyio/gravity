@@ -73,8 +73,8 @@ interface Props {
   childResults: Record<number, Array<RunResult | undefined>>
   /** For each `forEach` step, by index: one result per item, in order. */
   itemResults: Record<number, RunResult[]>
-  /** Which request of a use step is shown, and a way to show another. */
-  selectedChild: number
+  /** Which request of the selected use step is picked, null for the step itself, and a way to pick one. */
+  selectedChild: number | null
   onSelectChild: (index: number, child: number) => void
   onRename: (index: number, name: string) => void
   onDuplicate: (index: number) => void
@@ -242,6 +242,10 @@ export default function StepList(props: Props) {
             index === props.selectedIndex ? 'selected' : '',
             picked.has(index) ? 'picked' : '',
             excluded ? 'excluded' : '',
+            // One of its requests picked: that request is what is shown, not the step.
+            use && index === props.selectedIndex && props.selectedChild !== null
+              ? 'child-shown'
+              : '',
             flagState?.kind === 'skip' ? 'flag-skipped' : '',
             flagState?.kind === 'error' ? 'flag-error' : '',
             dragging === index ? 'dragging' : '',

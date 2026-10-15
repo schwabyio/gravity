@@ -67,6 +67,11 @@ interface Props {
    * file's — sized to its lines rather than to the pane.
    */
   readOnly?: boolean
+  /**
+   * Shown in the editor's place, not edited: a request of a reusable requests
+   * file, seen from a use step. Fixed when the editor is built.
+   */
+  locked?: boolean
   /** A check file (SPEC.md §5): its syntax is checked as a run loads one, `export` and all. */
   checkFile?: boolean
 }
@@ -91,6 +96,7 @@ export default function CodeEditor({
   jumpedPath = null,
   onPickMark,
   readOnly = false,
+  locked = false,
   checkFile = false
 }: Props) {
   const host = useRef<HTMLDivElement>(null)
@@ -104,7 +110,7 @@ export default function CodeEditor({
   onPickRef.current = onPickMark
   // The project's tests.only, for a Tests script of its own: what is shown is not checked.
   const contextRule = useTestsRule()
-  const rule = kind === 'tests' && !readOnly ? contextRule : null
+  const rule = kind === 'tests' && !readOnly && !locked ? contextRule : null
   const ruleKey = rule ? `${rule.allowed.join(',')}|${rule.source}` : ''
 
   useEffect(() => {
@@ -129,7 +135,9 @@ export default function CodeEditor({
                 EditorView.editorAttributes.of({ class: 'cm-picks-marks' })
               ]
             : []),
-          ...(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
+          ...(readOnly || locked
+            ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
+            : []),
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
           ...(placeholder ? [placeholderText(placeholder)] : []),
           EditorView.updateListener.of((update) => {

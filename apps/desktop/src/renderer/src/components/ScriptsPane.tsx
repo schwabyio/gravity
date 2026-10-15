@@ -29,6 +29,8 @@ export type ScriptTab = ScriptKind | 'docs'
 interface Props {
   /** A use step has tests of its own, run after its set, and no pre-request script. */
   use: boolean
+  /** Shown, not edited: a request of a reusable requests file, seen from a use step. */
+  locked?: boolean
   request: EditorState
   onChange: (changes: Partial<EditorState>) => void
   tab: ScriptTab
@@ -148,6 +150,11 @@ export default function ScriptsPane(props: Props) {
               <code>params</code> as this step passed them. Check files are there as{' '}
               <code>checks.&lt;file&gt;</code>.
             </>
+          ) : tab === 'tests' && props.locked ? (
+            <>
+              Runs after the response, as the reusable requests file has it. Open the file to change
+              it.
+            </>
           ) : tab === 'tests' && !testsRule ? (
             <>
               Runs after the response. Write any JavaScript, with <code>gta</code>, <code>res</code>{' '}
@@ -184,7 +191,15 @@ export default function ScriptsPane(props: Props) {
       {tab === 'docs' ? (
         <div className="scripts-body" key="docs">
           <div className="tab-body docs-tab">
-            {editingDocs ? (
+            {props.locked ? (
+              <div className="step-docs">
+                {docs ? (
+                  <Markdown source={docs} />
+                ) : (
+                  <p className="hint docs-empty">This request has no docs.</p>
+                )}
+              </div>
+            ) : editingDocs ? (
               <>
                 <DocsEditor
                   value={request.docs}
@@ -223,7 +238,7 @@ export default function ScriptsPane(props: Props) {
         <div className="scripts-body" key="tests">
           <div className="script-editor">
             {/* The project's rules say what the tests may call: that stays in sight. */}
-            {!props.use && testsRule && (
+            {!props.use && !props.locked && testsRule && (
               <p className="hint tests-rule-hint">
                 Runs after the response. This project&rsquo;s rules allow {testsRuleText(testsRule)}{' '}
                 here — type <code>gta.</code> for its functions (<code>tests.only</code> in{' '}
@@ -249,10 +264,13 @@ export default function ScriptsPane(props: Props) {
               onChange={(tests) => props.onChange({ tests })}
               ariaLabel={props.use ? 'Tests after the reusable requests' : 'Tests'}
               placeholder={
-                props.use
-                  ? 'No tests of this step’s own — for example:\n  gta.expectResponseStatusCodeToBe(201)'
-                  : "No tests for this step yet — for example:\n  gta.expectResponseStatusCodeToBe(200)\n  gta.expectResponseBodyToHaveProperty('id', 7)"
+                props.locked
+                  ? 'No tests of its own.'
+                  : props.use
+                    ? 'No tests of this step’s own — for example:\n  gta.expectResponseStatusCodeToBe(201)'
+                    : "No tests for this step yet — for example:\n  gta.expectResponseStatusCodeToBe(200)\n  gta.expectResponseBodyToHaveProperty('id', 7)"
               }
+              locked={props.locked ?? false}
               errorLine={props.errorLines.tests}
               checks={marks}
               selected={props.selected}
@@ -295,8 +313,11 @@ export default function ScriptsPane(props: Props) {
               onChange={(preRequest) => props.onChange({ preRequest })}
               ariaLabel="Pre-request script"
               placeholder={
-                "No pre-request script for this step yet — for example:\n  gta.set('today', gta.date('%Y-%m-%d'))"
+                props.locked
+                  ? 'No pre-request script of its own.'
+                  : "No pre-request script for this step yet — for example:\n  gta.set('today', gta.date('%Y-%m-%d'))"
               }
+              locked={props.locked ?? false}
               errorLine={props.errorLines['pre-request']}
             />
           </div>

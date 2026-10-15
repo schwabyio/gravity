@@ -23,7 +23,7 @@ import type { EndpointView, LibraryFileView } from '@shared/ipc.js'
 
 /** A layer a step inherits: everything outside the step, outermost first. */
 export interface InheritedLayer extends LayerParts {
-  kind: Exclude<LayerKind, 'set' | 'step'>
+  kind: Exclude<LayerKind, 'step'>
   /** What kind of layer it is, for "From the endpoints file", "the base collection’s". */
   title: string
   /** Which one: `users.yml`, `GET /users/{id}`, `auth`. Null for the collection. */
@@ -32,7 +32,7 @@ export interface InheritedLayer extends LayerParts {
   shared: boolean
   /** False for an endpoint base's layers when the step says `base: false`. */
   used: boolean
-  /** The endpoint base, for an endpoint layer; the base collection's file, for the base. */
+  /** The endpoint base, for an endpoint layer; the file, for a base or a reusable requests file. */
   endpoint?: EndpointView
   path?: string
 }
@@ -65,13 +65,17 @@ export function inheritedLayers(input: {
   endpoints: EndpointView[]
   bases: LibraryFileView[]
   collection: Pick<Collection, 'headers' | 'settings' | 'before' | 'tests' | 'extends'>
+  /** For a request of a reusable requests file, run by a use step: that file. */
+  set?: { layer: LayerParts; path: string; shared: boolean } | null
 }): InheritedLayer[] {
   const endpoint = findEndpoint(input.method, input.url, input.endpoints)
   const base = findBase(input.bases, input.collection.extends)
+  const { set } = input
   const layers = requestLayers({
     endpoint: endpoint ? { file: endpoint.file, step: endpoint.step } : null,
     base: base?.layer ?? null,
     collection: input.collection,
+    ...(set ? { set: set.layer } : {}),
     step: {}
   })
   return layers.flatMap((layer): InheritedLayer[] => {
@@ -107,6 +111,18 @@ export function inheritedLayers(input: {
         ]
       case 'collection':
         return [{ ...parts, kind, title: 'collection', name: null, shared: false, used: true }]
+      case 'set':
+        return [
+          {
+            ...parts,
+            kind,
+            title: 'reusable requests file',
+            name: set!.path.split(/[\\/]/).pop()!,
+            shared: set!.shared,
+            used: true,
+            path: set!.path
+          }
+        ]
       default:
         return []
     }

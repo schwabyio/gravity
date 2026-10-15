@@ -42,7 +42,7 @@ export function layerScriptTarget(
   const path =
     layer.kind === 'endpoint-file'
       ? layer.endpoint?.filePath
-      : layer.kind === 'base'
+      : layer.kind === 'base' || layer.kind === 'set'
         ? layer.path
         : collectionPath
   return path ? { path, script } : null

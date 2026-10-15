@@ -444,8 +444,10 @@ export interface RequestSetView {
   /** The set's own name, else its file's. */
   title: string
   params: Record<string, ParamSpec>
-  /** Its steps, for the list under a use step. */
-  steps: Array<{ label: string; method: string }>
+  /** Its steps, for the list under a use step, and each as written, for a use step to show. */
+  steps: Array<{ label: string; method: string; step: Step }>
+  /** Its own headers, settings and scripts: a layer around each of its requests (SPEC.md §2.5). */
+  layer: LayerParts
   /** What its scripts set, for the editor to name a variable a use step of it sets. */
   setters: FileSetter[]
   /** Why it cannot be used, when it cannot. */

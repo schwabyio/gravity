@@ -30,6 +30,8 @@ interface Props {
   view: MutableRefObject<EditorView | null>
   /** ⇧⌥F, or Shift+Alt+F: Beautify, for a type that has one. */
   onBeautify: (() => void) | null
+  /** Shown, not edited: a request of a reusable requests file, seen from a use step. Fixed when built. */
+  readOnly?: boolean
 }
 
 /**
@@ -76,6 +78,7 @@ export default function BodyEditor(props: Props) {
             })
           ),
           hint.current.of(placeholderText(props.placeholder)),
+          ...(props.readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
           EditorView.contentAttributes.of({ 'aria-label': props.ariaLabel }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString())

@@ -217,7 +217,14 @@ test('a use step opens the reusable requests file it runs, at the request shown,
   await page.locator('.collection-row', { hasText: 'checkout' }).click()
   await page.locator('.step-open', { hasText: 'token' }).click()
 
-  const bar = page.locator('.use-bar')
+  // The step itself opens the file; a request picked under it, the file at that request.
+  await page
+    .locator('.use-bar')
+    .getByRole('button', { name: `${label}: token.yml`, exact: true })
+    .click()
+  await expect.poll(lastOpened).toEqual(token(1))
+  const bar = page.locator('.use-child-bar')
+  await page.locator('.use-child', { hasText: 'fetch' }).click()
   await bar.getByRole('button', { name: `${label}: token.yml, at fetch` }).click()
   await expect.poll(lastOpened).toEqual(token(4))
   await page.locator('.use-child', { hasText: 'refresh' }).click()

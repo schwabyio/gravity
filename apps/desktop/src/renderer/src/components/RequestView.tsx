@@ -38,7 +38,8 @@ import PaneHead from './PaneHead.js'
 import ResponsePane, { type LiveView, type ResponseTab } from './ResponsePane.js'
 import { ConnectionField, ReadBar } from './ConnectionStep.js'
 import ScriptsPane, { ScriptsStrip, type ScriptKind, type ScriptTab } from './ScriptsPane.js'
-import { UseBar, UseStepEditor } from './UseStep.js'
+import { UseBar, UseChildBar, UseStepEditor } from './UseStep.js'
+import RequestSummary from './RequestSummary.js'
 import BodyEditor from './BodyEditor.js'
 import Tooltip from './Tooltip.js'
 import VariableInput from './VariableInput.js'
@@ -112,7 +113,14 @@ interface Props {
   onOpenEndpoints: (endpoint: EndpointView) => void
   /** For a use step: which of its set's requests the response panes show. */
   shownChild: number
-  onOpenSet: (set: RequestSetView) => void
+  /**
+   * For a use step, the request of its file picked under it, shown in its place
+   * as the file has it — `request` is that request — and not edited here. Null
+   * for the step itself, whose form is for the values it passes.
+   */
+  child?: { set: RequestSetView; index: number } | null
+  /** Open a reusable requests file, at one of its requests. */
+  onOpenSet: (set: RequestSetView, child?: number) => void
 
   /** While running: an event stream as it is read, and the Stop that ends its reading. */
   live?: LiveView | null
@@ -204,18 +212,24 @@ export default function RequestView(props: Props) {
     settings:
       'A setting left empty comes from the nearest that sets it — the collection’s settings (⚙ beside its name), its base collection’s, its endpoint base’s — or else the default.'
   }
-  const requestInfo =
-    props.request.use !== null ? (
-      // A use step's one tab, With.
-      <>
-        The values the reusable requests get, as <code>{'{{params.name}}'}</code> in their requests
-        and <code>params.name</code> in their code. Empty takes the default. A value can use{' '}
-        <code>{'{{variables}}'}</code>, resolved as the first request starts, after the
-        collection&rsquo;s <code>before.script</code>.
-      </>
-    ) : (
-      tabInfo[shownTab]
-    )
+  const child = props.child ?? null
+  const childStep = child?.set.steps[child.index]?.step
+  const requestInfo = child ? (
+    <>
+      A request of the reusable requests file, as it is written: open the file to change it. Its{' '}
+      <code>{'{{params.name}}'}</code> are the values this use step passes.
+    </>
+  ) : props.request.use !== null ? (
+    // A use step's one tab, With.
+    <>
+      The values the reusable requests get, as <code>{'{{params.name}}'}</code> in their requests
+      and <code>params.name</code> in their code. Empty takes the default. A value can use{' '}
+      <code>{'{{variables}}'}</code>, resolved as the first request starts, after the
+      collection&rsquo;s <code>before.script</code>.
+    </>
+  ) : (
+    tabInfo[shownTab]
+  )
   const editorHead = (
     <PaneHead
       title="Request"
@@ -321,6 +335,7 @@ export default function RequestView(props: Props) {
 
   const paramCount = readQueryParams(request.url).length
   // Everything the step inherits, as a run builds it: endpoint base, base collection, collection.
+  const childSet = child?.set
   const layers = useMemo(
     () =>
       inheritedLayers({
@@ -329,9 +344,20 @@ export default function RequestView(props: Props) {
         useBase: request.base,
         endpoints: props.endpoints,
         bases: props.bases,
-        collection: props.collection
+        collection: props.collection,
+        set: childSet
+          ? { layer: childSet.layer, path: childSet.path, shared: childSet.source === 'global' }
+          : null
       }),
-    [request.method, request.url, request.base, props.endpoints, props.bases, props.collection]
+    [
+      request.method,
+      request.url,
+      request.base,
+      props.endpoints,
+      props.bases,
+      props.collection,
+      childSet
+    ]
   )
   const ownHeaders = useMemo(() => toHeaders(request.headers), [request.headers])
   // What will be sent: every layer's headers the step uses, and its own over them.
@@ -340,7 +366,9 @@ export default function RequestView(props: Props) {
   const openLayer =
     (part: 'headers' | 'pre-request' | 'tests') =>
     (layer: InheritedLayer): void => {
+      const set = layer.kind === 'set' && props.sets.find((each) => each.path === layer.path)
       if (layer.endpoint) props.onOpenEndpoints(layer.endpoint)
+      else if (set) props.onOpenSet(set)
       else if (layer.path) props.onOpenBase(layer.path)
       else if (part === 'headers') props.onEditCollectionHeaders()
       else props.onEditCollectionScript(part)
@@ -361,7 +389,18 @@ export default function RequestView(props: Props) {
         </div>
       )}
 
-      {request.use !== null ? (
+      {child ? (
+        <UseChildBar
+          set={child.set}
+          child={child.index}
+          previews={props.previews}
+          onCopyVariable={props.onCopyVariable}
+          onOpenSet={props.onOpenSet}
+          running={props.running}
+          onRun={props.onSend}
+          onCancel={props.onCancel}
+        />
+      ) : request.use !== null ? (
         <UseBar
           request={request}
           sets={props.sets}
@@ -422,11 +461,11 @@ export default function RequestView(props: Props) {
         </form>
       )}
 
-      {request.use === null && request.reads === null && (
+      {request.use === null && request.reads === null && request.wait === null && (
         <EndpointNote
           endpoint={findEndpoint(request.method, request.url, props.endpoints)}
           using={request.base}
-          onUse={(base) => props.onChange({ base })}
+          onUse={child ? null : (base) => props.onChange({ base })}
           onOpen={props.onOpenEndpoints}
         />
       )}
@@ -444,6 +483,24 @@ export default function RequestView(props: Props) {
           >
             <span>Request ▸</span>
           </button>
+        ) : child ? (
+          <section className="pane request-pane" ref={requestEl}>
+            {both && <Resizer pane={requestPane} label="Resize the request pane" />}
+            {editorHead}
+            {!childStep || request.wait !== null ? (
+              <div className="placeholder">
+                It sends nothing: it waits, then the next request runs.
+              </div>
+            ) : (
+              <RequestSummary
+                step={childStep}
+                url={request.url}
+                layers={layers}
+                onOpenLayer={openLayer('headers')}
+                previews={props.previews}
+              />
+            )}
+          </section>
         ) : request.use !== null ? (
           <section className="pane request-pane" ref={requestEl}>
             {both && <Resizer pane={requestPane} label="Resize the request pane" />}
@@ -671,6 +728,7 @@ export default function RequestView(props: Props) {
         ) : (
           <ScriptsPane
             use={request.use !== null}
+            locked={child !== null}
             request={request}
             onChange={props.onChange}
             tab={scriptTab}
@@ -708,7 +766,8 @@ export default function RequestView(props: Props) {
 function EndpointNote(props: {
   endpoint: EndpointView | null
   using: boolean
-  onUse: (base: boolean) => void
+  /** Null where the step is shown, not edited. */
+  onUse: ((base: boolean) => void) | null
   onOpen: (endpoint: EndpointView) => void
 }) {
   const { endpoint } = props
@@ -741,9 +800,11 @@ function EndpointNote(props: {
       <button type="button" className="link" onClick={() => props.onOpen(endpoint)}>
         Open
       </button>
-      <button type="button" className="link" onClick={() => props.onUse(!props.using)}>
-        {props.using ? 'Don’t use it here' : 'Use it'}
-      </button>
+      {props.onUse && (
+        <button type="button" className="link" onClick={() => props.onUse?.(!props.using)}>
+          {props.using ? 'Don’t use it here' : 'Use it'}
+        </button>
+      )}
     </p>
   )
 }

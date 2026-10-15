@@ -11,6 +11,8 @@ interface Props {
   placeholder?: string
   ariaLabel: string
   className?: string
+  /** Shown, not typed in: its variables still say what they resolve to. */
+  readOnly?: boolean
 }
 
 interface Segment {
@@ -57,7 +59,8 @@ export default function VariableInput({
   onCopy,
   placeholder,
   ariaLabel,
-  className = ''
+  className = '',
+  readOnly = false
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const mirrorRef = useRef<HTMLDivElement>(null)
@@ -142,6 +145,7 @@ export default function VariableInput({
         placeholder={placeholder}
         spellCheck={false}
         aria-label={ariaLabel}
+        readOnly={readOnly}
         onChange={(event) => onChange(event.target.value)}
       />
 

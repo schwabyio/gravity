@@ -63,9 +63,15 @@ test.beforeAll(async () => {
       'id: orders',
       'params:',
       '  item: widget',
+      'headers:',
+      '  X-Shop: shop',
       'steps:',
       '  - name: add to cart',
       `    POST: "${origin}/cart/{{params.item}}"`,
+      '    headers:',
+      "      X-Cart: '{{params.item}}'",
+      '    body:',
+      '      json: \'{"item": "{{params.item}}"}\'',
       '  - name: check out',
       `    POST: "${origin}/checkout"`,
       ''
@@ -202,28 +208,50 @@ test('a new use step runs another set; each of its requests is shown on its own'
   await expect(page.getByRole('tooltip').locator('.step-hover-title')).toHaveText('1 check passed')
   await page.mouse.move(0, 0)
 
-  // The use step's own tests ran on the set's last request.
-  await children('orders')
-    .getByRole('button', { name: /check out/ })
-    .click()
+  // The use step itself shows the response its tests check: the set's last request's.
   await expect(page.locator('.use-shown')).toHaveText('Showing 2 of 2 · check out')
   await expect(page.locator('.test-results')).toContainText('Status is 200')
   // Made by a check file, called from the use step's own line: that line is marked.
   await expect(page.locator('.scripts-pane .cm-check-mark')).toHaveText(['✓'])
+
+  // A request picked under the step is shown in its place, as its file has it.
+  await children('orders')
+    .getByRole('button', { name: /check out/ })
+    .click()
+  await expect(stepRow('Orders')).toHaveClass(/child-shown/)
+  await expect(page.locator('.collection-step-child')).toHaveText('› check out')
+  await expect(page.locator('.use-child-bar .method')).toHaveText('POST')
+  await expect(page.getByLabel('Request URL, as its file has it')).toHaveValue(/\/checkout$/)
+  await expect(page.locator('.use-shown')).toHaveText('2 of 2 in orders')
+  await expect(page.getByLabel('Reusable requests', { exact: true })).toHaveCount(0)
+  // Its response, with the use step's check that ran on it; its own scripts, none.
+  await expect(page.locator('.test-results')).toContainText('Status is 200')
+  await expect(page.locator('.scripts-pane .cm-check-mark')).toHaveCount(0)
+
+  // The step itself again: its form, and its tests.
+  await stepRow('Orders').locator('.step-open').click()
+  await expect(stepRow('Orders')).not.toHaveClass(/child-shown/)
+  await expect(page.locator('.collection-step-child')).toHaveCount(0)
+  await expect(page.getByLabel('Reusable requests', { exact: true })).toHaveValue('orders')
+  await expect(page.locator('.scripts-pane .cm-check-mark')).toHaveText(['✓'])
 })
 
-test('Open shows the reusable requests, and the way back finds the step as it was left', async () => {
-  // As the test before leaves it: the orders step selected, its second request shown, run.
-  await page.locator('.use-bar').getByRole('button', { name: 'Open', exact: true }).click()
+test('Open shows the reusable requests at the request picked, and the way back finds it as left', async () => {
+  // As the test before leaves it: the orders step selected, and run; its second request picked.
+  await children('orders')
+    .getByRole('button', { name: /check out/ })
+    .click()
+  await page.locator('.use-child-bar').getByRole('button', { name: 'Open', exact: true }).click()
   await expect(page.locator('.collection-header h1')).toHaveText('orders')
+  await expect(stepRow('check out')).toHaveClass(/selected/)
   const back = page.getByRole('button', { name: 'Back to flow · step 2 (orders)' })
   await expect(back).toHaveText('← flow · step 2 (orders)')
   await stepRow('add to cart').locator('.step-open').click()
 
   await back.click()
   await expect(page.locator('.collection-header h1')).toHaveText('flow')
-  await expect(stepRow('Orders')).toHaveClass(/selected/)
-  await expect(page.locator('.use-shown')).toHaveText('Showing 2 of 2 · check out')
+  await expect(stepRow('Orders')).toHaveClass(/child-shown/)
+  await expect(page.locator('.use-shown')).toHaveText('2 of 2 in orders')
   await expect(stepRow('Orders').locator('.step-head .step-summary')).toHaveText('2 of 2 passed')
   await expect(page.locator('.test-results')).toContainText('Status is 200')
   await expect(page.locator('.came-from')).toHaveCount(0)
@@ -236,6 +264,59 @@ test('Open shows the reusable requests, and the way back finds the step as it wa
   await page.locator('.collection-row', { hasText: 'Flow' }).click()
   await expect(stepRow('Orders')).toHaveClass(/selected/)
   await expect(stepRow('Orders').locator('.step-head .step-summary')).toHaveText('2 of 2 passed')
+})
+
+test('a use step’s request is shown as its file has it: its headers, body and scripts, none edited', async () => {
+  const orders = path.join(shop, 'requests', 'orders.yml')
+  const before = fs.readFileSync(orders, 'utf8')
+  await children('orders')
+    .getByRole('button', { name: /add to cart/ })
+    .click()
+  const url = page.getByLabel('Request URL, as its file has it')
+  await expect(url).toHaveValue(/\/cart\/\{\{params\.item\}\}$/)
+  await expect(url).toHaveAttribute('readonly', '')
+  // Its params read as this step passes them; it passes none, so the default.
+  await page.locator('.use-child-bar .var-token').hover()
+  await expect(page.locator('.use-child-bar .var-card-value')).toHaveText('widget')
+  await page.mouse.move(0, 0)
+
+  const editor = page.locator('.request-pane')
+  if (!(await editor.isVisible())) {
+    await page.getByRole('button', { name: 'Show the request editor' }).click()
+  }
+  await expect(page.locator('.request-summary')).toContainText('No query parameters.')
+  await editor
+    .locator('.tabs')
+    .getByRole('button', { name: /Headers/ })
+    .click()
+  await expect(editor.getByRole('table', { name: 'Its own headers' })).toContainText('X-Cart')
+  await expect(
+    editor.getByRole('region', { name: 'Headers from the reusable requests file' })
+  ).toContainText('X-Shop')
+  await editor.locator('.tabs').getByRole('button', { name: /Body/ }).click()
+  const body = editor.getByRole('textbox', { name: 'Request body' })
+  await expect(body).toContainText('"item": "{{params.item}}"')
+  await expect(body).toHaveAttribute('contenteditable', 'false')
+
+  // Its scripts are its own, shown and not edited: typing in them changes nothing.
+  const tests = page.locator('.scripts-pane .cm-content')
+  await expect(tests).toHaveAttribute('contenteditable', 'false')
+  await body.click()
+  await page.keyboard.type('x')
+  // Its variables take the pointer, for their values: the field is reached by focus.
+  await url.focus()
+  await page.keyboard.type('x')
+  await expect(url).toHaveValue(/\/cart\/\{\{params\.item\}\}$/)
+  expect(fs.readFileSync(orders, 'utf8')).toBe(before)
+
+  // Run runs the use step: every request of its file.
+  received = []
+  await page.getByRole('button', { name: 'Run', exact: true }).click()
+  await expect(children('orders').locator('.step-summary')).toHaveText([/^200 · /, /^200 · /], {
+    timeout: 10_000
+  })
+  expect(received).toEqual(['/cart/widget', '/checkout'])
+  await stepRow('Orders').locator('.step-open').click()
 })
 
 test('a reusable requests file is made in the app, and given params', async () => {

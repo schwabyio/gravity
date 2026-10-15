@@ -998,8 +998,10 @@ export class ProjectService {
         params: set.doc?.params ?? {},
         steps: (set.doc?.steps ?? []).map((step) => ({
           label: stepLabel(step),
-          method: stepMethod(step)
+          method: stepMethod(step),
+          step
         })),
+        layer: set.doc ? layerOf(set.doc) : {},
         setters: set.doc ? fileSetters(set.doc) : [],
         problem:
           set.problem ??

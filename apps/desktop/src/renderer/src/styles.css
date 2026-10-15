@@ -1686,6 +1686,13 @@ button:disabled {
   white-space: nowrap;
 }
 
+.collection-step-child {
+  overflow: hidden;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The selected step's "Open in …", close beside its name. */
 .collection-step > .tooltip-trigger {
   flex: none;
@@ -5228,6 +5235,35 @@ button.tag.filter.on {
 .use-bar .method.m-use {
   width: auto;
   padding: 0 10px;
+}
+
+/* A request of the use step's file: its line as written, shown, not typed in. */
+.use-child-bar .method {
+  align-self: center;
+  width: auto;
+  padding: 0 4px;
+  font-weight: 700;
+}
+
+.use-child-bar .var-field[readonly] {
+  cursor: default;
+}
+
+.use-child-line {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  color: var(--text-dim);
+}
+
+/* Under a selected use step, the request picked: it is what the panes show. */
+.step-list li.selected.child-shown {
+  border-left-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: none;
+}
+
+.use-children li.shown .use-child {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* ---------- inheritance ---------- */

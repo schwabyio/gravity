@@ -1,4 +1,4 @@
-import type { CollectionSummary, RunResult } from '@schwabyio/gravity-core/model'
+import { isWaitStep, type CollectionSummary, type RunResult } from '@schwabyio/gravity-core/model'
 import type { LibraryFileView, RequestSetView } from '@shared/ipc.js'
 
 /**
@@ -23,6 +23,18 @@ export function referenceFor(sets: RequestSetView[], set: RequestSetView): strin
   if (set.source === 'project') return set.name
   const shadowed = sets.some((other) => other.source === 'project' && other.name === set.name)
   return shadowed ? `global:${set.name}` : set.name
+}
+
+/**
+ * The request of a set whose response a use step's own tests check, as a run
+ * picks it (SPEC.md §2.5): the one marked `useTests`, else the last that sends
+ * something. What the use step itself shows as its response.
+ */
+export function checkedChild(set: Pick<RequestSetView, 'steps'>): number {
+  const marked = set.steps.findIndex(({ step }) => step.useTests === true)
+  if (marked >= 0) return marked
+  const last = set.steps.findLastIndex(({ step }) => !isWaitStep(step))
+  return last >= 0 ? last : Math.max(0, set.steps.length - 1)
 }
 
 /** Where a use step's results live: one per request of its set. */

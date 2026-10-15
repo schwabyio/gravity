@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   isReadStep,
+  isUseStep,
   stepLabel,
   stepMethod,
   STEP_LISTS,
@@ -19,6 +20,7 @@ import {
 } from '@schwabyio/gravity-core/model'
 import type { ConnectionView, LibraryFileView, RequestSetView } from '@shared/ipc.js'
 import { stepsOf } from '../hooks/useCollectionEditor.js'
+import { resolveSet } from '../reuse.js'
 import { usePaneWidth } from '../hooks/usePaneWidth.js'
 import { filterSteps, stepsToRunAll, stepTagsIn } from '../tagFilter.js'
 import { conditionsState, showFlagValue, stepFlagState, type FlagState } from '../flagState.js'
@@ -100,7 +102,8 @@ interface Props {
   childResults: Record<ListName, Record<number, Array<RunResult | undefined>>>
   /** Each list's `forEach` steps' results, one per item. */
   itemResults: Record<ListName, Record<number, RunResult[]>>
-  selectedChild: number
+  /** The request of the selected use step picked under it; null for the step itself. */
+  selectedChild: number | null
   onSelectChild: (list: ListName, index: number, child: number) => void
   onRenameStep: (list: ListName, index: number, name: string) => void
   onDuplicateStep: (list: ListName, index: number) => void
@@ -530,6 +533,12 @@ export default function CollectionView(props: Props) {
               </span>
               <span className={`method m-${selectedMethod.toLowerCase()}`}>{selectedMethod}</span>
               <span className="collection-step-name">{stepLabel(selectedStep)}</span>
+              {/* One of a use step's requests picked: it is what is shown. */}
+              {isUseStep(selectedStep) && props.selectedChild !== null && (
+                <span className="collection-step-child">
+                  › {resolveSet(props.sets, selectedStep.use)?.steps[props.selectedChild]?.label}
+                </span>
+              )}
               <OpenInEditor
                 what={`${fileName}, at ${stepLabel(selectedStep)}`}
                 target={{

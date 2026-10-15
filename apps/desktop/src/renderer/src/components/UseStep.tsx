@@ -1,4 +1,12 @@
-import { readParam, type VarValue, type VariablePreviews } from '@schwabyio/gravity-core/model'
+import {
+  isReadStep,
+  isWaitStep,
+  readParam,
+  readRequestLine,
+  waitText,
+  type VarValue,
+  type VariablePreviews
+} from '@schwabyio/gravity-core/model'
 import type { ReactNode } from 'react'
 import type { RequestSetView } from '@shared/ipc.js'
 import type { EditorState } from '../requestState.js'
@@ -11,7 +19,8 @@ import VariableInput from './VariableInput.js'
  * A use step (SPEC.md §2.5): in place of a request, the request set it runs
  * and the values it passes. The bar picks the set and runs it; the pane holds
  * the values. The step's own tests, run after the set's last request, are in
- * the scripts pane beside it.
+ * the scripts pane beside it. One of the set's requests, picked under the
+ * step, is shown as its file has it, with a bar of its own.
  */
 
 interface BarProps {
@@ -22,7 +31,7 @@ interface BarProps {
   running: boolean
   onRun: () => void
   onCancel: () => void
-  /** Which of the set's requests the response panes show. */
+  /** Which of the set's requests the response panes show: the one its tests check. */
   shownChild: number
   /** The step's flags, as a chip beside Run. */
   chips?: ReactNode
@@ -62,20 +71,20 @@ export function UseBar(props: BarProps) {
           </button>
         </Tooltip>
       )}
-      {/* The file itself, shared or not: at the request shown, the one to change. */}
+      {/* The file itself, shared or not; a request picked under the step opens at it. */}
       {set && (
         <OpenInEditor
           className="collection-open-button"
           size={15}
-          what={shown ? `${fileName(set)}, at ${shown.label}` : fileName(set)}
-          target={{
-            path: set.path,
-            ...(shown ? { step: { list: 'steps', index: props.shownChild } } : {})
-          }}
+          what={fileName(set)}
+          target={{ path: set.path }}
         />
       )}
       {shown && set && set.steps.length > 1 && (
-        <span className="use-shown" title="Pick another in the step list">
+        <span
+          className="use-shown"
+          title="The response its tests check; pick a request under the step to see it"
+        >
           Showing {props.shownChild + 1} of {set.steps.length} · {shown.label}
         </span>
       )}
@@ -93,6 +102,87 @@ export function UseBar(props: BarProps) {
 }
 
 const fileName = (set: RequestSetView): string => set.path.split(/[\\/]/).pop() ?? set.path
+
+interface ChildBarProps {
+  set: RequestSetView
+  /** Which of its requests: its place in the file's `steps`. */
+  child: number
+  previews: VariablePreviews
+  onCopyVariable: (name: string) => Promise<boolean>
+  /** Open the file, at this request. */
+  onOpenSet: (set: RequestSetView, child?: number) => void
+  running: boolean
+  onRun: () => void
+  onCancel: () => void
+}
+
+/**
+ * One request of a use step's reusable requests file, picked under the step:
+ * its method and URL as the file has them, not edited here, and Open to change
+ * it there. Run runs the use step, every request of it, as from the step.
+ */
+export function UseChildBar(props: ChildBarProps) {
+  const { set, child } = props
+  const entry = set.steps[child]
+  if (!entry) return null
+  const { step } = entry
+  const line = isWaitStep(step)
+    ? {
+        method: 'WAIT',
+        text: `waits ${typeof step.wait === 'number' ? waitText(step.wait) : step.wait}`
+      }
+    : isReadStep(step)
+      ? { method: 'READ', text: `reads the connection ${step.connection}` }
+      : null
+  const request = line ? null : readRequestLine(step)
+  const method = line?.method ?? request!.method
+  return (
+    <form
+      className="url-bar use-child-bar"
+      onSubmit={(event) => {
+        event.preventDefault()
+        props.onRun()
+      }}
+    >
+      <span className={`method m-${method.toLowerCase()}`}>{method}</span>
+      {request ? (
+        <VariableInput
+          className="url"
+          value={request.url}
+          onChange={() => {}}
+          previews={props.previews}
+          onCopy={props.onCopyVariable}
+          ariaLabel="Request URL, as its file has it"
+          readOnly
+        />
+      ) : (
+        <span className="use-child-line">{line!.text}</span>
+      )}
+      <Tooltip text={`Open ${fileName(set)} at this request, to change it there`}>
+        <button type="button" onClick={() => props.onOpenSet(set, child)}>
+          Open
+        </button>
+      </Tooltip>
+      <OpenInEditor
+        className="collection-open-button"
+        size={15}
+        what={`${fileName(set)}, at ${entry.label}`}
+        target={{ path: set.path, step: { list: 'steps', index: child } }}
+      />
+      <span className="use-shown" title="A request of the reusable requests file this step uses">
+        {child + 1} of {set.steps.length} in {set.title}
+      </span>
+      <button type="submit" className="send" disabled={props.running}>
+        {props.running ? 'Running…' : 'Run'}
+      </button>
+      {props.running && (
+        <button type="button" className="cancel" onClick={props.onCancel}>
+          Cancel
+        </button>
+      )}
+    </form>
+  )
+}
 
 interface EditorProps {
   request: EditorState
