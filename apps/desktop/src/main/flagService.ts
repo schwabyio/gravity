@@ -6,6 +6,7 @@ import {
   environmentFlags,
   FLAG_COMMAND_TIMEOUT_MS,
   FlagValueSchema,
+  renameWithRetry,
   runFlagCommand,
   type EnvironmentDoc,
   type FlagSource,
@@ -45,6 +46,7 @@ interface CommandRun {
 
 class FlagService {
   private overrides: OverridesFile | null = null
+  private saving: Promise<void> = Promise.resolve()
   private readonly runs = new Map<string, CommandRun>()
   private readonly running = new Map<string, Promise<CommandRun>>()
 
@@ -115,8 +117,26 @@ class FlagService {
     forRoot[environment ?? ''] = forEnvironment
     all[root] = forRoot
     this.overrides = all
+    await this.save()
+  }
+
+  /**
+   * Write the overrides as they are when this save's turn comes, after every
+   * save asked for before it, as `WorkspaceRegistry` does: two at once would
+   * share the temporary file. A save that fails still lets the next one run.
+   */
+  private save(): Promise<void> {
+    const turn = this.saving.then(() => this.write())
+    this.saving = turn.catch(() => undefined)
+    return turn
+  }
+
+  private async write(): Promise<void> {
     await fs.mkdir(path.dirname(this.file), { recursive: true })
-    await fs.writeFile(this.file, `${JSON.stringify(all, null, 2)}\n`)
+    // Write then rename, so a crash mid-write cannot leave the file half written.
+    const temporary = `${this.file}.tmp`
+    await fs.writeFile(temporary, `${JSON.stringify(this.overrides, null, 2)}\n`)
+    await renameWithRetry(temporary, this.file)
   }
 
   private async runCommand(

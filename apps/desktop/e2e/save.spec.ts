@@ -39,6 +39,10 @@ const ORIGINAL = [
 const git = (...args: string[]) =>
   execFileSync('git', args, { cwd: repo, encoding: 'utf8', stdio: 'pipe' })
 const onDisk = () => fs.readFileSync(file, 'utf8')
+const savedSettings = () => {
+  const settings = path.join(userData, 'settings.json')
+  return fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, 'utf8')) : null
+}
 const reset = () => fs.writeFileSync(file, ORIGINAL)
 
 async function launch() {
@@ -104,8 +108,10 @@ test('auto save is on by default and waits for typing to stop', async () => {
 
 test('the setting persists, and with auto save off nothing is written until Save', async () => {
   await setAutoSave(false)
-  const settings = JSON.parse(fs.readFileSync(path.join(userData, 'settings.json'), 'utf8'))
-  expect(settings.editing.autoSave).toEqual({ enabled: false, delayMs: 1000 })
+  // The switch moves under the click; main writes the file just after.
+  await expect
+    .poll(() => savedSettings()?.editing?.autoSave, { timeout: 5_000 })
+    .toEqual({ enabled: false, delayMs: 1000 })
 
   await url().fill('http://127.0.0.1:1/orders?manual=1')
   await page.locator('.step-open', { hasText: 'create' }).click()

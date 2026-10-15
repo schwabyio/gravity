@@ -108,6 +108,13 @@ test.afterAll(async () => {
 const drawer = () => page.getByRole('dialog', { name: 'Feature flags' })
 const flagRow = (name: string) => drawer().locator('tr', { hasText: name })
 const stepRow = (name: string) => page.locator('.step-list li', { hasText: name })
+/** Each project's overrides for the local environment, as saved beside the settings. */
+const savedOverrides = () => {
+  const file = path.join(tmp, 'ud', 'flag-overrides.json')
+  if (!fs.existsSync(file)) return null
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, Record<string, unknown>>
+  return Object.values(saved).map((project) => project.local)
+}
 const onDisk = (file: string) => fs.readFileSync(file, 'utf8')
 
 const runAll = async () => {
@@ -175,6 +182,7 @@ test('an override flips which step runs, and clearing it flips back', async () =
   await page.getByRole('button', { name: 'Feature flags' }).click()
   await flagRow('newCheckout').getByRole('switch', { name: 'Flag newCheckout' }).click()
   await expect(flagRow('newCheckout')).toContainText('override')
+  await expect.poll(savedOverrides).toEqual([{ newCheckout: false }])
   await page.keyboard.press('Escape')
   await expect(stepRow('new checkout').locator('.step-flag')).toHaveText('skipped')
   await runAll()
@@ -183,6 +191,7 @@ test('an override flips which step runs, and clearing it flips back', async () =
   await page.getByRole('button', { name: 'Feature flags' }).click()
   await drawer().getByRole('button', { name: 'Clear override of newCheckout' }).click()
   await expect(flagRow('newCheckout')).toContainText('command')
+  await expect.poll(savedOverrides).toEqual([{}])
   await page.keyboard.press('Escape')
   await expect(stepRow('old checkout').locator('.step-flag')).toHaveText('skipped')
 })
