@@ -261,6 +261,10 @@ test('after a run, a variable its step’s own script sets shows the value it la
     // A run puts the request editor aside.
     const show = page.getByRole('button', { name: 'Show the request editor' })
     if (await show.isVisible()) await show.click()
+    // And the response beside it, hidden for the room: in a 1280 window, as Linux CI's
+    // is, the header's value field is too narrow to hover the variable in.
+    const hide = page.getByRole('button', { name: 'Hide the response' })
+    if (await hide.isVisible()) await hide.click()
     await page
       .locator('.request-pane')
       .getByRole('button', { name: /^Headers/ })

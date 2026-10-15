@@ -50,7 +50,7 @@ test.beforeAll(async () => {
       'vars:',
       '  pause: 300',
       '  settle: 1500',
-      // A value only a run knows, so none is known beforehand to count down from.
+      // A value only a run sets, so none is known before one.
       'before:',
       "  script: gta.set('later', 1500)",
       'steps:',
@@ -190,16 +190,27 @@ test('a {{variable}} wait sent on its own waits its value, its row counting how 
   await expect(status()).toContainText(/Waited 1\.\d\d s/, { timeout: 5_000 })
 })
 
-test('a wait on a value only the run knows counts how long so far, in Run all', async () => {
+test('a wait on a value only a run sets has no reading before one, and counts down once it is set', async () => {
+  // The Sends before kept what the collection's script set, `later` too: forgotten here.
+  await page
+    .locator('.status-bar')
+    .getByRole('button', { name: /^Variables/ })
+    .click()
+  const variables = page.getByRole('region', { name: 'Variables', exact: true })
+  await variables.getByRole('button', { name: 'Clear' }).click()
+  await expect(variables).toContainText('Nothing set yet')
+  await variables.getByRole('button', { name: 'Close the variables' }).click()
   await field().fill('{{later}}')
   await expect.poll(onDisk, { timeout: 5_000 }).toContain('  - wait: "{{later}}"\n')
-  // Nothing knows it before the run: no reading, and nothing to count down from.
+  // Nothing knows it before the run: no reading.
   await expect(page.locator('.wait-reading')).toHaveText('')
   await page.getByRole('button', { name: 'Run all' }).click()
-  await expect(status()).toContainText(/Waiting · (\d+ ms|\d\.\d\d s)$/, { timeout: 5_000 })
-  await expect(status().locator('.wait-progress')).toHaveCount(0)
+  // The steps before it set it, and what they set shows as it lands: the wait counts down from it.
+  await expect(status()).toContainText(/Waiting · \d\.\d s left/, { timeout: 5_000 })
   await expect(page.locator('.run-summary')).toContainText('4 passed', { timeout: 10_000 })
   await expect(status()).toContainText(/Waited 1\.\d\d s/)
+  // After it, the reading is what the run set.
+  await expect(page.locator('.wait-reading')).toHaveText('1.5 s')
 })
 
 test('a wait of 0 goes straight on, and an emptied field is no wait to send', async () => {
