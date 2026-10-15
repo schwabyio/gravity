@@ -31,7 +31,8 @@ export function referencedVariables(step: Step): string[] {
  * A preview never runs code and never reports a failure: an unresolvable name is
  * simply absent from the result, which is what lets the editor grey it out
  * instead of interrupting with an error while you type. A variable a
- * pre-request script sets is known to exist, but its value only once it runs.
+ * pre-request script sets is known to exist, but its value only once it runs:
+ * after a Send or run, the value it last set.
  */
 export async function previewVariables(
   step: Step,
@@ -81,8 +82,13 @@ export async function previewVariables(
     collectionScript !== undefined
       ? (collectionScript ?? undefined)
       : await readCollectionScript(context.collectionPath)
+  // Once a Send or run has set one, it shows the value it set, and which step's script
+  // set it, though the script sets it again on the next Send: the value its step last
+  // went out with, as the steps after it show.
+  const carried = new Set((context.carried ?? []).map((value) => value.name))
   for (const script of [shared, step.before?.script]) {
     for (const name of setBy(script)) {
+      if (carried.has(name)) continue
       previews[name] = { value: null, origin: 'pre-request script', kind: 'dynamic' }
     }
   }

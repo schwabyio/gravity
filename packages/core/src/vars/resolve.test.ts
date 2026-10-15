@@ -317,8 +317,12 @@ describe('previewVariables', () => {
       origin: 'set by login · tests',
       kind: 'secret'
     })
-    // This step's own script sets it again before it is sent.
-    expect(previews['traceId']?.kind).toBe('dynamic')
+    // This step's own script sets it again before it is sent; until then, what it last set.
+    expect(previews['traceId']).toEqual({
+      value: 'old',
+      origin: 'set by r · pre-request',
+      kind: 'static'
+    })
   })
 
   it('uses the collection script it is given instead of the saved one', async () => {

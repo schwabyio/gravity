@@ -88,6 +88,17 @@ test.beforeAll(async () => {
     '    headers:',
     '      Authorization: "Bearer {{adminToken}}"'
   ])
+  // A step whose own pre-request script sets the header it sends.
+  write('collections/trace.yml', [
+    'id: trace',
+    'steps:',
+    '  - name: make trace',
+    '    GET: "{{baseUrl}}/trace"',
+    '    headers:',
+    '      X-Trace-Id: "{{traceId}}"',
+    '    before:',
+    "      script: gta.set('traceId', 'trace-' + Date.now())"
+  ])
   write('environments/local.yml', ['vars:', `  baseUrl: ${origin}`, '  apiKey: { secret: true }'])
   write('environments/other.yml', ['vars:', `  baseUrl: ${origin}`, '  apiKey: { secret: true }'])
   write('.env', [`apiKey=${SECRET}`])
@@ -239,4 +250,29 @@ test("a reusable requests file's step names the variable its caller gives, and i
   await expect(page.locator('.status-pill')).toContainText('200 OK')
   await variablesButton().click()
   await expect(row('adminToken')).toContainText('sign in admin · tests')
+})
+
+test('after a run, a variable its step’s own script sets shows the value it last set', async () => {
+  await page.locator('.collection-row', { hasText: 'trace' }).click()
+  await openStep('make trace')
+  const headers = async () => {
+    // A run puts the request editor aside.
+    const show = page.getByRole('button', { name: 'Show the request editor' })
+    if (await show.isVisible()) await show.click()
+    await page
+      .locator('.request-pane')
+      .getByRole('button', { name: /^Headers/ })
+      .click()
+  }
+  await headers()
+  await hover('traceId')
+  await expect(card().locator('.var-card-value')).toHaveText('Generated for each request')
+
+  await page.getByRole('button', { name: 'Run all' }).click()
+  await expect(page.getByRole('button', { name: 'Run all' })).toBeEnabled({ timeout: 15_000 })
+  await headers()
+  await hover('traceId')
+  // What it went out with last; the next Send sets it again.
+  await expect(card().locator('.var-card-value')).toHaveText(/^trace-\d+$/)
+  await expect(card().locator('.var-card-origin')).toHaveText('set by make trace · pre-request')
 })
