@@ -108,6 +108,13 @@ test('each script tab says what its script holds before a run', async () => {
   await expect(scriptTab('Tests').locator('.script-chip')).toHaveText(/^\d+ checks?$/)
 })
 
+test('a step with a pre-request script of its own says so on its row', async () => {
+  const mark = (name: string) => page.locator('.step-open', { hasText: name }).locator('.step-pre')
+  await expect(mark('get user')).toHaveText('pre')
+  await expect(mark('get user')).toHaveAttribute('title', 'Pre-request script: 1 line')
+  await expect(mark('no code')).toHaveCount(0)
+})
+
 test('switching steps shows each step’s own code, and says when there is none', async () => {
   await scriptTab('Tests').click()
   await page.locator('.step-open', { hasText: 'no code' }).click()

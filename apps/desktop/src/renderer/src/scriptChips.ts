@@ -19,6 +19,10 @@ export function countChecks(script: string): number {
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
 
+/** A script's lines, blank ones aside. */
+const scriptLines = (script: string): number =>
+  script.split('\n').filter((line) => line.trim() !== '').length
+
 /**
  * The Tests tab's chip. `inherited` is whether a layer around the step —
  * its endpoint base, base collection or collection — has tests, which make
@@ -71,6 +75,16 @@ export function preRequestChip(script: string, result: RunResult | null): Script
   if (result && result.status !== 'skipped') {
     return { text: '✓', tone: 'pass', title: 'The pre-request script ran' }
   }
-  const lines = script.split('\n').filter((line) => line.trim() !== '').length
-  return { text: plural(lines, 'line'), tone: 'idle', title: plural(lines, 'line') }
+  const lines = plural(scriptLines(script), 'line')
+  return { text: lines, tone: 'idle', title: lines }
+}
+
+/**
+ * What a step's row says, on hover, of the pre-request script it has of its
+ * own, so the steps that set values can be told apart without opening each;
+ * null with none.
+ */
+export function preRequestMark(script: string): string | null {
+  if (script.trim() === '') return null
+  return `Pre-request script: ${plural(scriptLines(script), 'line')}`
 }

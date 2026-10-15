@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RunResult } from '@schwabyio/gravity-core/model'
-import { countChecks, preRequestChip, testsChip } from './scriptChips.js'
+import { countChecks, preRequestChip, preRequestMark, testsChip } from './scriptChips.js'
 
 const result = (over: Partial<RunResult> = {}): RunResult => ({
   item: { path: null, name: 'step', seq: null },
@@ -93,5 +93,16 @@ describe('preRequestChip', () => {
       error: { phase: 'pre-request', message: 'boom', script: 'step', line: 1 }
     })
     expect(preRequestChip("gta.set('a')", stopped)).toMatchObject({ text: '!', tone: 'error' })
+  })
+})
+
+describe('preRequestMark', () => {
+  it('counts the lines of a step’s own script, and is null without one', () => {
+    expect(preRequestMark("// set\ngta.set('a', 1)\n\ngta.set('b', 2)\n")).toBe(
+      'Pre-request script: 3 lines'
+    )
+    expect(preRequestMark("gta.set('a', 1)")).toBe('Pre-request script: 1 line')
+    expect(preRequestMark('')).toBeNull()
+    expect(preRequestMark('  \n')).toBeNull()
   })
 })

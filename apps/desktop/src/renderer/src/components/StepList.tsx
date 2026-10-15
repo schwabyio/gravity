@@ -25,6 +25,7 @@ import {
   type StepOutcome
 } from '../stepOutcome.js'
 import { formatMs } from '../format.js'
+import { preRequestMark } from '../scriptChips.js'
 import { useElapsed } from '../hooks/useElapsed.js'
 import MenuIcon, { type MenuIconName } from './MenuIcon.js'
 import RuleMark from './RuleMark.js'
@@ -238,6 +239,7 @@ export default function StepList(props: Props) {
           const isRunning = props.runningIndex === index
           const flagState = props.flagStates?.[index] ?? null
           const excluded = step.exclude === true
+          const preRequest = preRequestMark(step.before?.script ?? '')
           const classes = [
             index === props.selectedIndex ? 'selected' : '',
             picked.has(index) ? 'picked' : '',
@@ -352,6 +354,12 @@ export default function StepList(props: Props) {
                         </span>
                       )}
                     </span>
+                    {/* Beside the name, not in it: a long name is cut short, never this. */}
+                    {preRequest && (
+                      <span className="step-pre" title={preRequest}>
+                        pre
+                      </span>
+                    )}
                     <StepResult
                       outcome={outcome}
                       clock={

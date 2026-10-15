@@ -5575,6 +5575,17 @@ button.tag.filter.on {
   font-size: 12px;
 }
 
+/* A step with a pre-request script of its own: quiet, like the step's other marks. */
+.step-pre {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .step-chip-popover .setting-row {
   padding: 0;
   border-bottom: none;
