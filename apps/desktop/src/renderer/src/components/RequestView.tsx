@@ -329,7 +329,12 @@ export default function RequestView(props: Props) {
   const columns = [
     !editorShown ? `${STRIP}px` : open(both ? requestPane.share : 1),
     !responseShown ? `${STRIP}px` : open(both ? 1 - requestPane.share : 1),
-    scriptsHidden ? `${STRIP}px` : `minmax(${scriptsPane.min}px, ${scriptsPane.width}px)`
+    // Held to the room the others leave by the layout itself, as that room is now: the
+    // room is measured a frame after it changes, and meanwhile the pane, and the divider
+    // on its edge, would be at the old room's width, moving under a pointer once measured.
+    scriptsHidden
+      ? `${STRIP}px`
+      : `minmax(${scriptsPane.min}px, min(${scriptsPane.asked}px, calc(100% - ${beside}px)))`
   ].join(' ')
   const { request } = props
 

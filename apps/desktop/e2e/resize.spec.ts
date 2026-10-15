@@ -29,6 +29,17 @@ const scriptsHandle = () => page.getByRole('separator', { name: 'Resize the scri
 
 const widthOf = async (locator: ReturnType<typeof sidebar>) => (await locator.boundingBox())!.width
 
+/** As much of the page's DOM as is used there, typed: specs are checked without the DOM's types. */
+interface PageDom {
+  document: {
+    querySelector: (selector: string) => {
+      dispatchEvent: (event: unknown) => void
+      getBoundingClientRect: () => { width: number }
+    }
+  }
+  KeyboardEvent: new (type: string, init: { key: string; bubbles: boolean }) => unknown
+}
+
 /** Drag a divider by a number of pixels. */
 async function drag(handle: ReturnType<typeof sidebarHandle>, by: number) {
   const box = (await handle.boundingBox())!
@@ -217,15 +228,33 @@ test('every width survives a restart', async () => {
 })
 
 test('the scripts pane drags as far left as the request and response leave room for', async () => {
-  // Both the request editor and the response open, beside the most room the window has.
-  await page.getByRole('button', { name: 'Show the scripts' }).click()
+  // Shown in little room, it is narrower than the width it was given.
   await sidebarHandle().focus()
-  await page.keyboard.press('Home')
+  await page.keyboard.press('End')
+  await stepsHandle().focus()
+  await page.keyboard.press('End')
+  await page.getByRole('button', { name: 'Show the scripts' }).click()
+  await expect.poll(() => widthOf(scriptsPane())).toBeLessThan(380)
+
+  // Given room, it is at its width at once, not a frame later once the room is measured:
+  // the divider on its edge must not move under a pointer about to grab it, as it did on
+  // Linux in run 38683830239. Read before the page can draw again, so before any measuring.
+  const atOnce = await page.evaluate(async () => {
+    // Run in the page, where `globalThis` is its window; specs are checked without its types.
+    const { document, KeyboardEvent } = globalThis as unknown as PageDom
+    const handle = document.querySelector('[aria-label="Resize the collections pane"]')
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+    // React has drawn the narrower collections pane; the page has not drawn since.
+    await Promise.resolve()
+    return document.querySelector('.scripts-pane').getBoundingClientRect().width
+  })
+  expect(atOnce).toBe(380)
+
+  // Both the request editor and the response open, beside the most room the window has.
   await stepsHandle().focus()
   await page.keyboard.press('Home')
 
-  // Each keeps its least, room for its name and Hide; the scripts pane takes the rest,
-  // laid out once the room the Home keys made is measured.
+  // Each keeps its least, room for its name and Hide; the scripts pane takes the rest.
   await drag(scriptsHandle(), -3000)
   await expect.poll(() => widthOf(requestPane())).toBeCloseTo(120, -1)
   expect(await widthOf(responsePane())).toBeCloseTo(120, -1)
@@ -233,8 +262,7 @@ test('the scripts pane drags as far left as the request and response leave room 
   expect(widest).toBeCloseTo((await widthOf(page.locator('.panes'))) - 240, -1)
   expect(Number(await scriptsHandle().getAttribute('aria-valuemax'))).toBeCloseTo(widest, -1)
 
-  // Less room narrows it, and it is back at its width when the room is: a frame after
-  // the room changes, once it is measured.
+  // Less room narrows it, and it is back at its width when the room is.
   const scriptsWidth = () => widthOf(scriptsPane())
   await drag(stepsHandle(), 100)
   await expect.poll(scriptsWidth).toBeCloseTo(widest - 100, -1)

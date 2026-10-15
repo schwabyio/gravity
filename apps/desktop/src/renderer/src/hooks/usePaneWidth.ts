@@ -26,6 +26,8 @@ export interface PaneWidth {
  * width once there is room again. `measureMax` reads that room from the layout
  * as it is now: `max` follows a resize a frame or so after it, and a drag
  * straight after the room grew would otherwise stop at the old room's edge.
+ * `asked` is that width before `max` clamps it, for a layout that clamps it to
+ * the room itself, as it is now.
  */
 export function usePaneWidth(
   key: string,
@@ -33,7 +35,7 @@ export function usePaneWidth(
   min: number,
   max: number,
   measureMax?: () => number
-): PaneWidth {
+): PaneWidth & { asked: number } {
   const [stored, setStored] = useState(() => read(key) ?? initial)
   const width = clamp(stored, min, max)
 
@@ -48,7 +50,7 @@ export function usePaneWidth(
 
   const reset = useCallback(() => setWidth(initial), [setWidth, initial])
 
-  return { width, setWidth, reset, min, max }
+  return { width, asked: Math.max(min, Math.round(stored)), setWidth, reset, min, max }
 }
 
 /**
