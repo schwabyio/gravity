@@ -236,8 +236,8 @@ test('the scripts pane drags as far left as the request and response leave room 
   await page.getByRole('button', { name: 'Show the scripts' }).click()
   await expect.poll(() => widthOf(scriptsPane())).toBeLessThan(380)
 
-  // Given room, it is at its width at once, not a frame later once the room is measured:
-  // the divider on its edge must not move under a pointer about to grab it, as it did on
+  // Given room, it takes it at once, not a frame later once the room is measured: the
+  // divider on its edge must not move under a pointer about to grab it, as it did on
   // Linux in run 38683830239. Read before the page can draw again, so before any measuring.
   const atOnce = await page.evaluate(async () => {
     // Run in the page, where `globalThis` is its window; specs are checked without its types.
@@ -246,9 +246,14 @@ test('the scripts pane drags as far left as the request and response leave room 
     handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     // React has drawn the narrower collections pane; the page has not drawn since.
     await Promise.resolve()
-    return document.querySelector('.scripts-pane').getBoundingClientRect().width
+    const width = (selector: string) =>
+      document.querySelector(selector).getBoundingClientRect().width
+    return { scripts: width('.scripts-pane'), room: width('.panes') }
   })
-  expect(atOnce).toBe(380)
+  // Its width, or what the request and response leave at their least: the window decides
+  // which, and Linux CI's is narrower (run 38686992329).
+  expect(atOnce.scripts).toBeCloseTo(Math.max(260, Math.min(380, atOnce.room - 240)), 0)
+  expect(atOnce.scripts).toBeGreaterThan(260)
 
   // Both the request editor and the response open, beside the most room the window has.
   await stepsHandle().focus()
