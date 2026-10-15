@@ -544,10 +544,12 @@ export function useCollectionEditor({
   /**
    * Stop showing the open file. Its edits are kept, as when another file is
    * opened, so reopening it brings them back — and with auto save on, leaving
-   * it saves it, as leaving for another does.
+   * it saves it, as leaving for another does. The step selected in it is not:
+   * it opens again at its first step, as it first did.
    */
   const close = useCallback(() => {
     if (openPath && autoSave.enabled) void flush(openPath)
+    if (openPath) delete selections.current[openPath]
     setOpenPath(null)
   }, [openPath, autoSave.enabled, flush])
 

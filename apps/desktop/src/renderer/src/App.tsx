@@ -119,6 +119,13 @@ interface FileResults {
 }
 const NO_FILE_RESULTS: FileResults = { rows: {}, stages: {}, summary: null }
 
+/** Whether a file has any results: a step's, from any row, or a run's summary. */
+const anyResults = (file: FileResults | undefined): boolean =>
+  !!file &&
+  (file.summary !== null ||
+    Object.keys(file.stages).length > 0 ||
+    Object.values(file.rows).some((row) => Object.keys(row).length > 0))
+
 /** Where a file opened from a step came from: the way back, while that file is shown. */
 interface CameFrom {
   /** The file opened. */
@@ -886,11 +893,30 @@ export default function App() {
   }
 
   /**
+   * Forget what a collection's Sends and runs left — its results, the variables
+   * they carry to its next Sends, the connections they hold open — for it to
+   * start fresh. Its edits stay.
+   */
+  const startFresh = (path: string) => {
+    // A run of it still in flight brings nothing back to it.
+    if (runPath.current === path) runPath.current = null
+    setResultsByFile(({ [path]: _gone, ...rest }) => rest)
+    window.desktop.variables.clear(path)
+    window.desktop.closeConnection(path)
+    setError(null)
+  }
+
+  /**
    * Close the open collection: the workbench goes back to choosing one. A run
-   * of it in flight stops; its edits stay for when it is opened again.
+   * of it in flight stops, and it opens again fresh — at its first step, its
+   * tag filter off, nothing of its Sends and runs left. Its edits stay.
    */
   const closeCollection = () => {
     if (activeRunId.current) window.desktop.runCancel(activeRunId.current)
+    if (collectionPath) {
+      startFresh(collectionPath)
+      setTagFilters(({ [collectionPath]: _off, ...rest }) => rest)
+    }
     editor.close()
     setCollectionSettingsOpen(null)
     setDataOpen(false)
@@ -1057,6 +1083,8 @@ export default function App() {
     if (activeRunId.current !== runId) return
     activeRunId.current = null
     setRunningId(null)
+    // Closed while it ran: the collection started fresh, and nothing of the run comes back.
+    if (runPath.current === null) return
     if (response.ok) changeResults(stepList, (current) => ({ ...current, [id]: response.result }))
     else setError(response.message)
   }, [
@@ -1140,6 +1168,8 @@ export default function App() {
     setRunningAll(false)
     setStoppingAll(false)
     setRunningId(null)
+    // Closed while it ran: the collection started fresh, and nothing of the run comes back.
+    if (runPath.current === null) return
     if (response.ok) {
       if (all) changeFile(path, (file) => ({ ...file, summary: response.summary }))
     } else setError(response.message)
@@ -1377,6 +1407,14 @@ export default function App() {
           }
         }
       : null
+
+  /** Anything the open collection's Sends and runs left, for Reset to clear. */
+  const anyState =
+    collectionPath !== null &&
+    (anyResults(resultsByFile[collectionPath]) ||
+      error !== null ||
+      (runtime?.variables.length ?? 0) > 0 ||
+      (held[collectionPath]?.length ?? 0) > 0)
 
   // Where the selected step's last run stopped in one of the collection's scripts.
   const failed = selectedResult?.error?.script === 'collection' ? selectedResult.error : null
@@ -1641,6 +1679,10 @@ export default function App() {
                   }}
                   onRunAll={() => void runAll()}
                   onClose={closeCollection}
+                  canReset={anyState}
+                  onReset={() => {
+                    if (collectionPath) startFresh(collectionPath)
+                  }}
                   onCancel={cancel}
                   // After the step whose ⋯ it came from, or from a list's +, at its end.
                   onAddStep={(list, after) =>

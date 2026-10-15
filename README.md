@@ -162,6 +162,9 @@ Both run on macOS, Windows and Linux.
   that set each. A collection's Sends start from what its earlier Sends and runs set, so
   you can send a login, then the request that needs its token. Run all starts from
   nothing; Clear, or another environment, forgets them.
+- **↺ Reset** beside Run all starts a collection fresh: its results, the variables its
+  Sends carry and the connections they hold are cleared. Closing it does the same, and
+  it opens again at its first step. Unsaved edits are kept.
 - Editors for environments, data files (as a grid), feature flag overrides, multipart
   bodies, query parameters and Markdown docs, down to each step.
 - Drag steps to reorder them, select several at once, move with the arrow keys, and

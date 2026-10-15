@@ -85,8 +85,11 @@ interface Props {
   changes: CollectionChanges | null
   onSelect: (list: ListName, index: number) => void
   onRunAll: () => void
-  /** Stop showing it: its edits are kept, and with auto save on it is saved. */
+  /** Stop showing it, to open again fresh: its edits are kept, and with auto save on it is saved. */
   onClose: () => void
+  /** Clear what its Sends and runs left, as closing it does; with nothing left, disabled. */
+  onReset: () => void
+  canReset: boolean
   onCancel: () => void
   /** Add a step to a list: after the step at `after`, or at its end. */
   onAddStep: (list: ListName, after?: number) => void
@@ -598,6 +601,16 @@ export default function CollectionView(props: Props) {
           </div>
         )}
 
+        <Tooltip text="Clear this collection’s results, carried variables and open connections, as closing it does">
+          <button
+            type="button"
+            className="reset-state"
+            onClick={props.onReset}
+            disabled={!props.canReset || props.busy}
+          >
+            ↺ Reset
+          </button>
+        </Tooltip>
         {props.runningAll ? (
           // Stopped, the run still cleans up after itself; a second Stop stops that too.
           <Tooltip

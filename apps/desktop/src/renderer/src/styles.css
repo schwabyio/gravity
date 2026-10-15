@@ -1570,14 +1570,12 @@ button:disabled {
   color: var(--text-dim);
 }
 
-.collection-header .run-all,
-.collection-header > .tooltip-trigger:has(> .run-all) {
+/* Reset leads Run all at the header's right, after the run's summary when there is one. */
+.collection-header > .tooltip-trigger:has(> .reset-state) {
   margin-left: auto;
 }
 
-.run-summary + .run-all,
-.run-summary + .cancel,
-.run-summary + .tooltip-trigger:has(> .run-all) {
+.run-summary + .tooltip-trigger:has(> .reset-state) {
   margin-left: 0;
 }
 
