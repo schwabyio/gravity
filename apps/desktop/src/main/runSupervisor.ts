@@ -3,11 +3,13 @@ import { utilityProcess, type UtilityProcess } from 'electron'
 import type { CarriedValue, CollectionRunSummary, RunResult } from '@schwabyio/gravity-core'
 import type { Vars } from '@schwabyio/gravity-core'
 import type {
+  ConnectionCloseReason,
   ConnectionView,
   DataRowInput,
   EnvironmentOverride,
   IterationRef,
-  LiveStream
+  LiveStream,
+  StreamChange
 } from '../shared/ipc.js'
 import type { KeptValue } from './runtimeVariables.js'
 
@@ -40,6 +42,7 @@ type WorkerMessage =
     }
   | { type: 'failure'; runId: string; message: string }
   | { type: 'live'; runId: string; live: LiveStream }
+  | { type: 'stream'; change: StreamChange }
   | { type: 'connections'; collectionPath: string; connections: ConnectionView[] }
   | { type: 'variables'; collectionPath: string; values: KeptValue[] }
 
@@ -63,6 +66,7 @@ class RunSupervisor {
   >()
 
   private readonly liveListeners = new Set<(runId: string, live: LiveStream) => void>()
+  private readonly streamListeners = new Set<(change: StreamChange) => void>()
   private readonly connectionListeners = new Set<
     (collectionPath: string, connections: ConnectionView[]) => void
   >()
@@ -83,6 +87,12 @@ class RunSupervisor {
   onLive(listener: (runId: string, live: LiveStream) => void): () => void {
     this.liveListeners.add(listener)
     return () => this.liveListeners.delete(listener)
+  }
+
+  /** An event stream's connection opened or closed, whichever run or Send opened it. */
+  onStream(listener: (change: StreamChange) => void): () => void {
+    this.streamListeners.add(listener)
+    return () => this.streamListeners.delete(listener)
   }
 
   /** The connections a collection's Sends hold, after each change. */
@@ -121,6 +131,10 @@ class RunSupervisor {
       }
       if (message.type === 'live') {
         for (const listener of this.liveListeners) listener(message.runId, message.live)
+        return
+      }
+      if (message.type === 'stream') {
+        for (const listener of this.streamListeners) listener(message.change)
         return
       }
       if (message.type === 'connections') {
@@ -204,9 +218,9 @@ class RunSupervisor {
     this.worker?.postMessage({ type: 'stop', runId })
   }
 
-  /** Close a connection a collection's Sends hold, or with no name all of them. */
-  closeConnection(collectionPath: string, name?: string): void {
-    this.worker?.postMessage({ type: 'closeConnection', collectionPath, name })
+  /** Close a connection a collection's Sends hold, or with no name all of them, saying why. */
+  closeConnection(collectionPath: string, reason: ConnectionCloseReason, name?: string): void {
+    this.worker?.postMessage({ type: 'closeConnection', collectionPath, reason, name })
   }
 
   dispose(): void {
@@ -215,6 +229,7 @@ class RunSupervisor {
     this.pending.clear()
     this.progressListeners.clear()
     this.liveListeners.clear()
+    this.streamListeners.clear()
     this.connectionListeners.clear()
     this.variableListeners.clear()
   }

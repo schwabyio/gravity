@@ -148,7 +148,8 @@ Both run on macOS, Windows and Linux.
 - The response body, headers and timings, with each check marked on the line or header
   it checked, and on the line of the script that made it.
 - A console of every request sent and its response, as raw text you can copy, with what
-  scripts logged and what went wrong, and a load log: how long each project took to
+  scripts logged and what went wrong, each event stream's connection as it opens and
+  closes (and who closed it, and why), and a load log: how long each project took to
   list, what it found, and any folder it could not read. **Copy** takes the lines shown,
   for a bug report.
 - Each step shows what it inherits, layer by layer: headers, scripts and check files

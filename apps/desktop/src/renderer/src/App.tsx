@@ -895,14 +895,14 @@ export default function App() {
   /**
    * Forget what a collection's Sends and runs left — its results, the variables
    * they carry to its next Sends, the connections they hold open — for it to
-   * start fresh. Its edits stay.
+   * start fresh. Its edits stay. `why` is what the console says closed its connections.
    */
-  const startFresh = (path: string) => {
+  const startFresh = (path: string, why: 'reset' | 'collectionClosed') => {
     // A run of it still in flight brings nothing back to it.
     if (runPath.current === path) runPath.current = null
     setResultsByFile(({ [path]: _gone, ...rest }) => rest)
     window.desktop.variables.clear(path)
-    window.desktop.closeConnection(path)
+    window.desktop.closeConnection(path, why)
     setError(null)
   }
 
@@ -914,7 +914,7 @@ export default function App() {
   const closeCollection = () => {
     if (activeRunId.current) window.desktop.runCancel(activeRunId.current)
     if (collectionPath) {
-      startFresh(collectionPath)
+      startFresh(collectionPath, 'collectionClosed')
       setTagFilters(({ [collectionPath]: _off, ...rest }) => rest)
     }
     editor.close()
@@ -1681,7 +1681,7 @@ export default function App() {
                   onClose={closeCollection}
                   canReset={anyState}
                   onReset={() => {
-                    if (collectionPath) startFresh(collectionPath)
+                    if (collectionPath) startFresh(collectionPath, 'reset')
                   }}
                   onCancel={cancel}
                   // After the step whose ⋯ it came from, or from a list's +, at its end.
@@ -1715,7 +1715,8 @@ export default function App() {
                   }
                   connections={(collectionPath && held[collectionPath]) || NO_CONNECTIONS}
                   onCloseConnection={(name) => {
-                    if (collectionPath) window.desktop.closeConnection(collectionPath, name)
+                    if (collectionPath)
+                      window.desktop.closeConnection(collectionPath, 'closed', name)
                   }}
                   childResults={childResults}
                   itemResults={itemResults}

@@ -6445,9 +6445,11 @@ button.console-line:hover {
   color: var(--redirect);
 }
 
-/* A load log line that something went wrong in: as a warning reads. */
+/* A load log line that something went wrong in, or a kept connection that failed: as a warning reads. */
 .console-row.load-problem .console-tag,
-.console-row.load-problem .console-text {
+.console-row.load-problem .console-text,
+.console-row.stream-problem .console-tag,
+.console-row.stream-problem .console-text {
   color: var(--redirect);
 }
 

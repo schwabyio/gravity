@@ -123,6 +123,17 @@ describe('EventStreamParser', () => {
     const events = [...STREAM].flatMap((char) => [...parser.push(char), ...parser.push('')])
     sameAsWhole(events, 'a character at a time')
   })
+
+  it('counts the comment lines it skips, the heartbeats servers send, a line once complete', () => {
+    const parser = new EventStreamParser()
+    parser.push(': heartbeat\n\n:\n\n: half')
+    expect(parser.comments).toBe(2)
+    parser.push(' a comment\ndata: 1\n\n')
+    expect(parser.comments).toBe(3)
+    const whole = new EventStreamParser()
+    whole.push(STREAM)
+    expect(whole.comments).toBe(1)
+  })
 })
 
 describe('isEventStream', () => {

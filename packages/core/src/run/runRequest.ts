@@ -524,7 +524,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
     }
     // A step opening a connection replaces one of the same name, whatever comes back.
     const opens = step.connection
-    if (opens !== undefined) input.connections?.close(opens)
+    if (opens !== undefined) input.connections?.close(opens, 'reopened')
     return sendHttpRequest(spec, {
       settings,
       payload,
@@ -534,6 +534,7 @@ export async function runRequest(input: RunStepInput): Promise<RunResult> {
       ...(passes ? { passes } : {}),
       ...(opens !== undefined
         ? {
+            connection: opens,
             keep: (stream: OpenStream) => {
               if (input.connections) input.connections.open(opens, stream)
               else stream.close()

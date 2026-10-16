@@ -1,4 +1,5 @@
 import type { OpenStream } from '../http/stream.js'
+import type { StreamCloseReason } from '../model/run.js'
 
 /** A connection as the app shows it: its name, the events it holds, and whether it is open. */
 export interface ConnectionState {
@@ -27,7 +28,7 @@ export class Connections {
     const before = this.streams.get(name)
     if (before) {
       before.pump.onChange = undefined
-      before.close()
+      before.close('reopened')
     }
     this.streams.set(name, stream)
     stream.pump.onChange = () => this.report()
@@ -38,15 +39,15 @@ export class Connections {
     return this.streams.get(name)
   }
 
-  /** Close one connection, or with no name every one, and forget them. */
-  close(name?: string): void {
+  /** Close one connection, or with no name every one, and forget them: `reason` says why. */
+  close(name?: string, reason?: StreamCloseReason): void {
     const names = name === undefined ? [...this.streams.keys()] : [name]
     let any = false
     for (const each of names) {
       const stream = this.streams.get(each)
       if (!stream) continue
       stream.pump.onChange = undefined
-      stream.close()
+      stream.close(reason)
       this.streams.delete(each)
       any = true
     }

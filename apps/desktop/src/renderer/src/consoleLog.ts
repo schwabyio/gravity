@@ -6,16 +6,24 @@ import {
   type ReceivedResponse,
   type RunError,
   type RunResult,
-  type SentRequest
+  type SentRequest,
+  type StreamClosed,
+  type StreamCloseReason
 } from '@schwabyio/gravity-core/model'
-import type { ConsoleEvent, ConsoleRunKind, IterationRef, LoadEvent } from '@shared/ipc.js'
+import type {
+  ConsoleEvent,
+  ConsoleRunKind,
+  IterationRef,
+  LoadEvent,
+  StreamChange
+} from '@shared/ipc.js'
 import { formatMs, formatSize } from './format.js'
 import { matches } from './sidebarFilter.js'
 
 /**
  * The console: every run's requests, script output and errors, whichever
- * collection it was of, and the load log — what listing projects took — kept
- * until Clear or quit. Pure, so the panel and its tests agree on what it holds
+ * collection it was of, each event stream's connection opening and closing,
+ * and the load log — what listing projects took — kept until Clear or quit. Pure, so the panel and its tests agree on what it holds
  * and what it shows.
  */
 
@@ -60,6 +68,8 @@ export type ConsoleEntry =
     }
   /** A line of the load log. */
   | { kind: 'load'; key: number; event: LoadEvent }
+  /** An event stream's connection opened or closed. */
+  | { kind: 'stream'; key: number; change: StreamChange }
 
 export interface ConsoleState {
   entries: ConsoleEntry[]
@@ -113,6 +123,12 @@ export function consoleReducer(state: ConsoleState, action: ConsoleAction): Cons
       })
     case 'load':
       return { ...state, next, entries: [...state.entries, { kind: 'load', key, event }] }
+    case 'stream':
+      return {
+        ...state,
+        next,
+        entries: [...state.entries, { kind: 'stream', key, change: event }]
+      }
     case 'end': {
       const { [event.runId]: run = null, ...runs } = state.runs
       return {
@@ -166,6 +182,8 @@ export type ConsoleRow =
   | { kind: 'error'; key: string; error: RunError; source: string }
   /** A line of the load log, about a project, git, the app or a file. */
   | { kind: 'load'; key: string; at: number; subject: string; text: string; problem: boolean }
+  /** An event stream's connection opened or closed: a kept one that failed is a problem. */
+  | { kind: 'stream'; key: string; at: number; text: string; source: string; problem: boolean }
 
 const RUN_NAME: Record<ConsoleRunKind, string> = { send: 'Send', steps: 'Run', all: 'Run all' }
 
@@ -192,6 +210,73 @@ const startText = (run: ConsoleRun): string =>
     .filter(Boolean)
     .join(' · ')
 
+const CLOSED_HOW: Record<Exclude<StreamClosed['by'], 'error'>, string> = {
+  server: 'by the server',
+  app: 'by the app',
+  limit: 'at the safety limit'
+}
+
+/** Why the app closed one: as the response pane says how a reading stopped, for a step's. */
+const CLOSED_WHY: Record<StreamCloseReason, string> = {
+  maxEvents: 'max events reached',
+  streamTimeout: 'stream timeout reached',
+  untilEvent: 'until event reached',
+  testsPassed: 'tests passed',
+  limit: 'safety limit reached',
+  stopped: 'Stop pressed',
+  cancelled: 'the run was cancelled',
+  reopened: 'the step that opens it ran again',
+  closed: 'Close pressed',
+  reset: 'Reset pressed',
+  collectionClosed: 'its collection was closed',
+  runAll: 'Run all started',
+  runEnded: 'its run ended'
+}
+
+/**
+ * How long a server may have sent nothing before a close for the close to say
+ * so: past a heartbeat's gap, a quiet that may be why something between closed it.
+ */
+export const SILENCE_NOTED_MS = 5000
+
+/**
+ * A stream's connection opening — `opened · GET …/events · 200 OK` — or
+ * closing — `closed by the server · open 300.00 s · 3 events · 18 heartbeats
+ * · silent 62 s before it closed · GET …/events` — with the name a connection
+ * kept for later steps has. Heartbeats show when there were any, the silence
+ * from `SILENCE_NOTED_MS`.
+ */
+function streamText(change: StreamChange): string {
+  const request = `${change.method} ${change.url}`
+  const named = change.connection !== undefined ? `connection ${change.connection}` : null
+  if (change.change === 'open') {
+    const status = `${change.status} ${change.statusText}`.trim()
+    return ['opened', request, status, named].filter(Boolean).join(' · ')
+  }
+  const { closed } = change
+  const how =
+    closed.by === 'error'
+      ? `closed with an error${closed.message ? `: ${closed.message}` : ''}`
+      : `closed ${CLOSED_HOW[closed.by]}${closed.reason ? `: ${CLOSED_WHY[closed.reason]}` : ''}`
+  return [
+    how,
+    `open ${formatMs(closed.openMs)}`,
+    plural(closed.events, 'event'),
+    closed.heartbeats > 0 ? plural(closed.heartbeats, 'heartbeat') : null,
+    closed.silentMs >= SILENCE_NOTED_MS
+      ? `silent ${Math.round(closed.silentMs / 1000)} s before it closed`
+      : null,
+    request,
+    named
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/** A connection kept for later steps that failed: one a step reads to the end fails its step. */
+const streamProblem = (change: StreamChange): boolean =>
+  change.change === 'close' && change.closed.by === 'error' && change.connection !== undefined
+
 const totalsText = (totals: RunTotals): string =>
   [
     `Run all finished in ${formatMs(totals.durationMs)}`,
@@ -213,6 +298,19 @@ function linesOf(entry: ConsoleEntry): ConsoleRow[] {
   if (entry.kind === 'load') {
     const { at, subject, text, problem = false } = entry.event
     return [{ kind: 'load', key, at, subject, text, problem }]
+  }
+  if (entry.kind === 'stream') {
+    const { change } = entry
+    return [
+      {
+        kind: 'stream',
+        key,
+        at: change.at,
+        text: streamText(change),
+        source: change.collection ?? '',
+        problem: streamProblem(change)
+      }
+    ]
   }
   if (entry.kind === 'start') {
     return entry.run.kind === 'all'
@@ -278,7 +376,10 @@ export const SHOW_LABELS: Record<ConsoleShow, string> = {
   problems: 'Failures, warnings and errors'
 }
 
-/** A failed or errored request, a warning or error a script wrote, an error, a run that failed. */
+/**
+ * A failed or errored request, a warning or error a script wrote, an error, a
+ * run that failed, a part of a project that could not be read, a kept connection that failed.
+ */
 export function isProblem(row: ConsoleRow): boolean {
   switch (row.kind) {
     case 'request':
@@ -289,6 +390,7 @@ export function isProblem(row: ConsoleRow): boolean {
       return true
     case 'end':
     case 'load':
+    case 'stream':
       return row.problem
     default:
       return false
@@ -297,7 +399,7 @@ export function isProblem(row: ConsoleRow): boolean {
 
 const SHOWN: Record<ConsoleShow, (row: ConsoleRow) => boolean> = {
   all: () => true,
-  requests: (row) => row.kind === 'request' || row.kind === 'skipped',
+  requests: (row) => row.kind === 'request' || row.kind === 'skipped' || row.kind === 'stream',
   logs: (row) => row.kind === 'log',
   loading: (row) => row.kind === 'load',
   problems: isProblem
@@ -321,6 +423,8 @@ function wordsOf(row: ConsoleRow): string[] {
       return [row.error.message, row.source]
     case 'load':
       return [row.subject, row.text]
+    case 'stream':
+      return ['stream', row.text, row.source]
   }
 }
 
@@ -341,7 +445,11 @@ export function shownRows(
     : { rows, hidden: 0 }
 }
 
-/** Errors — steps that errored, runs that could not run, `console.error` — and `console.warn`s. */
+/**
+ * Errors — steps that errored, runs that could not run, `console.error` — and
+ * warnings: `console.warn`, a part of a project that could not be read, a kept
+ * connection that failed.
+ */
 export function problemCounts(entries: ConsoleEntry[]): { errors: number; warnings: number } {
   let errors = 0
   let warnings = 0
@@ -349,6 +457,7 @@ export function problemCounts(entries: ConsoleEntry[]): { errors: number; warnin
     if (entry.kind === 'end' && entry.failure !== undefined) errors++
     // A folder that could not be read: what the project shows may be short.
     if (entry.kind === 'load' && entry.event.problem) warnings++
+    if (entry.kind === 'stream' && streamProblem(entry.change)) warnings++
     if (entry.kind !== 'result') continue
     if (entry.result.status === 'error') errors++
     for (const log of entry.result.logs ?? []) {
@@ -393,6 +502,8 @@ function rowText(row: ConsoleRow): string {
       return `${NO_TIME}  ${row.error.phase} error  ${row.error.message}  ${row.source}`
     case 'load':
       return `${clockTime(row.at)}  ${row.problem ? 'PROBLEM ' : ''}${row.subject} · ${row.text}`
+    case 'stream':
+      return [clockTime(row.at), 'stream', row.text, row.source].filter(Boolean).join('  ')
   }
 }
 

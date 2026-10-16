@@ -42,7 +42,8 @@ interface Props {
 
 /**
  * The console: every Send's and Run all's requests, what their scripts wrote,
- * and what went wrong, newest at the bottom, with the load log among them. A
+ * and what went wrong, newest at the bottom, with each event stream's
+ * connection opening and closing, and the load log, among them. A
  * request opens to show itself and its response as raw text, each with a Copy;
  * Copy at the top takes every line shown, for a report.
  */
@@ -213,6 +214,17 @@ function Row({ row, open, onToggle }: { row: ConsoleRow; open: boolean; onToggle
               {row.error.line !== undefined && `Line ${row.error.line}: `}
               {row.error.message}
             </span>
+            <span className="console-source">{row.source}</span>
+          </div>
+        </li>
+      )
+    case 'stream':
+      return (
+        <li className={`console-row stream${row.problem ? ' stream-problem' : ''}`}>
+          <div className="console-line">
+            <time className="console-time">{clockTime(row.at)}</time>
+            <span className="console-tag">stream</span>
+            <span className="console-text">{row.text}</span>
             <span className="console-source">{row.source}</span>
           </div>
         </li>

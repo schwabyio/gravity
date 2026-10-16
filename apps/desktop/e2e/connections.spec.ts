@@ -29,7 +29,7 @@ test.beforeAll(async () => {
   server = http.createServer((req, res) => {
     if (req.url === '/orders/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream' })
-      res.write('event: subscribed\ndata: {"topic":"orders"}\n\n')
+      res.write('event: subscribed\ndata: {"topic":"orders"}\n\n: heartbeat\n\n')
       watchers.add(res)
       res.on('close', () => watchers.delete(res))
       return
@@ -86,6 +86,9 @@ const openStep = (name: string) => page.locator('.step-open', { hasText: name })
 const bar = () => page.getByLabel('Open connections')
 const streamMetric = () => page.locator('.response .stream-metric')
 const send = () => page.getByRole('button', { name: 'Send' }).click()
+const consoleButton = () => page.locator('.status-bar').getByRole('button', { name: /^Console/ })
+const streamLines = () =>
+  page.getByRole('region', { name: 'Console', exact: true }).locator('.console-row.stream')
 
 test('a request keeps its stream open as a connection, set in its Settings tab', async () => {
   await page.locator('.request-pane .tabs button', { hasText: 'Settings' }).click()
@@ -161,6 +164,14 @@ test('Close closes it, and a step reading it then says it is not open', async ()
   await expect(bar()).toHaveCount(0)
   await expect.poll(() => watchers.size, { timeout: 5_000 }).toBe(0)
 
+  // The console has the connection opening at its Send, and closing at Close.
+  await consoleButton().click()
+  await expect(streamLines()).toHaveText([
+    /stream\s*opened · GET http:\/\/127\.0\.0\.1:\d+\/orders\/events · 200 OK · connection orders\s*orders$/,
+    /stream\s*closed by the app: Close pressed · open [\d.]+ m?s · 2 events · 1 heartbeat · (silent \d+ s before it closed · )?GET \S+\/orders\/events · connection orders/
+  ])
+  await consoleButton().click()
+
   await send()
   await expect(page.locator('.placeholder.error')).toContainText(
     'No connection named orders is open'
@@ -177,4 +188,29 @@ test('Run all opens its own, and leaves none open', async () => {
   // It closed what the Send had opened, and its own when it ended.
   await expect(bar()).toHaveCount(0)
   await expect.poll(() => watchers.size, { timeout: 5_000 }).toBe(0)
+  await consoleButton().click()
+  const lines = streamLines()
+  await expect(lines).toHaveCount(6)
+  for (const [nth, text] of [
+    [2, 'opened'],
+    [3, 'closed by the app: Run all started'],
+    [4, 'opened'],
+    [5, 'closed by the app: its run ended']
+  ] as const) {
+    await expect(lines.nth(nth)).toContainText(`${text} · `)
+  }
+  await consoleButton().click()
+})
+
+test('Reset closes what Sends hold, and the console says so', async () => {
+  await openStep('watch orders')
+  await send()
+  await expect(bar()).toContainText('orders')
+  await page.getByRole('button', { name: '↺ Reset' }).click()
+  await expect(bar()).toHaveCount(0)
+  await expect.poll(() => watchers.size, { timeout: 5_000 }).toBe(0)
+  await consoleButton().click()
+  await expect(streamLines()).toHaveCount(8)
+  await expect(streamLines().last()).toContainText('closed by the app: Reset pressed · ')
+  await consoleButton().click()
 })

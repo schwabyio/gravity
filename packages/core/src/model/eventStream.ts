@@ -45,6 +45,12 @@ export class EventStreamParser {
   private type: string | undefined
   private id: string | undefined
   private data: string[] | null = null
+  private commentLines = 0
+
+  /** The `:` comment lines read so far: `: heartbeat`, which servers send to keep a stream open. */
+  get comments(): number {
+    return this.commentLines
+  }
 
   push(text: string): ParsedEvent[] {
     const events: ParsedEvent[] = []
@@ -75,7 +81,10 @@ export class EventStreamParser {
 
   private line(line: string): StreamEvent | null {
     if (line === '') return this.dispatch()
-    if (line.startsWith(':')) return null
+    if (line.startsWith(':')) {
+      this.commentLines++
+      return null
+    }
     const colon = line.indexOf(':')
     const field = colon < 0 ? line : line.slice(0, colon)
     let value = colon < 0 ? '' : line.slice(colon + 1)

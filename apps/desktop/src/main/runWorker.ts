@@ -10,6 +10,7 @@ import { takeCoverage } from 'node:v8'
 import {
   checkFlags,
   Connections,
+  idOfFile,
   stepLabel,
   stepMethod,
   UnknownFlagError,
@@ -27,6 +28,7 @@ import {
   StepSchema,
   VarsSchema
 } from '@schwabyio/gravity-core'
+import type { ConnectionCloseReason, StreamChange } from '../shared/ipc.js'
 import { stepRecorder, type KeptValue } from './runtimeVariables.js'
 
 interface RunStepMessage {
@@ -78,6 +80,7 @@ interface CancelMessage {
 interface CloseConnectionMessage {
   type: 'closeConnection'
   collectionPath: string
+  reason: ConnectionCloseReason
   name?: string
 }
 
@@ -109,8 +112,16 @@ function heldFor(collectionPath: string | null): Connections {
   return connections
 }
 
-/** The live view of the streams a run reads, and the Stop that ends the one it reads now. */
-function watchFor(runId: string): StreamWatch {
+/**
+ * The live view of the streams a run reads, the Stop that ends the one it
+ * reads now, and for the console each stream's connection as it opens and
+ * closes — a connection kept for later steps closes long after its run.
+ */
+function watchFor(
+  runId: string,
+  collectionPath: string | null,
+  secrets: ReadonlyArray<[string, string]>
+): StreamWatch {
   return {
     open: (head) => {
       const stopper = new AbortController()
@@ -119,7 +130,28 @@ function watchFor(runId: string): StreamWatch {
       return stopper.signal
     },
     event: (event, at) =>
-      process.parentPort.postMessage({ type: 'live', runId, live: { kind: 'event', event, at } })
+      process.parentPort.postMessage({ type: 'live', runId, live: { kind: 'event', event, at } }),
+    connected: (stream, closed) => {
+      const line = {
+        kind: 'stream' as const,
+        collection: collectionPath ? idOfFile(collectionPath) : null,
+        method: stream.request.method,
+        url: redact(stream.request.url, secrets),
+        ...(stream.connection !== undefined ? { connection: stream.connection } : {})
+      }
+      const tell = (change: StreamChange) =>
+        process.parentPort.postMessage({ type: 'stream', change })
+      tell({
+        ...line,
+        at: Date.now(),
+        change: 'open',
+        status: stream.status,
+        statusText: stream.statusText
+      })
+      void closed.then((how) =>
+        tell({ ...line, at: Date.now(), change: 'close', closed: redact(how, secrets) })
+      )
+    }
   }
 }
 
@@ -137,7 +169,7 @@ process.parentPort.on('message', (event) => {
     return
   }
   if (message.type === 'closeConnection') {
-    held.get(message.collectionPath)?.close(message.name)
+    held.get(message.collectionPath)?.close(message.name, message.reason)
     return
   }
   if (message.type === 'run') void handleStep(message).finally(flushCoverage)
@@ -231,7 +263,7 @@ async function handleStep(message: RunStepMessage): Promise<void> {
       itemPath: message.collectionPath,
       signal: controller.signal,
       connections: heldFor(message.collectionPath),
-      watch: watchFor(message.runId),
+      watch: watchFor(message.runId, message.collectionPath, secrets),
       ...(run.context ? { context: { ...run.context, onSet: recorder.onSet } } : {})
     })
     tellVariables(message.collectionPath, recorder.take(result))
@@ -258,7 +290,7 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
     const recorder = stepRecorder(secrets)
     // Run all closes what Sends left open, and keeps its own only while it runs.
     const sends = heldFor(message.collectionPath)
-    if (!message.keepConnections) sends.close()
+    if (!message.keepConnections) sends.close(undefined, 'runAll')
     // As gta runs it (SPEC.md §2.8, §2.10): setup once, then with a data file
     // once per row — each row a fresh scope, rows in order — then teardown.
     // Cancel stops the steps where they are, and teardown still runs; Cancel
@@ -288,7 +320,7 @@ async function handleCollection(message: RunCollectionMessage): Promise<void> {
         })
       },
       ...(message.keepConnections ? { connections: sends } : {}),
-      watch: watchFor(message.runId),
+      watch: watchFor(message.runId, message.collectionPath, secrets),
       ...(run.context ? { context: { ...run.context, onSet: recorder.onSet } } : {})
     })
     process.parentPort.postMessage({

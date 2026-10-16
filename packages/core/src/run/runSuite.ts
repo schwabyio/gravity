@@ -89,7 +89,7 @@ export async function runSuite(options: SuiteRunOptions): Promise<CollectionRunS
     return await runStages(options, connections)
   } finally {
     // A connection lasts the run: setup's are read by every row, a row's by its later steps.
-    if (!options.connections) connections.close()
+    if (!options.connections) connections.close(undefined, 'runEnded')
   }
 }
 

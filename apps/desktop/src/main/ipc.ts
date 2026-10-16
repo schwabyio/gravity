@@ -45,6 +45,7 @@ import {
 import {
   IpcChannel,
   type AddProjectsOutcome,
+  type ConnectionCloseReason,
   type ConsoleEvent,
   type ConsoleRunKind,
   type GitSetupView,
@@ -96,6 +97,13 @@ const EnvironmentEditsSchema = z.array(
 const ProjectEditsSchema = z.array(z.object({ key: z.enum(PROJECT_FIELDS), value: z.unknown() }))
 
 const optionalString = (value: unknown) => (typeof value === 'string' ? value : null)
+
+/** Why the renderer may say it closes a collection's connections, for the console. */
+const CONNECTION_CLOSE_REASONS = new Set<ConnectionCloseReason>([
+  'closed',
+  'reset',
+  'collectionClosed'
+])
 
 /** A data file row from the renderer: plain values only (SPEC.md §2.8). */
 const DataRowSchema = z.object({
@@ -452,10 +460,18 @@ export function registerIpc(projects: ProjectService): void {
     if (typeof runId === 'string' && runId !== '') runSupervisor.stop(runId)
   })
 
-  ipcMain.on(IpcChannel.connectionClose, (_event, collectionPath: unknown, name: unknown) => {
-    if (typeof collectionPath !== 'string' || collectionPath === '') return
-    runSupervisor.closeConnection(collectionPath, typeof name === 'string' ? name : undefined)
-  })
+  ipcMain.on(
+    IpcChannel.connectionClose,
+    (_event, collectionPath: unknown, reason: unknown, name: unknown) => {
+      if (typeof collectionPath !== 'string' || collectionPath === '') return
+      if (!CONNECTION_CLOSE_REASONS.has(reason as ConnectionCloseReason)) return
+      runSupervisor.closeConnection(
+        collectionPath,
+        reason as ConnectionCloseReason,
+        typeof name === 'string' ? name : undefined
+      )
+    }
+  )
 
   /* ---------------------------------------------------------- workspaces -- */
 
@@ -1144,7 +1160,8 @@ const totalsOf = ({ results: _results, ...totals }: CollectionRunSummary) => tot
 
 /**
  * Push per-step results to every open window as a collection run proceeds,
- * with the events of a stream as it is read and the connections Sends hold.
+ * with the events of a stream as it is read, each stream's connection opening
+ * and closing, and the connections Sends hold.
  */
 export function broadcastRunProgress(): () => void {
   const unsubscribe = [
@@ -1164,6 +1181,7 @@ export function broadcastRunProgress(): () => void {
       })
     }),
     runSupervisor.onLive((runId, live) => toWindows(IpcChannel.eventRunLive, { runId, live })),
+    runSupervisor.onStream(tellConsole),
     runSupervisor.onConnections((collectionPath, connections) =>
       toWindows(IpcChannel.eventConnections, { collectionPath, connections })
     ),

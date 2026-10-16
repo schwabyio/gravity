@@ -2,7 +2,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { CollectionSchema, type Collection } from '../model/documents.js'
-import type { RunResult } from '../model/run.js'
+import type { RunResult, StreamClosed } from '../model/run.js'
 import { Connections, type ConnectionState } from './connections.js'
 import { runSuite } from './runSuite.js'
 
@@ -117,6 +117,34 @@ describe('a connection across steps', () => {
     expect(read!.request.url).toBe(`${origin}/orders/events`)
     // The run's end closes it.
     await streamClosed
+  })
+
+  it('says why it closed each: the step that opens it ran again, the run ended, Close', async () => {
+    const closes: Array<Promise<StreamClosed>> = []
+    const watch = { connected: (_: unknown, closed: Promise<StreamClosed>) => closes.push(closed) }
+    const watchOrders = {
+      name: 'watch orders',
+      GET: `${origin}/orders/events`,
+      connection: 'orders',
+      settings: { untilEvent: 'subscribed' }
+    }
+    await runSuite({
+      collection: collection({ id: 'orders', steps: [watchOrders, watchOrders] }),
+      watch
+    })
+    expect(closes).toHaveLength(2)
+    expect(await closes[0]).toMatchObject({ by: 'app', reason: 'reopened' })
+    expect(await closes[1]).toMatchObject({ by: 'app', reason: 'runEnded' })
+
+    // Kept by the caller, as the app's Sends keep them: closed when it says, as it says.
+    const held = new Connections()
+    await runSuite({
+      collection: collection({ id: 'orders', steps: [watchOrders] }),
+      connections: held,
+      watch
+    })
+    held.close('orders', 'closed')
+    expect(await closes[2]).toMatchObject({ by: 'app', reason: 'closed', events: 1 })
   })
 
   it('takes what is already held when a reading step waits for nothing', async () => {

@@ -61,6 +61,43 @@ export const EventStreamReadSchema = z.object({
 })
 export type EventStreamRead = z.infer<typeof EventStreamReadSchema>
 
+/**
+ * Why the app closed an event stream's connection. For one its step reads to
+ * the end, how the reading stopped; otherwise the run was cancelled, the step
+ * that opens it ran again, Close, Reset, its collection closed, Run all
+ * starting, or the run that opened it ending.
+ */
+export type StreamCloseReason =
+  | Exclude<StreamEnd, 'close' | 'held'>
+  | 'cancelled'
+  | 'reopened'
+  | 'closed'
+  | 'reset'
+  | 'collectionClosed'
+  | 'runAll'
+  | 'runEnded'
+
+/** How an event stream's connection closed, as the app's console tells it. */
+export interface StreamClosed {
+  /**
+   * The server closed it; the app did; it reached the safety limit
+   * (`EVENT_STREAM_LIMITS`); or it failed.
+   */
+  by: 'server' | 'app' | 'limit' | 'error'
+  /** Why the app closed it, when it said. */
+  reason?: StreamCloseReason
+  /** What went wrong, when it failed. */
+  message?: string
+  /** Every event it brought. */
+  events: number
+  /** The `: heartbeat` comment lines it brought, which servers send to keep it open: not events. */
+  heartbeats: number
+  /** Milliseconds from its headers to its close. */
+  openMs: number
+  /** Milliseconds from the last bytes it brought, or its headers, to its close. */
+  silentMs: number
+}
+
 export const SentRequestSchema = z.object({
   method: z.string(),
   /** Final URL, after variable interpolation. */

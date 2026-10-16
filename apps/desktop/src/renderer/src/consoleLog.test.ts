@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { RunResult } from '@schwabyio/gravity-core/model'
+import type { RunResult, StreamClosed } from '@schwabyio/gravity-core/model'
 import type { ConsoleEvent } from '@shared/ipc.js'
 import {
   clockTime,
@@ -18,6 +18,7 @@ import {
   rowsText,
   sentAt,
   shownRows,
+  SILENCE_NOTED_MS,
   sourceOf,
   type ConsoleState,
   type ResultEntry
@@ -439,6 +440,144 @@ describe('the load log', () => {
     const [request] = shownRows(state.entries, 'requests', '').rows
     expect(rowsText([request!])).toBe(
       `${clockTime(1_000)}  GET http://api.test/users/7  200 OK  9 ms  users › get user`
+    )
+  })
+})
+
+describe('event streams', () => {
+  const at = (ms: number) => new Date(2026, 9, 16, 9, 0, 0, ms).getTime()
+  const stream = (
+    ms: number,
+    change:
+      | { change: 'open'; status: number; statusText: string }
+      | { change: 'close'; closed: StreamClosed },
+    connection?: string
+  ): ConsoleEvent => ({
+    kind: 'stream',
+    at: at(ms),
+    collection: 'orders',
+    method: 'GET',
+    url: 'http://api.test/orders/events',
+    ...(connection !== undefined ? { connection } : {}),
+    ...change
+  })
+  const opened = { change: 'open', status: 200, statusText: 'OK' } as const
+  /** A close with no heartbeats and no silence before it, unless it says. */
+  type Close = Omit<StreamClosed, 'heartbeats' | 'silentMs'> & Partial<StreamClosed>
+  const closed = (how: Close) =>
+    ({ change: 'close', closed: { heartbeats: 0, silentMs: 0, ...how } }) as const
+  const state = play([
+    stream(1, opened),
+    stream(2, closed({ by: 'server', events: 3, openMs: 8_300 })),
+    start('r1', 'send'),
+    { kind: 'result', runId: 'r1', at: 2_000, result: result() },
+    stream(3, opened, 'watch'),
+    stream(4, closed({ by: 'app', reason: 'closed', events: 1, openMs: 450 }), 'watch'),
+    stream(5, opened, 'feed'),
+    stream(6, closed({ by: 'error', message: 'other side closed', events: 0, openMs: 20 }), 'feed'),
+    stream(7, opened),
+    stream(8, closed({ by: 'error', message: 'other side closed', events: 2, openMs: 30 })),
+    stream(9, opened),
+    stream(10, closed({ by: 'limit', events: 1_005, openMs: 1_200 }))
+  ])
+
+  it('shows each connection opening and closing among the requests, and how it closed', () => {
+    const { rows } = shownRows(state.entries, 'all', '')
+    expect(rows.map((row) => row.kind)).toEqual([
+      'stream',
+      'stream',
+      'request',
+      ...Array(8).fill('stream')
+    ])
+    const texts = rows.filter((row) => row.kind === 'stream').map((row) => row.text)
+    expect(texts).toEqual([
+      'opened · GET http://api.test/orders/events · 200 OK',
+      'closed by the server · open 8.30 s · 3 events · GET http://api.test/orders/events',
+      'opened · GET http://api.test/orders/events · 200 OK · connection watch',
+      'closed by the app: Close pressed · open 450 ms · 1 event · GET http://api.test/orders/events · connection watch',
+      'opened · GET http://api.test/orders/events · 200 OK · connection feed',
+      'closed with an error: other side closed · open 20 ms · 0 events · GET http://api.test/orders/events · connection feed',
+      'opened · GET http://api.test/orders/events · 200 OK',
+      'closed with an error: other side closed · open 30 ms · 2 events · GET http://api.test/orders/events',
+      'opened · GET http://api.test/orders/events · 200 OK',
+      'closed at the safety limit · open 1.20 s · 1005 events · GET http://api.test/orders/events'
+    ])
+    expect(rows[0]).toMatchObject({ source: 'orders', problem: false })
+  })
+
+  it('says why the app closed one, when it said', () => {
+    const text = (closedHow: Close) =>
+      shownRows(play([stream(1, closed(closedHow))]).entries, 'all', '').rows.map((row) =>
+        row.kind === 'stream' ? row.text.split(' · ')[0] : row.kind
+      )
+    expect(text({ by: 'app', reason: 'maxEvents', events: 5, openMs: 1 })).toEqual([
+      'closed by the app: max events reached'
+    ])
+    expect(text({ by: 'app', reason: 'reopened', events: 1, openMs: 1 })).toEqual([
+      'closed by the app: the step that opens it ran again'
+    ])
+    expect(text({ by: 'app', reason: 'runAll', events: 1, openMs: 1 })).toEqual([
+      'closed by the app: Run all started'
+    ])
+    expect(text({ by: 'app', events: 1, openMs: 1 })).toEqual(['closed by the app'])
+  })
+
+  it('counts the heartbeats a close brought, and says when the server went quiet before it', () => {
+    const text = (closedHow: Close) => {
+      const [row] = shownRows(
+        play([stream(1, closed(closedHow), 'orders')]).entries,
+        'all',
+        ''
+      ).rows
+      return row?.kind === 'stream' ? row.text : ''
+    }
+    expect(
+      text({
+        by: 'error',
+        message: 'other side closed',
+        events: 3,
+        heartbeats: 18,
+        openMs: 300_000,
+        silentMs: 62_400
+      })
+    ).toBe(
+      'closed with an error: other side closed · open 300.00 s · 3 events · 18 heartbeats · silent 62 s before it closed · GET http://api.test/orders/events · connection orders'
+    )
+    // One heartbeat, and a quiet too short to be worth saying.
+    expect(
+      text({
+        by: 'server',
+        events: 0,
+        heartbeats: 1,
+        openMs: 6_000,
+        silentMs: SILENCE_NOTED_MS - 1
+      })
+    ).toBe(
+      'closed by the server · open 6.00 s · 0 events · 1 heartbeat · GET http://api.test/orders/events · connection orders'
+    )
+    expect(text({ by: 'server', events: 0, openMs: 6_000, silentMs: SILENCE_NOTED_MS })).toContain(
+      ' · silent 5 s before it closed · '
+    )
+  })
+
+  it('lists them under Requests, and finds a connection by name', () => {
+    expect(shownRows(state.entries, 'requests', '').rows).toHaveLength(11)
+    expect(shownRows(state.entries, 'requests', 'connection watch').rows).toHaveLength(2)
+    expect(shownRows(state.entries, 'loading', '').rows).toHaveLength(0)
+  })
+
+  it('warns of a kept connection that failed, not of one its step reads, which errors the step', () => {
+    expect(problemCounts(state.entries)).toEqual({ errors: 0, warnings: 1 })
+    const problems = shownRows(state.entries, 'problems', '').rows
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toMatchObject({ kind: 'stream', problem: true })
+    expect(problems[0]!.kind === 'stream' && problems[0]!.text).toContain('connection feed')
+  })
+
+  it('copies as text, the time first, then what happened and where', () => {
+    const [open] = shownRows(state.entries, 'all', '').rows
+    expect(rowsText([open!])).toBe(
+      '09:00:00.001  stream  opened · GET http://api.test/orders/events · 200 OK  orders'
     )
   })
 })

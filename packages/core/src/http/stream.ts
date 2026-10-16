@@ -2,7 +2,13 @@ import { Buffer } from 'node:buffer'
 import type { Dispatcher } from 'undici'
 import type { Settings } from '../model/documents.js'
 import { EventStreamParser, type StreamEvent } from '../model/eventStream.js'
-import type { ReceivedResponse, SentRequest, StreamEnd } from '../model/run.js'
+import type {
+  ReceivedResponse,
+  SentRequest,
+  StreamClosed,
+  StreamCloseReason,
+  StreamEnd
+} from '../model/run.js'
 
 /**
  * The most an event stream keeps, whatever its settings, so a chatty stream
@@ -19,6 +25,16 @@ export interface HeldEvent {
   at: number
 }
 
+/** An event stream's connection, as `StreamWatch.connected` hears of it. */
+export interface ConnectedStream {
+  /** The request that opened it, as sent. */
+  request: SentRequest
+  status: number
+  statusText: string
+  /** The name it is kept under for later steps (SPEC.md §2.11); absent for one its step reads to the end. */
+  connection?: string
+}
+
 /** Watching a step read an event stream: the app's live view and its Stop button. */
 export interface StreamWatch {
   /**
@@ -28,6 +44,12 @@ export interface StreamWatch {
   open?: (opened: { status: number; statusText: string }) => AbortSignal | undefined
   /** Each event the step takes, in order. */
   event?: (event: StreamEvent, at: number) => void
+  /**
+   * An event stream's connection opened: its headers arrived. Once for each,
+   * whether its step reads it to the end or keeps it for later steps;
+   * `closed` settles when it closes, whoever closes it.
+   */
+  connected?: (stream: ConnectedStream, closed: Promise<StreamClosed>) => void
 }
 
 /** How a stream came to give no more. */
@@ -51,11 +73,26 @@ export class EventStreamPump {
   private bytes = 0
   private ended: Ended | null = null
   private closing = false
+  /** Why `close()` was called, when it said. */
+  private reason: StreamCloseReason | undefined
   private waiters: Array<() => void> = []
+  private readonly parser = new EventStreamParser()
+  /** Every event that arrived, taken or not. */
+  private received = 0
+  /** When the server last sent anything: bytes, or its headers. */
+  private heardAt = this.headersAt
+  /** Settles `closed`. */
+  private settle!: (closed: StreamClosed) => void
+  /** Settles once the connection closes: how, and what it brought. */
+  readonly closed = new Promise<StreamClosed>((resolve) => (this.settle = resolve))
   /** Something changed: an event held or taken, or the end. */
   onChange?: () => void
 
-  constructor(private readonly body: Dispatcher.ResponseData['body']) {
+  constructor(
+    private readonly body: Dispatcher.ResponseData['body'],
+    /** The request's: a Cancel aborts it, and undici its body. */
+    private readonly signal?: AbortSignal
+  ) {
     void this.pump()
   }
 
@@ -90,10 +127,11 @@ export class EventStreamPump {
     return new Promise((resolve) => this.waiters.push(resolve))
   }
 
-  /** Stop reading and close the connection. Held events stay held. */
-  close(): void {
+  /** Stop reading and close the connection, saying why for `closed`. Held events stay held. */
+  close(reason?: StreamCloseReason): void {
     if (this.ended) return
     this.closing = true
+    this.reason ??= reason
     this.body.destroy()
   }
 
@@ -108,24 +146,44 @@ export class EventStreamPump {
     if (this.ended) return
     this.ended = ended
     this.notify()
+    const now = performance.now()
+    const brought = {
+      events: this.received,
+      heartbeats: this.parser.comments,
+      openMs: now - this.headersAt,
+      silentMs: now - this.heardAt
+    }
+    if ('error' in ended) {
+      const { error } = ended
+      this.settle({
+        by: 'error',
+        message: error instanceof Error ? error.message : String(error),
+        ...brought
+      })
+    } else {
+      const by = ended.by === 'limit' ? 'limit' : this.closing ? 'app' : 'server'
+      const why = by === 'app' && this.reason ? { reason: this.reason } : {}
+      this.settle({ by, ...why, ...brought })
+    }
   }
 
   private async pump(): Promise<void> {
-    const parser = new EventStreamParser()
     const decoder = new TextDecoder()
     /** Where `pending` starts, in all the text pushed to the parser. */
     let offset = 0
     try {
       for await (const chunk of this.body as AsyncIterable<Buffer>) {
+        this.heardAt = performance.now()
         this.bytes += chunk.byteLength
         const piece = decoder.decode(chunk, { stream: true })
         this.pending += piece
-        const events = parser.push(piece)
+        const events = this.parser.push(piece)
         for (const { event, end } of events) {
           const text = this.pending.slice(0, end - offset)
           this.pending = this.pending.slice(end - offset)
           offset = end
           this.held.push({ event, text, at: performance.now() - this.headersAt })
+          this.received++
         }
         if (events.length > 0) this.notify()
         if (
@@ -141,7 +199,12 @@ export class EventStreamPump {
       this.pending += decoder.decode()
       this.finish({ by: 'close' })
     } catch (error) {
-      // Destroying the body to close it makes undici report it aborted: that is a close.
+      // Destroying the body to close it makes undici report it aborted: that is a
+      // close. So is a Cancel, which aborts the request, and undici the body with it.
+      if (!this.closing && this.signal?.aborted) {
+        this.closing = true
+        this.reason ??= 'cancelled'
+      }
       this.finish(this.closing ? { by: 'close' } : { error })
     }
   }
@@ -272,7 +335,7 @@ export class OpenStream {
     readonly pump: EventStreamPump
   ) {}
 
-  close(): void {
-    this.pump.close()
+  close(reason?: StreamCloseReason): void {
+    this.pump.close(reason)
   }
 }

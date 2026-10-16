@@ -61,6 +61,8 @@ export interface SendOptions {
    * its events: later steps do.
    */
   keep?: (stream: OpenStream) => void
+  /** For a step that opens a connection: its name, for `watch.connected` to hear. */
+  connection?: string
   /**
    * For an event stream with `untilTestsPass` (SPEC.md §2.3): whether the
    * step's tests pass on what it has read so far, asked after each event.
@@ -293,7 +295,16 @@ export async function sendHttpRequest(
     const bodyless = method === 'HEAD' || BODYLESS_STATUSES.has(response.statusCode)
     if (isEventStream(contentType) && !bodyless) {
       clearTimeout(timer)
-      const pump = new EventStreamPump(response.body)
+      const pump = new EventStreamPump(response.body, signal)
+      options.watch?.connected?.(
+        {
+          request: sent,
+          status: received.status,
+          statusText: received.statusText,
+          ...(options.connection !== undefined ? { connection: options.connection } : {})
+        },
+        pump.closed
+      )
       let read: StreamRead
       try {
         read = await readStream(pump, settings, {
@@ -304,12 +315,14 @@ export async function sendHttpRequest(
           ...trying(options.passes, sent, received, { startedAt, ttfbMs, startedHr })
         })
       } catch (cause) {
-        pump.close()
+        pump.close(signal.aborted ? 'cancelled' : undefined)
         throw cause
       }
+      const { endedBy } = read
       // Kept even once ended: what it still holds is for the steps that read it.
       if (options.keep) options.keep(new OpenStream(sent, received, pump))
-      else pump.close()
+      // Its step is done reading: closed, saying how the reading stopped, unless the server closed it.
+      else pump.close(endedBy === 'close' || endedBy === 'held' ? undefined : endedBy)
       return {
         ok: true,
         request: sent,

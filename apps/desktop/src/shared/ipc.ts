@@ -19,6 +19,8 @@ import type {
   SetBy,
   Step,
   StepList,
+  StreamClosed,
+  StreamCloseReason,
   StreamEvent,
   TestsAllowance,
   VariablePreviews,
@@ -624,6 +626,12 @@ export interface ConnectionView {
   open: boolean
 }
 
+/** Why the app closes a connection a collection's Sends hold: Close on it, Reset, or × on the collection. */
+export type ConnectionCloseReason = Extract<
+  StreamCloseReason,
+  'closed' | 'reset' | 'collectionClosed'
+>
+
 /** The connections a collection's Sends hold, after a change. */
 export interface ConnectionsView {
   collectionPath: string
@@ -707,6 +715,26 @@ export type ConsoleEvent =
       failure?: string
     }
   | LoadEvent
+  | StreamChange
+
+/**
+ * An event stream's connection opened or closed (SPEC.md §2.3, §2.11), for
+ * the console: one its step reads to the end, or one kept for later steps.
+ */
+export type StreamChange = {
+  kind: 'stream'
+  /** Epoch milliseconds. */
+  at: number
+  /** The collection file's name; null for none. */
+  collection: string | null
+  /** The request that opened it, with secrets hidden. */
+  method: string
+  url: string
+  /** The name it is kept under for later steps; absent for one its step reads to the end. */
+  connection?: string
+} & (
+  { change: 'open'; status: number; statusText: string } | { change: 'close'; closed: StreamClosed }
+)
 
 /**
  * A line of the load log: what the app did to list projects and set git up —
@@ -765,8 +793,8 @@ export interface DesktopApi {
   onConsole(callback: (event: ConsoleEvent) => void): Unsubscribe
   /** The load log's lines from before the window asked: startup's above all. */
   consoleHistory(): Promise<LoadEvent[]>
-  /** Close a connection a collection's Sends hold, or with no name all of them. */
-  closeConnection(collectionPath: string, name?: string): void
+  /** Close a connection a collection's Sends hold, or with no name all of them, saying why. */
+  closeConnection(collectionPath: string, reason: ConnectionCloseReason, name?: string): void
   onConnections(callback: (view: ConnectionsView) => void): Unsubscribe
 
   workspaces: {

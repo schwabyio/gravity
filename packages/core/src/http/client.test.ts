@@ -7,9 +7,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { classifyBody, readConnection, sendHttpRequest, statusTextFor } from './client.js'
-import { EVENT_STREAM_LIMITS, type OpenStream } from './stream.js'
+import {
+  EVENT_STREAM_LIMITS,
+  type ConnectedStream,
+  type OpenStream,
+  type StreamWatch
+} from './stream.js'
 import { bodyAsObject } from '../model/bodyObject.js'
-import type { SentRequest } from '../model/run.js'
+import type { SentRequest, StreamClosed } from '../model/run.js'
 
 let server: http.Server
 let origin: string
@@ -415,6 +420,18 @@ describe('sendHttpRequest with an event stream', () => {
           res.write('event: tick\ndata: 1\n\nevent: tick\ndata: 2\n\n')
           res.write('event: done\ndata: 3\n\nevent: tick\ndata: 4\n\n')
           return
+        case '/drop':
+          // One event, then the connection goes without the stream ending.
+          res.writeHead(200, SSE)
+          res.write('data: 1\n\n', () => setTimeout(() => res.socket?.destroy(), 20))
+          return
+        case '/pings':
+          // A comment to open with, as some servers send, then heartbeats, an event and the end.
+          res.writeHead(200, SSE)
+          res.write(':ok\n\n')
+          res.write(': ping\n\n: ping\n\n')
+          res.end('data: 1\n\n: ping\n\n')
+          return
         case '/late':
           setTimeout(() => {
             res.writeHead(200, SSE)
@@ -611,6 +628,72 @@ describe('sendHttpRequest with an event stream', () => {
     )
     expect(read.ok && read.response.status).toBe(200)
     kept[0]!.close()
+  })
+
+  it('tells a watcher of each connection it opens, and how and when each closed', async () => {
+    const heard: Array<{ stream: ConnectedStream; closed: Promise<StreamClosed> }> = []
+    const watch: StreamWatch = { connected: (stream, closed) => heard.push({ stream, closed }) }
+    const closing = async (at: number) => heard[at]!.closed
+
+    await sendHttpRequest(stream('/closed'), { watch })
+    expect(heard[0]!.stream).toEqual({
+      request: stream('/closed'),
+      status: 200,
+      statusText: 'OK'
+    })
+    expect(await closing(0)).toEqual({
+      by: 'server',
+      events: 3,
+      heartbeats: 1,
+      openMs: expect.any(Number),
+      silentMs: expect.any(Number)
+    })
+
+    // A step done reading closes it, saying how its reading stopped.
+    await sendHttpRequest(stream('/open'), { watch, settings: { maxEvents: 2 } })
+    expect(await closing(1)).toMatchObject({ by: 'app', reason: 'maxEvents' })
+    expect((await closing(1)).events).toBeGreaterThanOrEqual(2)
+
+    await sendHttpRequest(stream('/flood'), { watch })
+    expect(await closing(2)).toMatchObject({ by: 'limit' })
+    expect((await closing(2)).events).toBeGreaterThanOrEqual(EVENT_STREAM_LIMITS.events)
+
+    const dropped = await sendHttpRequest(stream('/drop'), { watch })
+    expect(dropped.ok).toBe(false)
+    expect(await closing(3)).toMatchObject({ by: 'error', message: expect.any(String), events: 1 })
+
+    // One kept for later steps is named, and stays open until it is closed.
+    const kept: OpenStream[] = []
+    await sendHttpRequest(stream('/quiet'), {
+      watch,
+      connection: 'prices',
+      keep: (s) => kept.push(s)
+    })
+    expect(heard[4]!.stream.connection).toBe('prices')
+    let settled = false
+    void heard[4]!.closed.then(() => (settled = true))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(settled).toBe(false)
+    kept[0]!.close('reset')
+    const closed = await closing(4)
+    expect(closed).toMatchObject({ by: 'app', reason: 'reset', events: 1, heartbeats: 0 })
+    expect(closed.openMs).toBeGreaterThanOrEqual(45)
+    // Its one event came with the headers, and nothing since.
+    expect(closed.silentMs).toBeGreaterThanOrEqual(45)
+
+    // A Cancel while the step reads closes it as cancelled.
+    const controller = new AbortController()
+    const cancelled = sendHttpRequest(stream('/open'), { watch, signal: controller.signal })
+    setTimeout(() => controller.abort(), 60)
+    expect((await cancelled).ok).toBe(false)
+    expect(await closing(5)).toMatchObject({ by: 'app', reason: 'cancelled' })
+
+    // Heartbeats are counted apart from the events; the end is what it heard last.
+    await sendHttpRequest(stream('/pings'), { watch })
+    const pinged = await closing(6)
+    expect(pinged).toMatchObject({ by: 'server', events: 1, heartbeats: 4 })
+    expect(pinged.silentMs).toBeLessThan(pinged.openMs + 1)
+    expect(heard).toHaveLength(7)
   })
 
   it('reads a HEAD response as having no body', async () => {
