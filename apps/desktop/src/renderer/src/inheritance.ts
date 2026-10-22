@@ -129,6 +129,44 @@ export function inheritedLayers(input: {
   })
 }
 
+/** A library file as an Open button names it: where it is written, from its project's folder. */
+export const filePlace = (
+  home: 'endpoints' | 'bases' | 'requests',
+  file: string,
+  shared: boolean
+) => `${shared ? 'the shared project’s ' : ''}${home}/${file}`
+
+/** The file a layer is written in, as filePlace says it; null for the collection's own. */
+export function layerFile(layer: InheritedLayer): string | null {
+  switch (layer.kind) {
+    case 'endpoint-file':
+    case 'endpoint':
+      return layer.endpoint
+        ? filePlace('endpoints', `${layer.endpoint.fileName}.yml`, layer.shared)
+        : null
+    case 'base':
+      return filePlace('bases', `${layer.name}.yml`, layer.shared)
+    case 'set':
+      return layer.name ? filePlace('requests', layer.name, layer.shared) : null
+    default:
+      return null
+  }
+}
+
+/**
+ * What a layer's Open button says on hover: what it opens, and what of the
+ * layer is edited there — its headers, its pre-request script, its tests.
+ */
+export function openLayerTip(
+  layer: InheritedLayer,
+  part: 'headers' | 'pre-request script' | 'tests'
+): string {
+  const file = layerFile(layer)
+  if (!file) return `Open the collection’s settings to edit its ${part}`
+  const whose = layer.kind === 'endpoint' ? `the ${part} of ${layer.name}` : `its ${part}`
+  return `Open ${file} to edit ${whose}`
+}
+
 /** What the step sends: the layers it uses, folded, with its own headers over them. */
 export function sentHeaders(layers: InheritedLayer[], own: Headers | undefined): Headers {
   return mergeHeaders(foldLayers(layers.filter((layer) => layer.used)).headers, own)

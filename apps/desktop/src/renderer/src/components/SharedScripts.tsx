@@ -3,8 +3,9 @@ import type { IgnoredPath, RunResult } from '@schwabyio/gravity-core/model'
 import type { CheckFileView, EditorTarget } from '@shared/ipc.js'
 import { checkLines, madeIn, type CheckLine, type ScriptOf } from '../checkLines.js'
 import { calledChecks, checkFileName } from '../checkSources.js'
-import type { InheritedLayer } from '../inheritance.js'
+import { openLayerTip, type InheritedLayer } from '../inheritance.js'
 import CodeEditor from './CodeEditor.js'
+import OpenButton from './OpenButton.js'
 import OpenInEditor from './OpenInEditor.js'
 
 type Kind = 'pre-request' | 'tests'
@@ -179,14 +180,11 @@ export default function SharedScripts(props: Props) {
                     {!layer.used && <span className="layer-off">not used by this step</span>}
                   </>,
                   <>
-                    <button
-                      type="button"
-                      className="link"
+                    <OpenButton
+                      tip={openLayerTip(layer, what)}
                       onClick={() => props.onOpen(layer)}
-                      aria-label={`Open the ${layer.title}’s ${what}`}
-                    >
-                      Open
-                    </button>
+                      ariaLabel={`Open the ${layer.title}’s ${what}`}
+                    />
                     {external(
                       `the ${layer.title}’s ${what}`,
                       layerScriptTarget(layer, kind, props.collectionPath)

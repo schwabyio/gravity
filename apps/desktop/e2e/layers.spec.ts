@@ -165,7 +165,19 @@ test('the Headers tab lists each layer’s headers, outermost first, and what re
   // X-Request-Id, Accept, Authorization and the step's own X-Client.
   await expect(requestTab('Headers')).toContainText('4')
 
-  // Each layer opens where it is written.
+  // Each layer opens where it is written, which its Open says on hover.
+  await fromLayer('endpoint')
+    .getByRole('button', { name: 'Open the endpoint GET /users/{id}' })
+    .hover()
+  await expect(page.locator('.tooltip')).toHaveText(
+    'Open endpoints/people.yml to edit the headers of GET /users/{id}'
+  )
+  await fromLayer('collection')
+    .getByRole('button', { name: 'Edit the collection’s headers' })
+    .hover()
+  await expect(page.locator('.tooltip')).toHaveText(
+    'Open the collection’s settings to edit its headers'
+  )
   await fromLayer('base collection')
     .getByRole('button', { name: 'Open the base collection auth' })
     .click()

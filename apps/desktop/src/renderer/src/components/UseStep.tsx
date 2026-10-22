@@ -10,9 +10,10 @@ import {
 import type { ReactNode } from 'react'
 import type { RequestSetView } from '@shared/ipc.js'
 import type { EditorState } from '../requestState.js'
+import { filePlace } from '../inheritance.js'
 import { referenceFor, resolveSet } from '../reuse.js'
+import OpenButton from './OpenButton.js'
 import OpenInEditor from './OpenInEditor.js'
-import Tooltip from './Tooltip.js'
 import VariableInput from './VariableInput.js'
 
 /**
@@ -65,11 +66,13 @@ export function UseBar(props: BarProps) {
         ))}
       </select>
       {set && (
-        <Tooltip text="Open the reusable requests file to edit its requests and params">
-          <button type="button" onClick={() => props.onOpenSet(set)}>
-            Open
-          </button>
-        </Tooltip>
+        <OpenButton
+          className="collection-open-button"
+          size={15}
+          tip={`Open ${setPlace(set)} to edit its requests and params`}
+          onClick={() => props.onOpenSet(set)}
+          ariaLabel={`Open ${fileName(set)}`}
+        />
       )}
       {/* The file itself, shared or not; a request picked under the step opens at it. */}
       {set && (
@@ -102,6 +105,9 @@ export function UseBar(props: BarProps) {
 }
 
 const fileName = (set: RequestSetView): string => set.path.split(/[\\/]/).pop() ?? set.path
+/** Where it is written, as an Open button says: `requests/orders.yml`. */
+const setPlace = (set: RequestSetView): string =>
+  filePlace('requests', fileName(set), set.source === 'global')
 
 interface ChildBarProps {
   set: RequestSetView
@@ -158,11 +164,13 @@ export function UseChildBar(props: ChildBarProps) {
       ) : (
         <span className="use-child-line">{line!.text}</span>
       )}
-      <Tooltip text={`Open ${fileName(set)} at this request, to change it there`}>
-        <button type="button" onClick={() => props.onOpenSet(set, child)}>
-          Open
-        </button>
-      </Tooltip>
+      <OpenButton
+        className="collection-open-button"
+        size={15}
+        tip={`Open ${setPlace(set)} at ${entry.label}, to change it there`}
+        onClick={() => props.onOpenSet(set, child)}
+        ariaLabel={`Open ${fileName(set)} at ${entry.label}`}
+      />
       <OpenInEditor
         className="collection-open-button"
         size={15}

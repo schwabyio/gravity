@@ -151,6 +151,8 @@ test('a collection extends a base collection, set in its settings', async () => 
   const drawer = page.getByRole('dialog', { name: 'Collection settings' })
   await drawer.getByLabel('Base collection').selectOption('auth')
   await expect.poll(() => file().extends, { timeout: 5_000 }).toBe('auth')
+  // Beside it, an arrow opens the base where it is written.
+  await expect(drawer.getByRole('button', { name: 'Open the base collection auth' })).toBeVisible()
   await drawer.getByRole('button', { name: 'Close', exact: true }).click()
 
   received = []

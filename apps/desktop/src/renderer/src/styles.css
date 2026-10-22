@@ -404,14 +404,6 @@ button:disabled {
   font-size: 12px;
 }
 
-.collection-script-note .link {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent);
-  font-size: 12px;
-}
-
 .collection-script-note ol {
   margin: 4px 0;
   padding-left: 20px;
@@ -484,20 +476,12 @@ button:disabled {
 
 .inherited-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   margin: 0 4px 4px;
   color: var(--text-dim);
   font-size: 12px;
   font-weight: 600;
-}
-
-.inherited-head .link {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent);
-  font-size: 12px;
 }
 
 .inherited-headers tr.unused td:not(.inherited-note) {
@@ -4218,8 +4202,10 @@ button.tag.filter.on {
   color: var(--text);
 }
 
-/* "Open in …" as an icon, beside the name of what it opens. */
-.open-external {
+/* "Open in …" as an icon, beside the name of what it opens; and, an arrow, where it is
+   written, here in the app. */
+.open-external,
+.open-here {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4233,7 +4219,8 @@ button.tag.filter.on {
   vertical-align: middle;
 }
 
-.open-external:hover {
+.open-external:hover,
+.open-here:hover {
   background: var(--surface-alt);
   color: var(--accent);
 }

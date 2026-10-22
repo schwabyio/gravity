@@ -5,6 +5,7 @@ import {
   headerCount,
   inheritedLayers,
   inheritedSettings,
+  openLayerTip,
   replacedBy,
   sentHeaders
 } from './inheritance.js'
@@ -130,5 +131,24 @@ describe('what a step inherits', () => {
     })
     expect(inheritedSettings(alone)).toEqual({ timeout: { value: 7000, from: 'endpoint' } })
     expect(inheritedSettings(layersFor(false)).timeout).toEqual({ value: 10, from: 'collection' })
+  })
+
+  it('says on each layer’s Open what it opens, and where in the project — the shared one’s too', () => {
+    expect(layersFor().map((layer) => openLayerTip(layer, 'headers'))).toEqual([
+      'Open the shared project’s endpoints/people.yml to edit its headers',
+      'Open the shared project’s endpoints/people.yml to edit the headers of GET /users/{id}',
+      'Open bases/auth.yml to edit its headers',
+      'Open the collection’s settings to edit its headers'
+    ])
+    const set = inheritedLayers({
+      method: 'GET',
+      url: '/login',
+      useBase: true,
+      endpoints: [],
+      bases: [],
+      collection: {},
+      set: { layer: {}, path: '/project/requests/login.yml', shared: false }
+    }).find((layer) => layer.kind === 'set')!
+    expect(openLayerTip(set, 'tests')).toBe('Open requests/login.yml to edit its tests')
   })
 })

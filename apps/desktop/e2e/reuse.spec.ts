@@ -241,7 +241,12 @@ test('Open shows the reusable requests at the request picked, and the way back f
   await children('orders')
     .getByRole('button', { name: /check out/ })
     .click()
-  await page.locator('.use-child-bar').getByRole('button', { name: 'Open', exact: true }).click()
+  const open = page.locator('.use-child-bar').getByRole('button', { name: /^Open orders\.yml at / })
+  await open.hover()
+  await expect(page.locator('.tooltip')).toHaveText(
+    /^Open requests\/orders\.yml at .*check out.*, to change it there$/
+  )
+  await open.click()
   await expect(page.locator('.collection-header h1')).toHaveText('orders')
   await expect(stepRow('check out')).toHaveClass(/selected/)
   const back = page.getByRole('button', { name: 'Back to flow · step 2 (orders)' })

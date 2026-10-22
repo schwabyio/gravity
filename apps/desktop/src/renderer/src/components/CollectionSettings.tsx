@@ -9,6 +9,7 @@ import type {
   VariablePreviews,
   Vars
 } from '@schwabyio/gravity-core/model'
+import { filePlace } from '../inheritance.js'
 import { headerRows, toHeaders, type HeaderRow } from '../requestState.js'
 import { testsRuleText, useTestsRule } from '../testsRule.js'
 import CodeEditor from './CodeEditor.js'
@@ -16,6 +17,7 @@ import FlagConditionsEditor from './FlagConditionsEditor.js'
 import InfoTip from './InfoTip.js'
 import KeyValueEditor from './KeyValueEditor.js'
 import ParamsEditor from './ParamsEditor.js'
+import OpenButton from './OpenButton.js'
 import SettingsTab from './SettingsTab.js'
 
 /** How `extends:` names a base: plain, or `global:` when the project has one of the same name. */
@@ -239,12 +241,20 @@ export default function CollectionSettings(props: Props) {
                       const chosen = props.bases.find(
                         (base) => referenceOf(props.bases!, base) === collection.extends
                       )
+                      if (!chosen) return null
+                      const file = filePlace(
+                        'bases',
+                        `${chosen.name}.yml`,
+                        chosen.source === 'global'
+                      )
                       return (
-                        chosen && (
-                          <button type="button" onClick={() => props.onOpenBase(chosen.path)}>
-                            Open
-                          </button>
-                        )
+                        <OpenButton
+                          className="collection-open-button"
+                          size={15}
+                          tip={`Open ${file} to edit the base collection`}
+                          onClick={() => props.onOpenBase(chosen.path)}
+                          ariaLabel={`Open the base collection ${chosen.name}`}
+                        />
                       )
                     })()}
                   </div>

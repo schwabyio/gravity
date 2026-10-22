@@ -1,6 +1,7 @@
 import type { Headers } from '@schwabyio/gravity-core/model'
 import { headerItems } from '@schwabyio/gravity-core/model'
-import { replacedBy, type InheritedLayer } from '../inheritance.js'
+import { openLayerTip, replacedBy, type InheritedLayer } from '../inheritance.js'
+import OpenButton from './OpenButton.js'
 
 interface Props {
   /** Every layer the step inherits, outermost first. */
@@ -44,18 +45,15 @@ export default function InheritedHeaders({ layers, own, onOpen }: Props) {
                 {layer.shared && <span className="shared-tag">shared</span>}
                 {!layer.used && <span className="layer-off">not used by this step</span>}
               </span>
-              <button
-                type="button"
-                className="link"
+              <OpenButton
+                tip={openLayerTip(layer, 'headers')}
                 onClick={() => onOpen(layer)}
-                aria-label={
+                ariaLabel={
                   collection
                     ? 'Edit the collection’s headers'
                     : `Open the ${layer.title} ${layer.name ?? ''}`.trim()
                 }
-              >
-                {collection ? 'Edit' : 'Open'}
-              </button>
+              />
             </div>
             <table className="kv readonly">
               <tbody>

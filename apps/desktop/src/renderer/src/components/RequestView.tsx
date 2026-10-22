@@ -17,6 +17,7 @@ import {
   type VariablePreviews
 } from '@schwabyio/gravity-core/model'
 import {
+  filePlace,
   headerCount as countHeaders,
   inheritedLayers,
   inheritedSettings,
@@ -33,6 +34,7 @@ import SettingsTab from './SettingsTab.js'
 import InheritedHeaders from './InheritedHeaders.js'
 import KeyValueEditor from './KeyValueEditor.js'
 import MultipartEditor, { FileBodyEditor } from './MultipartEditor.js'
+import OpenButton from './OpenButton.js'
 import QueryParamsEditor from './QueryParamsEditor.js'
 import PaneHead from './PaneHead.js'
 import ResponsePane, { type LiveView, type ResponseTab } from './ResponsePane.js'
@@ -792,6 +794,7 @@ function EndpointNote(props: {
       ? `${brings.slice(0, -1).join(', ')} and ${brings[brings.length - 1]}`
       : brings[0]
   const name = `${endpoint.method} ${endpoint.path}`
+  const file = filePlace('endpoints', `${endpoint.fileName}.yml`, endpoint.source === 'global')
   return (
     <p className={`endpoint-note${props.using ? '' : ' off'}`} role="note">
       {props.using ? (
@@ -806,9 +809,11 @@ function EndpointNote(props: {
           Not using the endpoint base <strong>{name}</strong> here.
         </>
       )}
-      <button type="button" className="link" onClick={() => props.onOpen(endpoint)}>
-        Open
-      </button>
+      <OpenButton
+        tip={`Open ${file} to edit the endpoint ${name}`}
+        onClick={() => props.onOpen(endpoint)}
+        ariaLabel={`Open the endpoint ${name}`}
+      />
       {props.onUse && (
         <button type="button" className="link" onClick={() => props.onUse?.(!props.using)}>
           {props.using ? 'Don’t use it here' : 'Use it'}
