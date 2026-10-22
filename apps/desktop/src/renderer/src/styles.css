@@ -905,6 +905,13 @@ button:disabled {
   color: var(--text);
 }
 
+/* An icon among the heading's glyphs, as tall as their line. */
+.repo-actions .collapse-folders-button {
+  display: inline-flex;
+  align-items: center;
+  height: 1.4em;
+}
+
 /* ---------- collection rows ---------- */
 
 /* A collection's row, with its ⋯ menu beside it: shown on hover or focus. */

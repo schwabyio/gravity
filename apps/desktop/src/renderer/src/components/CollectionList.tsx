@@ -72,6 +72,9 @@ interface Props {
   onSelect: (collection: CollectionSummary) => void
   /** Every directory shown open, as while a filter narrows the list. */
   expanded?: boolean
+  /** Whether a folder is collapsed: each starts open. */
+  closed: (folder: string) => boolean
+  onToggleFolder: (folder: string) => void
   actions: CollectionActions
 }
 
@@ -132,6 +135,8 @@ export default function CollectionList(props: Props) {
             key={`dir:${node.name}`}
             node={node}
             expanded={props.expanded ?? false}
+            closed={props.closed(node.name)}
+            onToggle={() => props.onToggleFolder(node.name)}
             row={row}
             acting={acting?.path === `folder:${node.name}` ? acting.kind : null}
             onAct={(kind) => {
@@ -497,6 +502,8 @@ function TransferForm(props: {
 function Directory(props: {
   node: Extract<CollectionNode, { kind: 'directory' }>
   expanded: boolean
+  closed: boolean
+  onToggle: () => void
   row: (summary: CollectionSummary, depth: number) => React.ReactNode
   acting: NonNullable<Acting>['kind'] | null
   onAct: (kind: NonNullable<Acting>['kind'] | null) => void
@@ -506,9 +513,8 @@ function Directory(props: {
   /** The folder's own rule findings: its name. */
   findings: RuleFinding[]
 }) {
-  const [chosen, setOpen] = useState(true)
   // A filter shows what it found, whatever was collapsed; clearing it restores the choice.
-  const open = chosen || props.expanded
+  const open = !props.closed || props.expanded
   const { node, actions } = props
   const folderMark = props.marks.folder(node.name)
   return (
@@ -534,7 +540,7 @@ function Directory(props: {
         >
           <button
             className="row group-row"
-            onClick={() => setOpen(!chosen)}
+            onClick={props.onToggle}
             aria-expanded={open}
             title={
               folderMark

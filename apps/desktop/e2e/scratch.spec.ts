@@ -494,6 +494,43 @@ test('one button collapses every project, and then expands them again', async ()
   await page.getByRole('button', { name: 'Expand all projects' }).click()
 })
 
+test('a project’s own button collapses its folders, and then expands them again', async () => {
+  write(path.join(shop, 'collections', 'orders', 'list.yml'), 'id: list\nsteps: []\n')
+  const shopApi = project('shop-api')
+  const rows = () => shopApi.locator('.collection-row')
+  const everything = ['list', 'health', 'users×1']
+  await expect(shopApi.locator('.group-row .label')).toHaveText(['orders', 'smoke'])
+  await expect(rows()).toHaveText(everything)
+
+  // Its folders close, the project stays open, and other projects' folders are left alone.
+  await page.getByRole('button', { name: 'Collapse all folders in shop-api' }).click()
+  await expect(rows()).toHaveText(['users×1'])
+  for (const folder of ['orders', 'smoke']) {
+    await expect(shopApi.locator('.group-row', { hasText: folder })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+  }
+  await expect(shopApi.locator('.repo-toggle')).toHaveAttribute('aria-expanded', 'true')
+  await expect(project('Scratch pad').locator('.collection-row')).toHaveText(['ping-check'])
+
+  // All collapsed, it expands them all.
+  await page.getByRole('button', { name: 'Expand all folders in shop-api' }).click()
+  await expect(rows()).toHaveText(everything)
+
+  // One collapsed by hand leaves it collapsing the rest.
+  await shopApi.locator('.group-row', { hasText: 'orders' }).click()
+  await expect(rows()).toHaveText(['health', 'users×1'])
+  await page.getByRole('button', { name: 'Collapse all folders in shop-api' }).click()
+  await expect(rows()).toHaveText(['users×1'])
+
+  // The project collapsed, it opens the project and every folder in it.
+  await shopApi.locator('.repo-toggle').click()
+  await expect(rows()).toHaveCount(0)
+  await page.getByRole('button', { name: 'Expand all folders in shop-api' }).click()
+  await expect(rows()).toHaveText(everything)
+})
+
 test('the open collection closes from its header, saving what was edited', async () => {
   const row = project('Scratch pad').locator('.collection-row', { hasText: 'ping-check' })
   await row.click()

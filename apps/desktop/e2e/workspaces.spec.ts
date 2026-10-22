@@ -186,6 +186,9 @@ test('a project shows its folders one level deep, and reports anything deeper', 
   // The constant collections/ segment is never shown.
   await expect(page.locator('.sidebar')).not.toContainText('collections/')
   await expect(project('auth').locator('.group-row .label')).toHaveText(['tokens'])
+  // A project with folders collapses them from its heading; one with none has nothing to.
+  await expect(page.getByRole('button', { name: 'Collapse all folders in auth' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /all folders in users$/ })).toHaveCount(0)
   await expect(project('auth').locator('.collection-row')).toHaveText(['refresh', 'auth'])
   await expect(project('auth').getByRole('img', { name: 'Project problems' })).toHaveAttribute(
     'title',
@@ -320,6 +323,8 @@ test('a project’s filter narrows its collections, and leaves other projects al
   await expect(auth.locator('.group-row .label')).toHaveText(['tokens'])
   await expect(auth.locator('.filter-count')).toHaveText('1 of 5')
   await expect(project('users').locator('.collection-row')).toHaveCount(1)
+  // Its folders all show what was found: they stay open while it filters.
+  await expect(auth.getByRole('button', { name: 'Collapse all folders in auth' })).toBeDisabled()
 
   await filter.fill('nothing here')
   await expect(auth.locator('.filter-empty')).toHaveText('Nothing matches “nothing here”.')

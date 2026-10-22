@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { ProjectView } from '@shared/ipc.js'
 import { findingsLabel } from '../ruleFindings.js'
 import ChevronIcon from './ChevronIcon.js'
+import CollapseIcon from './CollapseIcon.js'
 import MenuIcon, { type MenuIconName } from './MenuIcon.js'
 import { GitState, repoChanges, SyncButtons } from './RepoGit.js'
 import Tooltip from './Tooltip.js'
@@ -18,6 +19,11 @@ interface Props {
   inRepo?: boolean
   open: boolean
   onToggle: () => void
+  /**
+   * Its folders, when it has any: collapse every one, or — all of them collapsed, or the
+   * project — open the project and every folder in it. Not while a filter shows them all open.
+   */
+  folders: { closed: boolean; filtering: boolean; onToggle: () => void } | null
   onFetch: () => void
   onPull: () => void
   onPush: () => void
@@ -44,12 +50,13 @@ interface Props {
  * and ahead/behind sit inline — only when it is in a repository — and Fetch,
  * Pull and Push are quiet icon buttons, so the collections below stay the thing
  * the eye lands on. The branch and the dirty dot open the Changes drawer, where
- * commits are made. Creating things and the project's settings are in its ⋯ menu.
+ * commits are made. With folders, one more icon collapses or expands them all.
+ * Creating things and the project's settings are in its ⋯ menu.
  * A scratch pad says so beside its name. Under its repository's heading — a
  * monorepo's services in one workspace — only its own changes show.
  */
 export default function ProjectHeading(props: Props) {
-  const { project, open, inRepo = false } = props
+  const { project, open, folders, inRepo = false } = props
   const { git, gitNote, busy } = project
   const [menu, setMenu] = useState(false)
   const editor = useExternalEditor()
@@ -204,6 +211,27 @@ export default function ProjectHeading(props: Props) {
             onPull={props.onPull}
             onPush={props.onPush}
           />
+        )}
+        {folders && (
+          <Tooltip
+            text={
+              folders.filtering
+                ? 'Folders stay open while filtering'
+                : folders.closed
+                  ? 'Expand all folders'
+                  : 'Collapse all folders'
+            }
+          >
+            <button
+              type="button"
+              className="collapse-folders-button"
+              aria-label={`${folders.closed ? 'Expand' : 'Collapse'} all folders in ${project.name}`}
+              onClick={folders.onToggle}
+              disabled={folders.filtering}
+            >
+              <CollapseIcon size={13} expand={folders.closed} />
+            </button>
+          </Tooltip>
         )}
         <span className="project-menu-wrap">
           <button

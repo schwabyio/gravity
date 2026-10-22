@@ -158,6 +158,7 @@ export default function ProjectSidebar(props: Props) {
 
   const workspaceMenus = useMenuDismiss(workspaceMenu, () => setWorkspaceMenu(false))
 
+  /** What collapses — a project, a repository heading, a folder — by its key. */
   const toggle = (id: string) => setCollapsed((current) => ({ ...current, [id]: !current[id] }))
   /** Each project on its own, or under its repository's heading with others of that repository. */
   const entries = sidebarEntries(props.projects)
@@ -216,6 +217,9 @@ export default function ProjectSidebar(props: Props) {
       files: files.filter((file) => keepsFile(query, file))
     }))
     const shown = filterCollections(project.collections, project.directories, query)
+    const folderKeys = project.directories.map((folder) => folderKey(project, folder))
+    /** The project closed, or every folder in it: its button then opens it all again. */
+    const foldersClosed = !open || folderKeys.every((key) => collapsed[key])
     const marks = gitMarks(project)
     const total = project.collections.length + libraries.reduce((n, l) => n + l.all, 0)
     const found = shown.collections.length + libraries.reduce((n, l) => n + l.files.length, 0)
@@ -232,6 +236,20 @@ export default function ProjectSidebar(props: Props) {
             inRepo={inRepo}
             open={open}
             onToggle={() => toggle(project.id)}
+            folders={
+              folderKeys.length === 0
+                ? null
+                : {
+                    closed: foldersClosed,
+                    filtering: filtering(query),
+                    onToggle: () =>
+                      setCollapsed((current) => ({
+                        ...current,
+                        [project.id]: false,
+                        ...Object.fromEntries(folderKeys.map((key) => [key, !foldersClosed]))
+                      }))
+                  }
+            }
             onFetch={() => props.onFetch(project.id)}
             onPull={() => props.onPull(project.id)}
             onPush={() => props.onPush(project.id)}
@@ -370,6 +388,8 @@ export default function ProjectSidebar(props: Props) {
               selectedPath={props.selectedRoot}
               onSelect={(collection) => props.onSelectCollection(project, collection)}
               expanded={filtering(query)}
+              closed={(folder) => collapsed[folderKey(project, folder)] === true}
+              onToggleFolder={(folder) => toggle(folderKey(project, folder))}
               folders={project.directories}
               drag={dragFor(project)}
               marks={marks}
@@ -738,6 +758,8 @@ function LibraryRow(props: {
 
 /** What a repository heading's open or closed is kept under, beside the projects' ids. */
 const repoKey = (repo: RepoView) => `repo:${repo.root}`
+/** And a folder of a project's `collections/`'s: a folder's name has no `/` in it. */
+const folderKey = (project: ProjectView, folder: string) => `folder:${project.id}/${folder}`
 
 /**
  * The sidebar's rows, top to bottom: repository and project headings, folders,
